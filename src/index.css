@@ -1,0 +1,71 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  
+  --color-manos-red: #ED1C24;
+  --color-manos-dark: #0A0A0A;
+}
+
+@layer base {
+  body {
+    @apply bg-manos-dark text-white font-sans overflow-x-hidden selection:bg-manos-red/30;
+    height: 100svh;
+    width: 100vw;
+    position: fixed;
+  }
+
+  #root {
+    height: 100%;
+    width: 100%;
+  }
+}
+
+@layer components {
+  .app-viewport {
+    @apply relative flex flex-col overflow-hidden bg-manos-dark;
+    height: 100svh;
+    width: 100%;
+    max-width: 500px; /* Mobile width constraint on desktop */
+    margin: 0 auto;
+    box-shadow: 0 0 100px rgba(0,0,0,0.8);
+  }
+
+  .scroll-container {
+    @apply flex-grow overflow-y-auto overflow-x-hidden pt-4 pb-32 px-6;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .sticky-footer {
+    @apply absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-manos-dark via-manos-dark/95 to-transparent z-20;
+  }
+
+  /* Large touch targets */
+  button, a {
+    @apply min-h-[48px] cursor-pointer touch-none select-none;
+  }
+
+  input, textarea {
+    @apply text-base bg-[#1A1A1A] border-white/5 rounded-2xl focus:border-manos-red/40 transition-all outline-none;
+  }
+
+  .glow-bg {
+    @apply fixed inset-0 pointer-events-none z-[-1];
+    background: radial-gradient(circle at 50% -10%, rgba(237, 28, 36, 0.12) 0%, transparent 60%);
+  }
+
+  .card-glass {
+    @apply bg-white/[0.03] backdrop-blur-3xl border border-white/5 rounded-[24px];
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 2px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-white/10 rounded-full;
+  }
+}
