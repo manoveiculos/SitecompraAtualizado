@@ -372,7 +372,7 @@ export default function App() {
                           onChange={(e) => setSearchQuery(e.target.value)}
                         />
                       </div>
-                      <div className="grid gap-4 custom-scrollbar">
+                      <div className="grid gap-4 pb-12">
                         {isLoadingStock ? (
                           Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} />)
                         ) : (
@@ -406,7 +406,7 @@ export default function App() {
               {quiz.step === 4 && quiz.type === 'Compra' && (
                 <div className="space-y-6">
                   <h2 className="text-3xl font-black tracking-tighter italic uppercase">Sugestões:</h2>
-                  <div className="grid gap-4">
+                  <div className="grid gap-4 pb-12">
                     {isLoadingStock ? (
                       Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} />)
                     ) : (

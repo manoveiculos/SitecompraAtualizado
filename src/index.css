@@ -43,7 +43,7 @@
 
   /* Large touch targets */
   button, a {
-    @apply min-h-[48px] cursor-pointer touch-none select-none;
+    @apply min-h-[48px] cursor-pointer touch-manipulation select-none;
   }
 
   input, textarea {
