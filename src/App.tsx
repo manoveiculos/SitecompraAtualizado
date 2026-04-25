@@ -128,6 +128,14 @@ export default function App() {
       });
 
       // Show success screen
+      // 2. Track Lead event in Meta Pixel
+      if (typeof window !== 'undefined' && (window as any).fbq) {
+        (window as any).fbq('track', 'Lead', {
+          content_name: quiz.type,
+          status: 'submitted'
+        });
+      }
+
       setIsSuccess(true);
     } catch (err) {
       console.error("Submission error:", err);
