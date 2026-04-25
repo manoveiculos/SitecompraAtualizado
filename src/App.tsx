@@ -7,12 +7,12 @@ import {
   ArrowRight, 
   ChevronLeft, 
   ChevronRight, 
-  MessageSquare,
   CheckCircle2,
   AlertCircle,
   Search,
   Check,
-  Clock
+  Clock,
+  ExternalLink
 } from 'lucide-react';
 import { cn } from './lib/utils';
 import { createLead, testConnection } from './lib/leads';
@@ -40,7 +40,6 @@ export default function App() {
   const [priceFilter, setPriceFilter] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
-  const [isWaiting, setIsWaiting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const formatPhone = (val: string) => {
@@ -210,82 +209,33 @@ export default function App() {
                 <div className="absolute inset-0 bg-green-500 blur-3xl opacity-10 -z-10" />
               </div>
 
-              <div className="space-y-4">
-                <h2 className="text-3xl font-black tracking-tighter leading-none italic uppercase">Tudo certo!</h2>
-                <p className="text-white/60 text-base leading-relaxed">
-                  Sua solicitação foi enviada.
-                  <br />
-                  <span className="text-manos-red font-bold uppercase tracking-widest text-[10px]">Escolha como deseja seguir abaixo</span>
-                </p>
+              <div className="space-y-4 px-4">
+                <h2 className="text-3xl font-black tracking-tighter leading-none italic uppercase">Solicitação Registrada!</h2>
+                <div className="space-y-2">
+                  <p className="text-white/60 text-sm leading-relaxed">
+                    Obrigado, <span className="text-white font-bold">{quiz.data.name}</span>! Seus dados já estão com nossa equipe.
+                  </p>
+                  <p className="text-white/60 text-sm leading-relaxed">
+                    Fique atento ao seu WhatsApp, pois um de nossos consultores especializados entrará em contato em instantes.
+                  </p>
+                </div>
               </div>
 
-              <div className="grid gap-4 px-4">
-                {isWaiting ? (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="bg-white/5 border border-white/10 p-8 rounded-3xl space-y-4 text-center"
-                  >
-                    <div className="w-16 h-16 bg-green-500/10 rounded-full flex items-center justify-center mx-auto">
-                      <Clock className="w-8 h-8 text-green-500" />
-                    </div>
-                    <div className="space-y-2">
-                       <p className="text-xl font-black uppercase tracking-tighter italic">Solicitação Registrada!</p>
-                       <p className="text-sm text-white/60 leading-relaxed">
-                         Obrigado, <span className="text-white font-bold">{quiz.data.name}</span>! Seus dados já estão com nossa equipe. 
-                         Fique atento ao seu WhatsApp, pois um de nossos consultores especializados entrará em contato em instantes para conversarmos sobre seu próximo veículo.
-                       </p>
-                    </div>
-                    <button
-                      onClick={() => window.location.reload()}
-                      className="text-[10px] font-black uppercase tracking-widest text-white/20 hover:text-white/40 transition-all pt-4"
-                    >
-                      Voltar ao Início
-                    </button>
-                  </motion.div>
-                ) : (
-                  <>
-                    <button
-                      onClick={() => setIsWaiting(true)}
-                      className="w-full bg-[#1A1A1A] border border-white/5 p-6 rounded-2xl flex items-center gap-4 group hover:border-white/10 transition-all text-left"
-                    >
-                      <div className="w-12 h-12 bg-white/5 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform flex-shrink-0">
-                        <Clock className="w-6 h-6 text-white/40" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-black uppercase tracking-tighter">Aguardar Consultor</p>
-                        <p className="text-[10px] text-white/20 uppercase font-bold">Chamaremos no WhatsApp em breve</p>
-                      </div>
-                    </button>
-
-                    <button 
-                      onClick={() => {
-                        const { name, ...otherData } = quiz.data;
-                        const vehicleInfo = quiz.selectedVehicle 
-                          ? quiz.selectedVehicle.description.toUpperCase()
-                          : 'Geral';
-                        const message = encodeURIComponent(
-                          `Olá Arthur! Acabei de finalizar minha consultoria para *${quiz.type}*.\n\n` +
-                          `*Nome:* ${name}\n` +
-                          `*Interesse:* ${vehicleInfo}\n` +
-                          (quiz.selectedVehicle ? `*Veículo:* ${quiz.selectedVehicle.description}\n` : '') +
-                          `*Resumo:* ${Object.entries(otherData).map(([k, v]) => `${k}: ${v}`).join(' | ')}\n\n` +
-                          `Quero seu atendimento virtual imediato!`
-                        );
-                        window.open(`https://wa.me/554733001352?text=${message}`, '_blank');
-                      }}
-                      className="w-full bg-manos-red/10 border border-manos-red/20 p-6 rounded-2xl flex items-center gap-4 group hover:bg-manos-red/20 transition-all text-left"
-                    >
-                      <div className="w-12 h-12 bg-manos-red rounded-full flex items-center justify-center group-hover:scale-110 transition-transform shadow-lg shadow-manos-red/20 flex-shrink-0">
-                        <MessageSquare className="w-6 h-6 text-white" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-black uppercase tracking-tighter">Falar com Arthur</p>
-                        <p className="text-[10px] text-manos-red/60 uppercase font-bold">Atendimento Virtual Imediato</p>
-                      </div>
-                    </button>
-                  </>
-                )}
+              <div className="px-4">
+                <a 
+                  href="https://manosveiculos.com.br/estoque/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full bg-white/5 border border-white/10 p-6 rounded-2xl flex items-center gap-4 group hover:bg-white/10 transition-all text-left"
+                >
+                  <div className="w-12 h-12 bg-manos-red rounded-full flex items-center justify-center group-hover:scale-110 transition-transform shadow-lg shadow-manos-red/20 flex-shrink-0">
+                    <ExternalLink className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-black uppercase tracking-tighter italic">Ver Nosso Estoque</p>
+                    <p className="text-[10px] text-white/40 uppercase font-bold">manosveiculos.com.br</p>
+                  </div>
+                </a>
               </div>
 
               <div className="pt-4">
