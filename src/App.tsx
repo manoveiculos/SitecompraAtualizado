@@ -218,30 +218,31 @@ export default function App() {
               </div>
 
               <div className="space-y-4 px-4">
-                <h2 className="text-3xl font-black tracking-tighter leading-none italic uppercase">Solicitação Registrada!</h2>
-                <div className="space-y-2">
-                  <p className="text-white/60 text-sm leading-relaxed">
-                    Obrigado, <span className="text-white font-bold">{quiz.data.name}</span>! Seus dados já estão com nossa equipe.
+                <h2 className="text-3xl font-black tracking-tighter leading-none italic uppercase text-white">Solicitação Recebida!</h2>
+                <div className="space-y-4">
+                  <p className="text-white/80 text-base leading-relaxed">
+                    Obrigado pela confiança, <span className="text-manos-red font-bold">{quiz.data.name}</span>! Seus dados foram encaminhados com sucesso para nossa consultoria especializada.
                   </p>
-                  <p className="text-white/60 text-sm leading-relaxed">
-                    Fique atento ao seu WhatsApp, pois um de nossos consultores especializados entrará em contato em instantes.
+                  <p className="text-white/60 text-sm leading-relaxed border-l-2 border-manos-red/30 pl-4 py-1 italic">
+                    Fique atento ao seu WhatsApp. Em instantes, um de nossos consultores entrará em contato para dar continuidade ao seu atendimento de forma personalizada.
                   </p>
                 </div>
               </div>
 
-              <div className="px-4">
+              <div className="px-4 space-y-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/20 text-center">Enquanto isso, explore:</p>
                 <a 
                   href="https://manosveiculos.com.br/estoque/"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full bg-white/5 border border-white/10 p-6 rounded-2xl flex items-center gap-4 group hover:bg-white/10 transition-all text-left"
+                  className="w-full bg-white/5 border border-white/10 p-6 rounded-2xl flex items-center gap-4 group hover:bg-white/10 transition-all text-left shadow-xl shadow-black/20"
                 >
                   <div className="w-12 h-12 bg-manos-red rounded-full flex items-center justify-center group-hover:scale-110 transition-transform shadow-lg shadow-manos-red/20 flex-shrink-0">
                     <ExternalLink className="w-6 h-6 text-white" />
                   </div>
                   <div>
-                    <p className="text-sm font-black uppercase tracking-tighter italic">Ver Nosso Estoque</p>
-                    <p className="text-[10px] text-white/40 uppercase font-bold">manosveiculos.com.br</p>
+                    <p className="text-sm font-black uppercase tracking-tighter italic text-white">Navegar pelo Estoque</p>
+                    <p className="text-[10px] text-white/40 uppercase font-bold tracking-widest">manosveiculos.com.br</p>
                   </div>
                 </a>
               </div>

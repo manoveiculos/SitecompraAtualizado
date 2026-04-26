@@ -41,32 +41,46 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 export async function createLead(leadData: any) {
   const path = 'leads_manos_crm';
   
-  // Webhooks based on type
-  const WEBHOOKS: Record<string, string> = {
-    'Compra': 'https://n8n.drivvoo.com/webhook/c238d26a-ebce-4c00-ac3c-ba506042ab46',
-    'Venda': 'https://n8n.drivvoo.com/webhook/684eb74d-9112-47c5-94af-a0982dbdcf35',
-    'Financiamento': 'https://n8n.drivvoo.com/webhook/a5d2e1c0-cf84-4206-9a79-5957bc8fda00'
+  // Single webhook as requested by user
+  const WEBHOOK_URL = 'https://n8n.drivvoo.com/webhook/684eb74d-9112-47c5-94af-a0982dbdcf35';
+
+  // Helper to remove undefined values for Firestore
+  const sanitize = (obj: any): any => {
+    const newObj: any = {};
+    Object.keys(obj).forEach(key => {
+      const val = obj[key];
+      if (val === undefined) return;
+      if (val !== null && typeof val === 'object' && !Array.isArray(val) && !(val instanceof Date)) {
+        newObj[key] = sanitize(val);
+      } else {
+        newObj[key] = val;
+      }
+    });
+    return newObj;
   };
 
-  const WEBHOOK_URL = WEBHOOKS[leadData.lead_type] || WEBHOOKS['Compra'];
+  const sanitizedData = sanitize({
+    ...leadData,
+    status: 'new',
+    source: 'Qualificador Manos Web App'
+  });
 
   try {
     // 1. Save to Firebase
     const docRef = await addDoc(collection(db, path), {
-      ...leadData,
-      status: 'new',
+      ...sanitizedData,
       created_at: serverTimestamp(),
       updated_at: serverTimestamp(),
     });
 
-    // 2. Send to Webhook (asynchronous, don't block)
+    // 2. Send to Webhook
     fetch(WEBHOOK_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        ...leadData,
+        ...sanitizedData,
         firebase_id: docRef.id,
-        source: 'Qualificador Manos Web App'
+        timestamp: new Date().toISOString()
       })
     }).catch(err => console.error("Webhook error:", err));
 
