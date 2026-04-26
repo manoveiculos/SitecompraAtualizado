@@ -93,6 +93,8 @@ export default function App() {
   const navigateBack = () => {
     if (quiz.step === 7 && quiz.data.tem_troca === 'Não' && quiz.type === 'Compra') {
       setQuiz(prev => ({ ...prev, step: 5 }));
+    } else if (quiz.step === 4 && quiz.data.has_car === 'Sim, do estoque' && quiz.type === 'Financiamento') {
+      setQuiz(prev => ({ ...prev, step: 2 }));
     } else if (quiz.step === 2) {
       setQuiz({ step: 1, type: null, data: {}, selectedVehicle: null });
     } else if (quiz.step > 1) {
@@ -124,11 +126,12 @@ export default function App() {
           id_veiculo: quiz.selectedVehicle?.id,
           nome_veiculo: quiz.selectedVehicle?.description,
           valor_veiculo: quiz.selectedVehicle?.price,
+          link_veiculo: quiz.selectedVehicle?.link,
+          resumo: `Lead de ${quiz.type} interessado em ${quiz.selectedVehicle ? quiz.selectedVehicle.description : (quiz.data.marca_modelo || quiz.data.carro_venda || 'não especificado')}`
         },
       });
 
-      // Show success screen
-      // 2. Track Lead event in Meta Pixel
+      // Track Lead event in Meta Pixel
       if (typeof window !== 'undefined' && (window as any).fbq) {
         (window as any).fbq('track', 'Lead', {
           content_name: quiz.type,
@@ -145,7 +148,14 @@ export default function App() {
     }
   };
 
-  const maxSteps = quiz.type === 'Compra' ? 9 : (quiz.type === 'Venda' ? 10 : 5);
+  const getMaxSteps = () => {
+    if (quiz.type === 'Compra') return 9;
+    if (quiz.type === 'Venda') return 10;
+    if (quiz.type === 'Financiamento') return 6;
+    return 1;
+  };
+
+  const maxSteps = getMaxSteps();
   const progressValue = (quiz.step / maxSteps) * 100;
   const isPhoneValid = (quiz.data.phone?.replace(/\D/g, '') || '').length >= 10;
   const isFormValid = quiz.data.name && isPhoneValid;
@@ -315,9 +325,10 @@ export default function App() {
                 </div>
               )}
 
-              {quiz.step === 3 && quiz.type === 'Compra' && (
+              {quiz.step === 3 && (quiz.type === 'Compra' || quiz.type === 'Financiamento') && (
                 <div className="space-y-6">
-                  {quiz.data.has_interest === 'Sim' ? (
+                  {((quiz.type === 'Compra' && quiz.data.has_interest === 'Sim') || 
+                    (quiz.type === 'Financiamento' && quiz.data.has_car === 'Sim, do estoque')) ? (
                     <div className="space-y-6">
                       <h2 className="text-3xl font-black tracking-tighter italic uppercase text-center">Qual modelo?</h2>
                       <div className="relative">
@@ -342,7 +353,13 @@ export default function App() {
                               <VehicleCard 
                                 key={v.id} 
                                 vehicle={v} 
-                                onClick={() => { setQuiz(prev => ({ ...prev, selectedVehicle: v, step: 5 })); }} 
+                                onClick={() => { 
+                                  setQuiz(prev => ({ 
+                                    ...prev, 
+                                    selectedVehicle: v, 
+                                    step: prev.type === 'Compra' ? 5 : 4 
+                                  })); 
+                                }} 
                               />
                             ))
                         )}
@@ -351,12 +368,23 @@ export default function App() {
                     </div>
                   ) : (
                     <div className="space-y-6">
-                      <h2 className="text-3xl font-black tracking-tighter italic uppercase text-center">Qual orçamento?</h2>
-                      <div className="grid gap-3">
-                        <OptionButton label="Até R$ 50k" active={priceFilter === '50k'} onClick={() => { setPriceFilter('50k'); nextStep(); }} />
-                        <OptionButton label="De R$ 50k a 100k" active={priceFilter === '100k'} onClick={() => { setPriceFilter('100k'); nextStep(); }} />
-                        <OptionButton label="Acima de 100k" active={priceFilter === 'plus'} onClick={() => { setPriceFilter('plus'); nextStep(); }} />
-                      </div>
+                      {quiz.type === 'Compra' ? (
+                        <>
+                          <h2 className="text-3xl font-black tracking-tighter italic uppercase text-center">Qual orçamento?</h2>
+                          <div className="grid gap-3">
+                            <OptionButton label="Até R$ 50k" active={priceFilter === '50k'} onClick={() => { setPriceFilter('50k'); nextStep(); }} />
+                            <OptionButton label="De R$ 50k a 100k" active={priceFilter === '100k'} onClick={() => { setPriceFilter('100k'); nextStep(); }} />
+                            <OptionButton label="Acima de 100k" active={priceFilter === 'plus'} onClick={() => { setPriceFilter('plus'); nextStep(); }} />
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <h2 className="text-3xl font-black tracking-tighter italic uppercase text-center">Deseja dar entrada?</h2>
+                          <div className="grid gap-3">
+                            {['Sem entrada', 'Até 10k', 'Mais de 20k'].map(v => <StepOption key={v} label={v} active={quiz.data.down_payment === v} onClick={() => { handleDataChange('down_payment', v); nextStep(); }} />)}
+                          </div>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>
@@ -638,24 +666,47 @@ export default function App() {
                 </div>
               )}
 
-              {/* Step 2-4 for Financiamento (only) */}
-              {(quiz.step > 1 && quiz.step < 5 && quiz.type === 'Financiamento') && (
+              {/* Step 4 for Financiamento */}
+              {(quiz.step === 4 && quiz.type === 'Financiamento') && (
                 <div className="space-y-8">
                   <div className="text-center space-y-2">
                     <h2 className="text-3xl font-black tracking-tighter italic uppercase">
-                      {quiz.step === 2 ? "Já escolheu o carro?" : quiz.step === 3 ? "Deseja dar entrada?" : "Qual parcela procura?"}
+                      {quiz.data.has_car === 'Sim, do estoque' ? "Deseja dar entrada?" : "Qual parcela procura?"}
                     </h2>
                   </div>
                   <div className="grid gap-4">
-                    {quiz.step === 2 && ['Sim, do estoque', 'Não, ainda procurando'].map(v => <StepOption key={v} label={v} active={quiz.data.has_car === v} onClick={() => { handleDataChange('has_car', v); nextStep(); }} />)}
-                    {quiz.step === 3 && ['Sem entrada', 'Até 10k', 'Mais de 20k'].map(v => <StepOption key={v} label={v} active={quiz.data.down_payment === v} onClick={() => { handleDataChange('down_payment', v); nextStep(); }} />)}
-                    {quiz.step === 4 && ['R$ 800 - R$ 1.200', 'R$ 1.200 - R$ 1.800', 'Acima de R$ 2.000'].map(v => <StepOption key={v} label={v} active={quiz.data.desired_payment === v} onClick={() => { handleDataChange('desired_payment', v); nextStep(); }} />)}
+                    {quiz.data.has_car === 'Sim, do estoque' ? (
+                       ['Sem entrada', 'Até 10k', 'Mais de 20k'].map(v => <StepOption key={v} label={v} active={quiz.data.down_payment === v} onClick={() => { handleDataChange('down_payment', v); nextStep(); }} />)
+                    ) : (
+                       ['R$ 800 - R$ 1.200', 'R$ 1.200 - R$ 1.800', 'Acima de R$ 2.000'].map(v => <StepOption key={v} label={v} active={quiz.data.desired_payment === v} onClick={() => { handleDataChange('desired_payment', v); nextStep(); }} />)
+                    )}
                   </div>
                 </div>
               )}
 
-              {((quiz.step === 9 && quiz.type === 'Compra') || (quiz.step === 10 && quiz.type === 'Venda') || (quiz.step === 5 && quiz.type === 'Financiamento')) && (
+              {/* Step 5 for Financiamento */}
+              {(quiz.step === 5 && quiz.type === 'Financiamento') && (
                 <div className="space-y-8">
+                  <div className="text-center space-y-2">
+                    <h2 className="text-3xl font-black tracking-tighter italic uppercase">
+                      {quiz.data.has_car === 'Sim, do estoque' ? "Qual parcela procura?" : "Últimas informações"}
+                    </h2>
+                  </div>
+                  <div className="grid gap-4">
+                    {quiz.data.has_car === 'Sim, do estoque' ? (
+                      ['R$ 800 - R$ 1.200', 'R$ 1.200 - R$ 1.800', 'Acima de R$ 2.000'].map(v => <StepOption key={v} label={v} active={quiz.data.desired_payment === v} onClick={() => { handleDataChange('desired_payment', v); nextStep(); }} />)
+                    ) : (
+                      <div className="p-8 text-center text-white/40 italic uppercase text-xs font-bold bg-white/5 rounded-2xl border border-white/5">
+                        Estamos quase lá... Clique para prosseguir.
+                        <button onClick={nextStep} className="block w-full mt-4 py-4 bg-manos-red text-white">Continuar</button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {((quiz.step === 9 && quiz.type === 'Compra') || (quiz.step === 10 && quiz.type === 'Venda') || (quiz.step === 6 && quiz.type === 'Financiamento')) && (
+                <div className="space-y-8 pb-12">
                   <div className="text-center space-y-2">
                     <h2 className="text-3xl font-black tracking-tighter italic uppercase leading-none">Último Passo</h2>
                     <p className="text-white/30 text-[10px] font-black uppercase tracking-[0.3em]">Consultoria Prioritária</p>

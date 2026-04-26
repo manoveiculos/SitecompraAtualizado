@@ -41,8 +41,14 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 export async function createLead(leadData: any) {
   const path = 'leads_manos_crm';
   
-  // Single webhook as requested by user
-  const WEBHOOK_URL = 'https://n8n.drivvoo.com/webhook/684eb74d-9112-47c5-94af-a0982dbdcf35';
+  // Webhooks based on type as requested
+  const WEBHOOKS: Record<string, string> = {
+    'Compra': 'https://n8n.drivvoo.com/webhook/c238d26a-ebce-4c00-ac3c-ba506042ab46',
+    'Venda': 'https://n8n.drivvoo.com/webhook/684eb74d-9112-47c5-94af-a0982dbdcf35',
+    'Financiamento': 'https://n8n.drivvoo.com/webhook/a5d2e1c0-cf84-4206-9a79-5957bc8fda00'
+  };
+
+  const WEBHOOK_URL = WEBHOOKS[leadData.lead_type] || WEBHOOKS['Compra'];
 
   // Helper to remove undefined values for Firestore
   const sanitize = (obj: any): any => {
