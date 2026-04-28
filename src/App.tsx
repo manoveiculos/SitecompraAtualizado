@@ -93,8 +93,6 @@ export default function App() {
   const navigateBack = () => {
     if (quiz.step === 7 && quiz.data.tem_troca === 'Não' && quiz.type === 'Compra') {
       setQuiz(prev => ({ ...prev, step: 5 }));
-    } else if (quiz.step === 4 && quiz.data.has_car === 'Sim, do estoque' && quiz.type === 'Financiamento') {
-      setQuiz(prev => ({ ...prev, step: 2 }));
     } else if (quiz.step === 2) {
       setQuiz({ step: 1, type: null, data: {}, selectedVehicle: null });
     } else if (quiz.step > 1) {
@@ -127,7 +125,7 @@ export default function App() {
           nome_veiculo: quiz.selectedVehicle?.description,
           valor_veiculo: quiz.selectedVehicle?.price,
           link_veiculo: quiz.selectedVehicle?.link,
-          resumo: `Lead de ${quiz.type} interessado em ${quiz.selectedVehicle ? quiz.selectedVehicle.description : (quiz.data.marca_modelo || quiz.data.carro_venda || 'não especificado')}`
+          resumo: `Lead de ${quiz.type} | Interessado em: ${quiz.selectedVehicle ? quiz.selectedVehicle.description : (quiz.data.marca_modelo || quiz.data.carro_venda || 'não especificado')} | Detalhes: ${quiz.data.has_car || ''} ${quiz.data.down_payment || ''} ${quiz.data.desired_payment || ''}`
         },
       });
 
@@ -307,19 +305,27 @@ export default function App() {
                 </div>
               )}
 
-              {quiz.step === 2 && quiz.type === 'Compra' && (
+              {quiz.step === 2 && (quiz.type === 'Compra' || quiz.type === 'Financiamento') && (
                 <div className="space-y-6">
-                  <h2 className="text-3xl font-black tracking-tighter italic uppercase text-center">Já viu um carro?</h2>
+                  <h2 className="text-3xl font-black tracking-tighter italic uppercase text-center">
+                    {quiz.type === 'Compra' ? "Já viu um carro?" : "Já escolheu o carro?"}
+                  </h2>
                   <div className="grid gap-4">
                     <QuizButton 
                       icon={<Check className="w-6 h-6" />}
-                      label="Sim, já escolhi!"
-                      onClick={() => { handleDataChange('has_interest', 'Sim'); nextStep(); }}
+                      label={quiz.type === 'Compra' ? "Sim, já escolhi!" : "Sim, do estoque"}
+                      onClick={() => { 
+                        handleDataChange(quiz.type === 'Compra' ? 'has_interest' : 'has_car', quiz.type === 'Compra' ? 'Sim' : 'Sim, do estoque'); 
+                        nextStep(); 
+                      }}
                     />
                     <QuizButton 
                       icon={<ArrowRight className="w-6 h-6" />}
-                      label="Quero ver o estoque"
-                      onClick={() => { handleDataChange('has_interest', 'Não'); nextStep(); }}
+                      label={quiz.type === 'Compra' ? "Quero ver o estoque" : "Não, ainda procurando"}
+                      onClick={() => { 
+                        handleDataChange(quiz.type === 'Compra' ? 'has_interest' : 'has_car', quiz.type === 'Compra' ? 'Não' : 'Não, ainda procurando'); 
+                        nextStep(); 
+                      }}
                     />
                   </div>
                 </div>
@@ -678,29 +684,24 @@ export default function App() {
                     {quiz.data.has_car === 'Sim, do estoque' ? (
                        ['Sem entrada', 'Até 10k', 'Mais de 20k'].map(v => <StepOption key={v} label={v} active={quiz.data.down_payment === v} onClick={() => { handleDataChange('down_payment', v); nextStep(); }} />)
                     ) : (
-                       ['R$ 800 - R$ 1.200', 'R$ 1.200 - R$ 1.800', 'Acima de R$ 2.000'].map(v => <StepOption key={v} label={v} active={quiz.data.desired_payment === v} onClick={() => { handleDataChange('desired_payment', v); nextStep(); }} />)
+                       ['R$ 800 - R$ 1.200', 'R$ 1.200 - R$ 1.800', 'Acima de R$ 2.000'].map(v => <StepOption key={v} label={v} active={quiz.data.desired_payment === v} onClick={() => { handleDataChange('desired_payment', v); setQuiz(prev => ({ ...prev, step: 6 })); }} />)
                     )}
                   </div>
                 </div>
               )}
 
               {/* Step 5 for Financiamento */}
-              {(quiz.step === 5 && quiz.type === 'Financiamento') && (
+              {(quiz.step === 5 && quiz.type === 'Financiamento' && quiz.data.has_car === 'Sim, do estoque') && (
                 <div className="space-y-8">
                   <div className="text-center space-y-2">
                     <h2 className="text-3xl font-black tracking-tighter italic uppercase">
-                      {quiz.data.has_car === 'Sim, do estoque' ? "Qual parcela procura?" : "Últimas informações"}
+                      Qual parcela procura?
                     </h2>
                   </div>
                   <div className="grid gap-4">
-                    {quiz.data.has_car === 'Sim, do estoque' ? (
-                      ['R$ 800 - R$ 1.200', 'R$ 1.200 - R$ 1.800', 'Acima de R$ 2.000'].map(v => <StepOption key={v} label={v} active={quiz.data.desired_payment === v} onClick={() => { handleDataChange('desired_payment', v); nextStep(); }} />)
-                    ) : (
-                      <div className="p-8 text-center text-white/40 italic uppercase text-xs font-bold bg-white/5 rounded-2xl border border-white/5">
-                        Estamos quase lá... Clique para prosseguir.
-                        <button onClick={nextStep} className="block w-full mt-4 py-4 bg-manos-red text-white">Continuar</button>
-                      </div>
-                    )}
+                    {['R$ 800 - R$ 1.200', 'R$ 1.200 - R$ 1.800', 'Acima de R$ 2.000'].map(v => (
+                       <StepOption key={v} label={v} active={quiz.data.desired_payment === v} onClick={() => { handleDataChange('desired_payment', v); nextStep(); }} />
+                    ))}
                   </div>
                 </div>
               )}
@@ -750,7 +751,7 @@ export default function App() {
                       disabled={isSubmitting || !isFormValid}
                       className="w-full py-5 bg-manos-red text-white font-black text-lg uppercase rounded-2xl shadow-2xl shadow-manos-red/20 active:scale-95 transition-all disabled:opacity-30"
                     >
-                      {isSubmitting ? 'Finalizando...' : 'Finalizar Consultoria'}
+                      {isSubmitting ? 'Finalizando...' : 'Finalizar'}
                     </button>
                   </form>
                 </div>
@@ -777,7 +778,7 @@ export default function App() {
                   disabled={isSubmitting || !isFormValid}
                   className="flex-grow bg-manos-red text-white font-black text-lg uppercase rounded-2xl shadow-2xl shadow-manos-red/20 active:scale-95 transition-all disabled:opacity-30"
                 >
-                  {isSubmitting ? 'Finalizando...' : 'Finalizar Consultoria'}
+                  {isSubmitting ? 'Finalizando...' : 'Finalizar'}
                 </button>
               ) : (
                 <div className="flex-grow flex items-center justify-center">
