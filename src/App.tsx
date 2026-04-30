@@ -326,14 +326,19 @@ export default function App() {
                   <div className="mt-8 pt-8 border-t border-white/5 flex flex-col items-center gap-4">
                     <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/20">Visite nossas unidades</p>
                     <div className="flex gap-4">
-                       <div className="text-center">
-                          <p className="text-[11px] font-bold text-white/60">Rio do Sul</p>
+                       <a 
+                         href="https://www.google.com/maps/dir//Manos+Veiculos,+R.+Dom+Pedro+II,+374+-+Canoas,+Rio+do+Sul+-+SC,+89164-138/@-27.1189403,-48.6088232,15z/data=!4m8!4m7!1m0!1m5!1m1!1s0x94dfb857181b55b3:0x6b728157d42c68f6!2m2!1d-49.6539853!2d-27.2207243?entry=ttu&g_ep=EgoyMDI2MDQyNy4wIKXMDSoASAFQAw%3D%3D"
+                         target="_blank"
+                         rel="noopener noreferrer"
+                         className="text-center group transition-colors hover:bg-white/5 p-2 rounded-xl"
+                       >
+                          <p className="text-[11px] font-bold text-white/60 group-hover:text-manos-red transition-colors">Rio do Sul</p>
                           <p className="text-[9px] text-white/30 uppercase tracking-widest font-black">Matriz</p>
-                       </div>
-                       <div className="w-px h-8 bg-white/5" />
-                       <div className="text-center">
-                          <p className="text-[11px] font-bold text-white/60">Litoral SC</p>
-                          <p className="text-[9px] text-white/30 uppercase tracking-widest font-black">Unidades</p>
+                       </a>
+                       <div className="w-px h-8 bg-white/5 self-center" />
+                       <div className="text-center p-2">
+                          <p className="text-[11px] font-bold text-white/60">Itapema SC</p>
+                          <p className="text-[9px] text-white/30 uppercase tracking-widest font-black">Em Breve</p>
                        </div>
                     </div>
                   </div>
