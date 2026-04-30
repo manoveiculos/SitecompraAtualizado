@@ -162,6 +162,26 @@ export default function App() {
     <div className="app-viewport lg:max-w-none lg:h-auto lg:min-h-screen lg:bg-black/40 lg:flex lg:items-center lg:justify-center lg:p-12">
       <div className="glow-bg" />
 
+      {/* WhatsApp Floating Button */}
+      <a 
+        href="https://wa.me/554733001352?text=Ol%C3%A1%2C%20gostaria%20de%20falar%20com%20um%20consultor%20da%20Manos%20Ve%C3%ADculos."
+        target="_blank"
+        rel="noopener noreferrer"
+        className="fixed bottom-6 right-6 z-50 group"
+      >
+        <div className="absolute inset-0 bg-green-500 blur-2xl opacity-20 group-hover:opacity-40 transition-opacity" />
+        <div className="relative w-14 h-14 bg-green-500 rounded-full flex items-center justify-center shadow-2xl shadow-green-500/20 hover:scale-110 active:scale-95 transition-all">
+          <svg viewBox="0 0 24 24" className="w-8 h-8 text-white fill-current">
+            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L0 24l6.335-1.662c1.72.937 3.659 1.432 5.626 1.433h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
+          </svg>
+        </div>
+        <div className="absolute bottom-full right-0 mb-4 opacity-0 -translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all pointer-events-none">
+          <div className="bg-white text-manos-dark text-[10px] font-black uppercase tracking-widest py-2 px-4 rounded-xl shadow-2xl whitespace-nowrap">
+            Falar com um Consultor
+          </div>
+        </div>
+      </a>
+
       <div className="app-viewport lg:h-[800px] lg:rounded-[32px] lg:shadow-2xl lg:border lg:border-white/5 lg:relative">
         {/* Header - Fixed & Minimalist */}
         <header className="p-4 flex flex-col items-center gap-3 z-20 backdrop-blur-md bg-manos-dark/50 lg:rounded-t-[32px]">
@@ -277,30 +297,45 @@ export default function App() {
                 <div className="space-y-8">
                   <div className="space-y-4 text-center">
                     <h1 className="text-4xl font-black tracking-tighter leading-[0.9] italic uppercase">
-                      Escolha seu <br />
-                      <span className="text-manos-red">Próximo Nível</span>
+                      Troque de carro <br />
+                      <span className="text-manos-red">com quem você confia</span>
                     </h1>
                   </div>
                   
                   <div className="grid gap-4">
                     <MainOption 
                       icon={<Car className="w-8 h-8" />}
-                      title="Quero Comprar"
-                      desc="Estoque selecionado Manos"
+                      title="Ver Carros em Estoque"
+                      desc="Encontre seu sonho agora"
                       onClick={() => handleInitialChoice('Compra')}
                     />
                     <MainOption 
                       icon={<Handshake className="w-8 h-8" />}
-                      title="Quero Vender"
-                      desc="Avaliação justa agora"
+                      title="Avaliar meu Carro agora"
+                      desc="Melhor proposta da região"
                       onClick={() => handleInitialChoice('Venda')}
                     />
                     <MainOption 
                       icon={<CreditCard className="w-8 h-8" />}
-                      title="Financiamento"
-                      desc="As melhores taxas do mercado"
+                      title="Simular meu Financiamento"
+                      desc="Aprovação rápida e fácil"
                       onClick={() => handleInitialChoice('Financiamento')}
                     />
+                  </div>
+                  
+                  <div className="mt-8 pt-8 border-t border-white/5 flex flex-col items-center gap-4">
+                    <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/20">Visite nossas unidades</p>
+                    <div className="flex gap-4">
+                       <div className="text-center">
+                          <p className="text-[11px] font-bold text-white/60">Rio do Sul</p>
+                          <p className="text-[9px] text-white/30 uppercase tracking-widest font-black">Matriz</p>
+                       </div>
+                       <div className="w-px h-8 bg-white/5" />
+                       <div className="text-center">
+                          <p className="text-[11px] font-bold text-white/60">Litoral SC</p>
+                          <p className="text-[9px] text-white/30 uppercase tracking-widest font-black">Unidades</p>
+                       </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -376,18 +411,18 @@ export default function App() {
                     <div className="space-y-6">
                       {quiz.type === 'Compra' ? (
                         <>
-                          <h2 className="text-3xl font-black tracking-tighter italic uppercase text-center">Qual orçamento?</h2>
+                          <h2 className="text-3xl font-black tracking-tighter italic uppercase text-center">Quanto você pretende investir no seu novo carro?</h2>
                           <div className="grid gap-3">
-                            <OptionButton label="Até R$ 50k" active={priceFilter === '50k'} onClick={() => { setPriceFilter('50k'); nextStep(); }} />
-                            <OptionButton label="De R$ 50k a 100k" active={priceFilter === '100k'} onClick={() => { setPriceFilter('100k'); nextStep(); }} />
-                            <OptionButton label="Acima de 100k" active={priceFilter === 'plus'} onClick={() => { setPriceFilter('plus'); nextStep(); }} />
+                            <OptionButton label="Até R$ 50 mil" active={priceFilter === '50k'} onClick={() => { setPriceFilter('50k'); nextStep(); }} />
+                            <OptionButton label="De R$ 50 mil a 100 mil" active={priceFilter === '100k'} onClick={() => { setPriceFilter('100k'); nextStep(); }} />
+                            <OptionButton label="Acima de R$ 100 mil" active={priceFilter === 'plus'} onClick={() => { setPriceFilter('plus'); nextStep(); }} />
                           </div>
                         </>
                       ) : (
                         <>
-                          <h2 className="text-3xl font-black tracking-tighter italic uppercase text-center">Deseja dar entrada?</h2>
+                          <h2 className="text-3xl font-black tracking-tighter italic uppercase text-center">Qual valor de entrada você tem em mente?</h2>
                           <div className="grid gap-3">
-                            {['Sem entrada', 'Até 10k', 'Mais de 20k'].map(v => <StepOption key={v} label={v} active={quiz.data.down_payment === v} onClick={() => { handleDataChange('down_payment', v); nextStep(); }} />)}
+                            {['Vou tentar sem entrada', 'Até R$ 10 mil', 'Mais de R$ 20 mil'].map(v => <StepOption key={v} label={v} active={quiz.data.down_payment === v} onClick={() => { handleDataChange('down_payment', v); nextStep(); }} />)}
                           </div>
                         </>
                       )}
@@ -488,7 +523,7 @@ export default function App() {
                       <input 
                         type="text" 
                         className="w-full bg-[#1A1A1A] border border-white/5 rounded-2xl p-6 outline-none focus:border-manos-red/40 text-lg"
-                        placeholder="Ex: Blumenau / SC"
+                        placeholder="Ex: Rio do Sul / SC"
                         value={quiz.data.cidade || ''}
                         onChange={(e) => handleDataChange('cidade', e.target.value)}
                         autoFocus
@@ -507,7 +542,7 @@ export default function App() {
               {/* Steps 2-X for Venda */}
               {quiz.type === 'Venda' && quiz.step === 2 && (
                 <div className="space-y-6">
-                  <h2 className="text-3xl font-black tracking-tighter italic uppercase text-center">Marca e Modelo</h2>
+                  <h2 className="text-3xl font-black tracking-tighter italic uppercase text-center">Qual o seu carro?</h2>
                   <div className="space-y-4">
                     <input 
                       type="text" 
@@ -517,6 +552,7 @@ export default function App() {
                       onChange={(e) => handleDataChange('marca_modelo', e.target.value)}
                       autoFocus
                     />
+                    <p className="text-[10px] text-white/30 text-center uppercase tracking-widest font-bold">Marca e Modelo</p>
                     <button 
                       onClick={nextStep} 
                       disabled={!quiz.data.marca_modelo}
@@ -530,7 +566,7 @@ export default function App() {
 
               {quiz.type === 'Venda' && quiz.step === 3 && (
                 <div className="space-y-6">
-                  <h2 className="text-3xl font-black tracking-tighter italic uppercase text-center">Ano e Versão</h2>
+                  <h2 className="text-3xl font-black tracking-tighter italic uppercase text-center">Qual o ano e versão dele?</h2>
                   <div className="space-y-4">
                     <input 
                       type="text" 
@@ -553,17 +589,18 @@ export default function App() {
 
               {quiz.type === 'Venda' && quiz.step === 4 && (
                 <div className="space-y-6">
-                  <h2 className="text-3xl font-black tracking-tighter italic uppercase text-center">KM Atual</h2>
-                  <div className="space-y-4">
+                  <h2 className="text-3xl font-black tracking-tighter italic uppercase text-center">Quanto ele rodou?</h2>
+                  <div className="space-y-4 text-center">
                     <input 
                       type="text" 
                       inputMode="numeric"
-                      className="w-full bg-[#1A1A1A] border border-white/5 rounded-2xl p-6 outline-none focus:border-manos-red/40 text-lg"
+                      className="w-full bg-[#1A1A1A] border border-white/5 rounded-2xl p-6 outline-none focus:border-manos-red/40 text-lg text-center"
                       placeholder="Ex: 45.000"
                       value={quiz.data.km || ''}
                       onChange={(e) => handleDataChange('km', e.target.value.replace(/\D/g, '').replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1.'))}
                       autoFocus
                     />
+                    <p className="text-[10px] text-white/30 uppercase tracking-widest font-bold">Quilometragem Atual</p>
                     <button 
                       onClick={nextStep} 
                       disabled={!quiz.data.km}
@@ -577,7 +614,7 @@ export default function App() {
 
               {quiz.type === 'Venda' && quiz.step === 5 && (
                 <div className="space-y-6">
-                  <h2 className="text-3xl font-black tracking-tighter italic uppercase text-center">Preço que espera</h2>
+                  <h2 className="text-3xl font-black tracking-tighter italic uppercase text-center">Quanto você pretende pedir?</h2>
                   <div className="space-y-4">
                     <input 
                       type="text" 
@@ -588,6 +625,7 @@ export default function App() {
                       onChange={(e) => handleDataChange('preco_esperado', e.target.value.replace(/\D/g, '').replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1.'))}
                       autoFocus
                     />
+                    <p className="text-[10px] text-white/30 text-center uppercase tracking-widest font-bold">Valor desejado</p>
                     <button 
                       onClick={nextStep} 
                       disabled={!quiz.data.preco_esperado}
@@ -606,7 +644,7 @@ export default function App() {
                     <input 
                       type="text" 
                       className="w-full bg-[#1A1A1A] border border-white/5 rounded-2xl p-6 outline-none focus:border-manos-red/40 text-lg"
-                      placeholder="Ex: Blumenau / SC"
+                      placeholder="Ex: Rio do Sul / SC"
                       value={quiz.data.cidade_carro || ''}
                       onChange={(e) => handleDataChange('cidade_carro', e.target.value)}
                       autoFocus
@@ -624,9 +662,9 @@ export default function App() {
 
               {quiz.type === 'Venda' && quiz.step === 7 && (
                 <div className="space-y-6">
-                  <h2 className="text-3xl font-black tracking-tighter italic uppercase text-center text-balance leading-none">Disponibilidade p/ avaliação presencial?</h2>
+                  <h2 className="text-3xl font-black tracking-tighter italic uppercase text-center text-balance leading-none">Quando podemos olhar o seu carro?</h2>
                   <div className="grid gap-3">
-                    {['Imediata', 'Próximos dias', 'Apenas agendado'].map(v => (
+                    {['Ainda hoje', 'Próximos dias', 'Quero agendar'].map(v => (
                       <StepOption 
                         key={v} 
                         label={v} 
@@ -658,9 +696,9 @@ export default function App() {
 
               {quiz.type === 'Venda' && quiz.step === 9 && (
                 <div className="space-y-6">
-                  <h2 className="text-3xl font-black tracking-tighter italic uppercase text-center uppercase">Urgência na venda</h2>
+                  <h2 className="text-3xl font-black tracking-tighter italic uppercase text-center uppercase">Quando pretende fechar negócio?</h2>
                   <div className="grid gap-3">
-                    {['Urgente', 'Sem pressa', 'Apenas avaliando'].map(v => (
+                    {['O quanto antes', 'Sem pressa', 'Apenas avaliando'].map(v => (
                       <StepOption 
                         key={v} 
                         label={v} 
@@ -677,12 +715,12 @@ export default function App() {
                 <div className="space-y-8">
                   <div className="text-center space-y-2">
                     <h2 className="text-3xl font-black tracking-tighter italic uppercase">
-                      {quiz.data.has_car === 'Sim, do estoque' ? "Deseja dar entrada?" : "Qual parcela procura?"}
+                      {quiz.data.has_car === 'Sim, do estoque' ? "Quanto você gostaria de dar de entrada?" : "Quanto você gostaria de pagar por mês?"}
                     </h2>
                   </div>
                   <div className="grid gap-4">
                     {quiz.data.has_car === 'Sim, do estoque' ? (
-                       ['Sem entrada', 'Até 10k', 'Mais de 20k'].map(v => <StepOption key={v} label={v} active={quiz.data.down_payment === v} onClick={() => { handleDataChange('down_payment', v); nextStep(); }} />)
+                       ['Vou tentar sem entrada', 'Até R$ 10 mil', 'Mais de R$ 20 mil'].map(v => <StepOption key={v} label={v} active={quiz.data.down_payment === v} onClick={() => { handleDataChange('down_payment', v); nextStep(); }} />)
                     ) : (
                        ['R$ 800 - R$ 1.200', 'R$ 1.200 - R$ 1.800', 'Acima de R$ 2.000'].map(v => <StepOption key={v} label={v} active={quiz.data.desired_payment === v} onClick={() => { handleDataChange('desired_payment', v); setQuiz(prev => ({ ...prev, step: 6 })); }} />)
                     )}
@@ -695,7 +733,7 @@ export default function App() {
                 <div className="space-y-8">
                   <div className="text-center space-y-2">
                     <h2 className="text-3xl font-black tracking-tighter italic uppercase">
-                      Qual parcela procura?
+                      Quanto você gostaria de pagar por mês?
                     </h2>
                   </div>
                   <div className="grid gap-4">
@@ -710,7 +748,6 @@ export default function App() {
                 <div className="space-y-8 pb-12">
                   <div className="text-center space-y-2">
                     <h2 className="text-3xl font-black tracking-tighter italic uppercase leading-none">Último Passo</h2>
-                    <p className="text-white/30 text-[10px] font-black uppercase tracking-[0.3em]">Consultoria Prioritária</p>
                   </div>
                   <form onSubmit={handleSubmit} className="space-y-6">
                     <div className="space-y-2">
