@@ -89,9 +89,55 @@ export default function App() {
       const data = await fetchStock();
       setStock(data);
       setIsLoadingStock(false);
+
+      // Handle Catalog Match / Direct Entry
+      const params = new URLSearchParams(window.location.search);
+      const contentId = params.get('content_id') || params.get('id');
+      
+      if (contentId && data.length > 0) {
+        const vehicle = data.find(v => v.id === contentId);
+        if (vehicle) {
+          // Fire ViewContent for Facebook Catalog Match
+          if ((window as any).fbq) {
+            (window as any).fbq('track', 'ViewContent', {
+              content_ids: [vehicle.id],
+              content_type: 'product',
+              content_name: vehicle.description,
+              value: vehicle.price,
+              currency: 'BRL'
+            });
+          }
+          // Set as selected and jump to relevant step
+          setQuiz({
+            step: 9, // Jump to contact step for 'Compra'
+            type: 'Compra',
+            data: { has_interest: 'Sim', vehicle_id: vehicle.id },
+            selectedVehicle: vehicle
+          });
+        }
+      }
     };
     loadStock();
   }, []);
+
+  const handleSelectVehicle = (vehicle: Vehicle) => {
+    // Track AddToCart (Selection) for Facebook
+    if ((window as any).fbq) {
+      (window as any).fbq('track', 'AddToCart', {
+        content_ids: [vehicle.id],
+        content_type: 'product',
+        content_name: vehicle.description,
+        value: vehicle.price,
+        currency: 'BRL'
+      });
+    }
+
+    setQuiz(prev => ({ 
+      ...prev, 
+      selectedVehicle: vehicle, 
+      step: prev.type === 'Compra' ? 5 : 4 
+    }));
+  };
 
   const handleInitialChoice = (type: LeadType) => {
     // Lead Type 'Compra' now goes straight to identifying the vehicle or budget
@@ -136,6 +182,18 @@ export default function App() {
     try {
       const { name, phone: rawPhone, ...otherData } = quiz.data;
       
+      // Track Lead event for Facebook with all required metadata for Catalog Match Rate
+      if ((window as any).fbq) {
+        (window as any).fbq('track', 'Lead', {
+          content_name: quiz.type,
+          content_category: quiz.type,
+          value: quiz.selectedVehicle?.price || 0,
+          currency: 'BRL',
+          content_ids: quiz.selectedVehicle ? [quiz.selectedVehicle.id] : [],
+          content_type: 'product'
+        });
+      }
+
       const leadId = await createLead({
         name,
         phone,
@@ -150,14 +208,6 @@ export default function App() {
         },
       });
 
-      // Track Lead event in Meta Pixel
-      if (typeof window !== 'undefined' && (window as any).fbq) {
-        (window as any).fbq('track', 'Lead', {
-          content_name: quiz.type,
-          status: 'submitted'
-        });
-      }
-
       setIsSuccess(true);
     } catch (err) {
       console.error("Submission error:", err);
@@ -169,8 +219,8 @@ export default function App() {
   };
 
   const getMaxSteps = () => {
-    if (quiz.type === 'Compra') return 8;
-    if (quiz.type === 'Venda') return 6;
+    if (quiz.type === 'Compra') return 9;
+    if (quiz.type === 'Venda') return 10;
     if (quiz.type === 'Financiamento') return 6;
     return 1;
   };
@@ -392,8 +442,8 @@ export default function App() {
                        <div className="text-center p-2">
                           <p className="text-[11px] font-bold text-white/60">Itapema SC</p>
                           <div className="flex items-center justify-center gap-1">
-                             <History className="w-2 h-2 text-white/20" />
-                             <p className="text-[9px] text-white/30 uppercase tracking-widest font-black">Em Breve</p>
+                             <LayoutGrid className="w-2 h-2 text-white/20" />
+                             <p className="text-[9px] text-white/30 uppercase tracking-widest font-black italic">Expansão</p>
                           </div>
                        </div>
                     </div>
@@ -464,13 +514,7 @@ export default function App() {
                               <VehicleCard 
                                 key={v.id} 
                                 vehicle={v} 
-                                onClick={() => { 
-                                  setQuiz(prev => ({ 
-                                    ...prev, 
-                                    selectedVehicle: v, 
-                                    step: prev.type === 'Compra' ? 5 : 4 
-                                  })); 
-                                }} 
+                                onClick={() => handleSelectVehicle(v)} 
                               />
                             ))
                         )}
@@ -517,7 +561,7 @@ export default function App() {
                         })
                         .slice(0, 10)
                         .map(v => (
-                          <VehicleCard key={v.id} vehicle={v} onClick={() => { setQuiz(prev => ({ ...prev, selectedVehicle: v, step: 5 })); }} />
+                          <VehicleCard key={v.id} vehicle={v} onClick={() => handleSelectVehicle(v)} />
                         ))
                     )}
                   </div>
