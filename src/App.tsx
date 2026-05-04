@@ -66,10 +66,23 @@ export default function App() {
     return r;
   };
 
-  const handleWhatsAppClick = (context: string) => {
-    // Lead event on WhatsApp click
+  useEffect(() => {
+    // Track Step changes as PageViews to keep activity high
     if (typeof window !== 'undefined' && (window as any).fbq) {
-      (window as any).fbq('trackCustom', 'WhatsAppClick', { context });
+      (window as any).fbq('track', 'PageView', {
+        step: quiz.step,
+        type: quiz.type || 'None'
+      });
+    }
+  }, [quiz.step, quiz.type]);
+
+  const handleWhatsAppClick = (context: string) => {
+    // Lead event on WhatsApp click - Using standard 'Contact' event for Meta
+    if (typeof window !== 'undefined' && (window as any).fbq) {
+      (window as any).fbq('track', 'Contact', { 
+        content_name: context,
+        source: 'WhatsApp Button'
+      });
     }
     const message = encodeURIComponent(`Olá, estou no site e gostaria de falar com um consultor sobre ${context}.`);
     window.open(`https://wa.me/554733001352?text=${message}`, '_blank');
@@ -236,7 +249,7 @@ export default function App() {
 
       {/* WhatsApp Floating Button */}
       <button 
-        onClick={() => handleWhatsAppClick('Botão Flutuante')}
+        onClick={() => handleWhatsAppClick('Estoque e Condições')}
         className="fixed bottom-6 right-6 z-50 group sm:bottom-10 sm:right-10"
       >
         <div className="absolute inset-0 bg-green-500 blur-2xl opacity-20 group-hover:opacity-40 transition-opacity" />
@@ -413,7 +426,7 @@ export default function App() {
 
                   <div className="text-center px-4">
                     <button 
-                      onClick={() => handleWhatsAppClick('Especialista via Botão Hero')}
+                      onClick={() => handleWhatsAppClick('Atendimento Prioritário')}
                       className="text-[10px] font-black text-white/30 uppercase tracking-[0.2em] hover:text-white/60 transition-colors"
                     >
                       Prefiro falar com um especialista agora &rarr;
@@ -477,7 +490,7 @@ export default function App() {
                   <div className="pt-4 text-center">
                     <p className="text-[10px] text-white/20 uppercase tracking-widest font-black">Ou</p>
                     <button 
-                      onClick={() => handleWhatsAppClick('Dúvida rápida Passo 2')}
+                      onClick={() => handleWhatsAppClick('Dúvidas sobre o Estoque')}
                       className="mt-2 text-xs font-bold text-manos-red uppercase tracking-wider underline underline-offset-4"
                     >
                       Dúvida rápida? Chamar no Whats
