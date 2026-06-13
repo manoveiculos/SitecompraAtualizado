@@ -16,6 +16,20 @@ function formatPhoneMask(phone: string): string {
   return `(${ddd}) *****-${lastFour}`;
 }
 
+// Mask the surname for LGPD compliance: keep the first name, abbreviate the rest
+// e.g. "Renato Gorges" -> "Renato G." | "Maria da Silva" -> "Maria D. S."
+function maskName(fullName: string): string {
+  if (!fullName) return fullName;
+  const parts = fullName.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0];
+  const initials = parts
+    .slice(1)
+    .filter(Boolean)
+    .map((p) => p.charAt(0).toUpperCase() + '.')
+    .join(' ');
+  return `${parts[0]} ${initials}`;
+}
+
 function formatHorarioBrasilia(dateStr: string): string {
   try {
     const date = new Date(dateStr);
@@ -233,7 +247,7 @@ export default function TransparenciaDashboard() {
                   {winners.map((winner, idx) => (
                     <div key={winner.id || idx} className="bg-white/5 border border-white/5 p-2 rounded-xl flex items-center justify-between">
                       <div className="truncate pr-2">
-                        <p className="text-xs font-bold text-white truncate">{winner.nome}</p>
+                        <p className="text-xs font-bold text-white truncate">{maskName(winner.nome)}</p>
                         <p className="text-[9px] text-white/30 font-mono">{formatPhoneMask(winner.telefone)}</p>
                       </div>
                       <span className="text-[9px] bg-yellow-500/20 text-yellow-300 font-black px-2 py-0.5 rounded-full uppercase tracking-widest border border-yellow-500/10">
@@ -400,7 +414,7 @@ export default function TransparenciaDashboard() {
                   <div className="truncate pr-2">
                     <div className="flex items-center gap-1.5">
                       <p className="text-xs font-bold text-white truncate max-w-[130px] sm:max-w-[180px]">
-                        {p.nome}
+                        {maskName(p.nome)}
                       </p>
                       {officialResult && p.placar_brasil === officialResult.placar_brasil && p.placar_adversario === officialResult.placar_adversario && (
                         <CheckCircle2 className="w-3.5 h-3.5 text-yellow-500" />

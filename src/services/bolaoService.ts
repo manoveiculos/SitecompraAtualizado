@@ -6,6 +6,21 @@ const WEBHOOK_LEAD = '/api/bolao/lead';
 const WEBHOOK_FINALIZAR = '/api/bolao/finalizar';
 const COLLECTION_NAME = 'bolao_palpites_manos';
 
+/**
+ * Normalize a Brazilian phone into a canonical digits-only key so the same
+ * person is matched regardless of how the number was typed (with/without the
+ * 55 country code, formatting, etc.). This is what prevents duplicate palpites.
+ * The leading "55" is only stripped when it is clearly a country-code prefix
+ * (12-13 digit number), so legitimate DDD 55 (RS) numbers are preserved.
+ */
+function normalizePhone(phone: string): string {
+  let digits = (phone || '').replace(/\D/g, '');
+  if (digits.length > 11 && digits.startsWith('55')) {
+    digits = digits.slice(2);
+  }
+  return digits;
+}
+
 export interface Palpite {
   id?: number;
   protocolo?: string;
@@ -63,31 +78,58 @@ export async function savePalpite(
   });
 
   const palpiteFormatado = `Brasil ${placar_brasil} x ${placar_marrocos} Marrocos`;
-  
+  const telefone = normalizePhone(whatsapp);
+
   // Generate a premium ticket protocol
   const protocolo = 'MANOS-' + Math.floor(100000 + Math.random() * 900000);
 
-  // 1. Save to Supabase (Primary Database)
+  // 1. Save to Supabase (Primary Database).
+  // Idempotent by phone: if this number already has a palpite, update it instead
+  // of inserting a new row. This prevents duplicate entries on the mural.
   try {
-    const { error } = await supabase
+    const { data: existing } = await supabase
       .from('bolaomanos2026')
-      .insert({
-        protocolo,
-        nome,
-        telefone: whatsapp,
-        palpite: palpiteFormatado,
-        placar_brasil,
-        placar_adversario: placar_marrocos,
-        horario_brasil: now.toISOString(),
-        source: 'Bolão Manos Veículos - Copa 2026',
-        created_at: now.toISOString()
-      });
+      .select('id')
+      .eq('telefone', telefone)
+      .not('protocolo', 'eq', 'RESULTADO')
+      .limit(1);
 
-    if (error) {
-      console.warn('Supabase insert returned error (check RLS policies):', error);
+    if (existing && existing.length > 0) {
+      const { error } = await supabase
+        .from('bolaomanos2026')
+        .update({
+          nome,
+          palpite: palpiteFormatado,
+          placar_brasil,
+          placar_adversario: placar_marrocos,
+          horario_brasil: now.toISOString(),
+        })
+        .eq('id', existing[0].id);
+
+      if (error) {
+        console.warn('Supabase update returned error (check RLS policies):', error);
+      }
+    } else {
+      const { error } = await supabase
+        .from('bolaomanos2026')
+        .insert({
+          protocolo,
+          nome,
+          telefone,
+          palpite: palpiteFormatado,
+          placar_brasil,
+          placar_adversario: placar_marrocos,
+          horario_brasil: now.toISOString(),
+          source: 'Bolão Manos Veículos - Copa 2026',
+          created_at: now.toISOString()
+        });
+
+      if (error) {
+        console.warn('Supabase insert returned error (check RLS policies):', error);
+      }
     }
   } catch (err) {
-    console.error('Supabase insert failed:', err);
+    console.error('Supabase save failed:', err);
   }
 
   // 2. Send to webhook via proxy (secondary — n8n triggers WhatsApp confirmation, etc.)
@@ -144,7 +186,7 @@ export async function getPalpiteByPhone(phone: string): Promise<Palpite | null> 
     const { data, error } = await supabase
       .from('bolaomanos2026')
       .select('*')
-      .eq('telefone', phone)
+      .eq('telefone', normalizePhone(phone))
       .not('protocolo', 'eq', 'RESULTADO')
       .limit(1);
 
@@ -189,7 +231,7 @@ export async function updatePalpite(
         placar_adversario: placar_marrocos,
         horario_brasil: now.toISOString(),
       })
-      .eq('telefone', whatsapp)
+      .eq('telefone', normalizePhone(whatsapp))
       .not('protocolo', 'eq', 'RESULTADO');
 
     if (error) throw error;
