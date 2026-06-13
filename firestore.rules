@@ -43,6 +43,12 @@ service cloud.firestore {
       );
     }
 
+    // Bolão palpites - public create, admin read
+    match /bolao_palpites_manos/{palpiteId} {
+      allow create: if true;
+      allow read: if isSignedIn();
+    }
+
     match /test/connection {
       allow read: if true;
     }
