@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { ArrowRight, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import brazilFlag from './brazil-flag.png';
+import moroccoFlag from './morocco-flag.png';
 
 interface StepIdentificacaoProps {
   onNext: (nome: string, whatsapp: string) => void;
@@ -59,6 +61,22 @@ export default function StepIdentificacao({ onNext, isLoading }: StepIdentificac
           <br />
           <span className="text-manos-red">Brasil x Marrocos</span>
         </h1>
+
+        <div className="flex items-center justify-center gap-4 py-1">
+          <img
+            src={brazilFlag}
+            alt="Brasil"
+            className="w-14 h-14 sm:w-16 sm:h-16 object-contain drop-shadow-[0_4px_12px_rgba(34,197,94,0.35)]"
+          />
+          <span className="text-sm font-black italic text-white/40 uppercase tracking-widest">
+            VS
+          </span>
+          <img
+            src={moroccoFlag}
+            alt="Marrocos"
+            className="w-14 h-14 sm:w-16 sm:h-16 object-contain drop-shadow-[0_4px_12px_rgba(237,28,36,0.35)]"
+          />
+        </div>
 
         <div className="card-glass p-4 space-y-2 mx-auto max-w-sm">
           <p className="text-sm text-white/70 leading-relaxed">
