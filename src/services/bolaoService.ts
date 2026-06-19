@@ -6,12 +6,16 @@ const WEBHOOK_LEAD = '/api/bolao/lead';
 const WEBHOOK_FINALIZAR = '/api/bolao/finalizar';
 const COLLECTION_NAME = 'bolao_palpites_manos';
 
+// Current game opponent. Used to build the palpite label AND to scope the
+// dedup/lookup to the active game, so customers who played a previous round
+// (e.g. Marrocos) are NOT blocked from betting on the new one. Change this
+// single constant when the next game starts.
+const CURRENT_OPPONENT = 'Haiti';
+
 /**
- * Normalize a Brazilian phone into a canonical digits-only key so the same
- * person is matched regardless of how the number was typed (with/without the
- * 55 country code, formatting, etc.). This is what prevents duplicate palpites.
- * The leading "55" is only stripped when it is clearly a country-code prefix
- * (12-13 digit number), so legitimate DDD 55 (RS) numbers are preserved.
+ * Normalize a Brazilian phone into a canonical digits-only value used for
+ * storage/display. Strips non-digits and a leading 55 country code when it is
+ * clearly a prefix (12-13 digit number), preserving legitimate DDD 55 numbers.
  */
 function normalizePhone(phone: string): string {
   let digits = (phone || '').replace(/\D/g, '');
@@ -19,6 +23,17 @@ function normalizePhone(phone: string): string {
     digits = digits.slice(2);
   }
   return digits;
+}
+
+/**
+ * Subscriber suffix used to deduplicate palpites. We match on the last 8 digits
+ * (the line number, after country code, DDD and the leading mobile "9") so the
+ * SAME person is recognised even when the number is typed with a different DDD,
+ * with/without the 55 country code, or with/without the 9th digit. Used with a
+ * trailing LIKE so it also catches rows saved before normalization.
+ */
+function phoneSuffix(phone: string): string {
+  return (phone || '').replace(/\D/g, '').slice(-8);
 }
 
 export interface Palpite {
@@ -54,6 +69,27 @@ export async function registerLead(nome: string, whatsapp: string): Promise<void
   }
 }
 
+const WEBHOOK_VERIFY = '/api/bolao/verify';
+
+/**
+ * Step 2: Verify the WhatsApp code against the server-side OTP.
+ * Returns true only when the code matches the one delivered via WhatsApp.
+ */
+export async function verifyCode(whatsapp: string, codigo: string): Promise<boolean> {
+  try {
+    const response = await fetch(WEBHOOK_VERIFY, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ whatsapp, codigo }),
+    });
+    const data = await response.json().catch(() => ({ valid: false }));
+    return response.ok && data?.valid === true;
+  } catch (err) {
+    console.error('Verify code error:', err);
+    return false;
+  }
+}
+
 const WEBHOOK_PALPITE = '/api/bolao/palpite';
 
 /**
@@ -63,7 +99,7 @@ export async function savePalpite(
   nome: string,
   whatsapp: string,
   placar_brasil: number,
-  placar_marrocos: number
+  placar_haiti: number
 ): Promise<string> {
   // Format current time in BRT (UTC-3)
   const now = new Date();
@@ -77,7 +113,7 @@ export async function savePalpite(
     second: '2-digit',
   });
 
-  const palpiteFormatado = `Brasil ${placar_brasil} x ${placar_marrocos} Marrocos`;
+  const palpiteFormatado = `Brasil ${placar_brasil} x ${placar_haiti} ${CURRENT_OPPONENT}`;
   const telefone = normalizePhone(whatsapp);
 
   // Generate a premium ticket protocol
@@ -90,8 +126,10 @@ export async function savePalpite(
     const { data: existing } = await supabase
       .from('bolaomanos2026')
       .select('id')
-      .eq('telefone', telefone)
-      .not('protocolo', 'eq', 'RESULTADO')
+      .like('telefone', `%${phoneSuffix(whatsapp)}`)
+      .like('palpite', `%${CURRENT_OPPONENT}%`)
+      .not('protocolo', 'like', 'RESULTADO%')
+      .not('protocolo', 'eq', 'EXCLUIDO')
       .limit(1);
 
     if (existing && existing.length > 0) {
@@ -101,7 +139,7 @@ export async function savePalpite(
           nome,
           palpite: palpiteFormatado,
           placar_brasil,
-          placar_adversario: placar_marrocos,
+          placar_adversario: placar_haiti,
           horario_brasil: now.toISOString(),
         })
         .eq('id', existing[0].id);
@@ -118,7 +156,7 @@ export async function savePalpite(
           telefone,
           palpite: palpiteFormatado,
           placar_brasil,
-          placar_adversario: placar_marrocos,
+          placar_adversario: placar_haiti,
           horario_brasil: now.toISOString(),
           source: 'Bolão Manos Veículos - Copa 2026',
           created_at: now.toISOString()
@@ -142,7 +180,7 @@ export async function savePalpite(
         telefone: whatsapp,
         palpite: palpiteFormatado,
         placar_brasil,
-        placar_marrocos,
+        placar_haiti,
         horario_brasil: horarioBrasil,
         protocolo,
         source: 'Bolão Manos Veículos - Copa 2026',
@@ -163,7 +201,7 @@ export async function savePalpite(
       nome,
       whatsapp,
       placar_brasil,
-      placar_marrocos,
+      placar_haiti,
       palpite: palpiteFormatado,
       horario_brasil: horarioBrasil,
       protocolo,
@@ -186,8 +224,10 @@ export async function getPalpiteByPhone(phone: string): Promise<Palpite | null> 
     const { data, error } = await supabase
       .from('bolaomanos2026')
       .select('*')
-      .eq('telefone', normalizePhone(phone))
-      .not('protocolo', 'eq', 'RESULTADO')
+      .like('telefone', `%${phoneSuffix(phone)}`)
+      .like('palpite', `%${CURRENT_OPPONENT}%`)
+      .not('protocolo', 'like', 'RESULTADO%')
+      .not('protocolo', 'eq', 'EXCLUIDO')
       .limit(1);
 
     if (error) throw error;
@@ -205,7 +245,7 @@ export async function updatePalpite(
   nome: string,
   whatsapp: string,
   placar_brasil: number,
-  placar_marrocos: number
+  placar_haiti: number
 ): Promise<string> {
   const now = new Date();
   const horarioBrasil = now.toLocaleString('pt-BR', {
@@ -218,7 +258,7 @@ export async function updatePalpite(
     second: '2-digit',
   });
 
-  const palpiteFormatado = `Brasil ${placar_brasil} x ${placar_marrocos} Marrocos`;
+  const palpiteFormatado = `Brasil ${placar_brasil} x ${placar_haiti} ${CURRENT_OPPONENT}`;
 
   // 1. Update in Supabase (Primary)
   try {
@@ -228,11 +268,12 @@ export async function updatePalpite(
         nome,
         palpite: palpiteFormatado,
         placar_brasil,
-        placar_adversario: placar_marrocos,
+        placar_adversario: placar_haiti,
         horario_brasil: now.toISOString(),
       })
-      .eq('telefone', normalizePhone(whatsapp))
-      .not('protocolo', 'eq', 'RESULTADO');
+      .like('telefone', `%${phoneSuffix(whatsapp)}`)
+      .not('protocolo', 'like', 'RESULTADO%')
+      .not('protocolo', 'eq', 'EXCLUIDO');
 
     if (error) throw error;
   } catch (err) {
@@ -251,7 +292,7 @@ export async function updatePalpite(
         telefone: whatsapp,
         palpite: palpiteFormatado,
         placar_brasil,
-        placar_marrocos,
+        placar_haiti,
         horario_brasil: horarioBrasil,
         source: 'Bolão Manos Veículos - Copa 2026',
       }),
@@ -275,6 +316,7 @@ export async function fetchPalpites(): Promise<Palpite[]> {
     const { data, error } = await supabase
       .from('bolaomanos2026')
       .select('*')
+      .not('protocolo', 'eq', 'EXCLUIDO')
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -290,7 +332,7 @@ export async function fetchPalpites(): Promise<Palpite[]> {
  */
 export async function finalizarJogo(
   placar_brasil: number,
-  placar_marrocos: number
+  placar_haiti: number
 ): Promise<void> {
   // 1. Send webhook notification
   try {
@@ -299,7 +341,7 @@ export async function finalizarJogo(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         placar_brasil,
-        placar_marrocos,
+        placar_haiti,
         status: 'finalizado',
         timestamp: new Date().toISOString(),
       }),
@@ -314,26 +356,86 @@ export async function finalizarJogo(
 
   // 2. Insert or update the result in Supabase so the Transparency mural knows it
   try {
-    // Delete any old RESULTADO row if exists to prevent duplicates
-    await supabase.from('bolaomanos2026').delete().eq('protocolo', 'RESULTADO');
-    
-    // Insert new RESULTADO row
-    const { error } = await supabase
-      .from('bolaomanos2026')
-      .insert({
-        protocolo: 'RESULTADO',
-        nome: 'Resultado Oficial',
-        telefone: '00000000000',
-        palpite: `Brasil ${placar_brasil} x ${placar_marrocos} Marrocos`,
-        placar_brasil,
-        placar_adversario: placar_marrocos,
-        horario_brasil: new Date().toISOString(),
-        source: 'RESULTADO',
-      });
+    const palpiteFormatado = `Brasil ${placar_brasil} x ${placar_haiti} ${CURRENT_OPPONENT}`;
+    // Protocolo único por jogo, para que cada jogo tenha sua própria linha de
+    // resultado sem colidir na constraint UNIQUE(protocolo) (ex.: RESULTADO-HAITI).
+    const resultadoProtocolo = `RESULTADO-${CURRENT_OPPONENT.toUpperCase()}`;
 
-    if (error) throw error;
+    // Tenta primeiro ATUALIZAR para não esbarrar no RLS de exclusão (soft update)
+    const { data: updData, error: updError } = await supabase
+      .from('bolaomanos2026')
+      .update({
+        placar_brasil,
+        placar_adversario: placar_haiti,
+        palpite: palpiteFormatado,
+        horario_brasil: new Date().toISOString()
+      })
+      .eq('protocolo', resultadoProtocolo)
+      .select();
+
+    // Se não atualizou nada (não existia), fazemos o INSERT
+    if (!updData || updData.length === 0) {
+      const { error: insError } = await supabase
+        .from('bolaomanos2026')
+        .insert({
+          protocolo: resultadoProtocolo,
+          nome: 'Resultado Oficial',
+          telefone: '00000000000',
+          palpite: palpiteFormatado,
+          placar_brasil,
+          placar_adversario: placar_haiti,
+          horario_brasil: new Date().toISOString(),
+          source: 'Bolão Manos Veículos - Copa 2026', // Mantém a source igual p/ não falhar no RLS
+          created_at: new Date().toISOString() // Adicionado created_at
+        });
+
+      if (insError) throw insError;
+    }
   } catch (err) {
     console.error('Failed to save official result to Supabase:', err);
     throw new Error('Falha ao salvar resultado no Supabase.');
+  }
+}
+
+/**
+ * Admin: Excluir um palpite
+ */
+export async function deletePalpite(id: any, telefone: string, palpiteStr: string): Promise<void> {
+  try {
+    const suffix = phoneSuffix(telefone);
+    
+    // 1. Tenta deletar fisicamente pelo ID
+    const { data: delData, error: delError } = await supabase
+      .from('bolaomanos2026')
+      .delete()
+      .eq('id', id)
+      .select();
+
+    if (!delError && delData && delData.length > 0) return;
+
+    // 2. Se falhou fisicamente (ex: bloqueio de RLS no DELETE), tenta Soft Delete via UPDATE
+    const { data: updData, error: updError } = await supabase
+      .from('bolaomanos2026')
+      .update({ protocolo: 'EXCLUIDO' })
+      .eq('id', id)
+      .like('telefone', `%${suffix}%`)
+      .select();
+
+    if (updError) throw updError;
+
+    // 3. Fallback agressivo: se o ID não bater (ex: divergência de tipo no JS), atualiza via telefone e palpite string
+    if (!updData || updData.length === 0) {
+      const { error: fbError } = await supabase
+        .from('bolaomanos2026')
+        .update({ protocolo: 'EXCLUIDO' })
+        .like('telefone', `%${suffix}%`)
+        .eq('palpite', palpiteStr)
+        .not('protocolo', 'like', 'RESULTADO%');
+        
+      if (fbError) throw fbError;
+    }
+  } catch (err) {
+    console.error('Failed to delete palpite from Supabase:', err);
+    throw new Error('Falha ao excluir o palpite.');
   }
 }

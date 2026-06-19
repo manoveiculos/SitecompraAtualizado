@@ -25,6 +25,7 @@
 @layer components {
   .app-viewport {
     @apply relative flex flex-col overflow-hidden bg-manos-dark;
+    height: 100vh; /* fallback for browsers without svh */
     height: 100svh;
     width: 100%;
     max-width: 500px; /* Mobile width constraint on desktop */
@@ -33,12 +34,16 @@
   }
 
   .scroll-container {
-    @apply flex-grow overflow-y-auto overflow-x-hidden pt-4 pb-32 px-6;
+    @apply flex-grow overflow-y-auto overflow-x-hidden pt-4 px-5 sm:px-6;
+    /* extra clearance for the sticky footer + iOS home indicator */
+    padding-bottom: calc(8rem + env(safe-area-inset-bottom));
     -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
   }
 
   .sticky-footer {
-    @apply absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-manos-dark via-manos-dark/95 to-transparent z-20;
+    @apply absolute bottom-0 left-0 right-0 px-6 pt-6 bg-gradient-to-t from-manos-dark via-manos-dark/95 to-transparent z-20;
+    padding-bottom: calc(1.5rem + env(safe-area-inset-bottom));
   }
 
   /* Large touch targets */

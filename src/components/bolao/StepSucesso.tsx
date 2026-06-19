@@ -5,10 +5,10 @@ import { CheckCircle2, Car, ExternalLink } from 'lucide-react';
 interface StepSucessoProps {
   nome: string;
   placarBrasil: number;
-  placarMarrocos: number;
+  placarHaiti: number;
 }
 
-export default function StepSucesso({ nome, placarBrasil, placarMarrocos }: StepSucessoProps) {
+export default function StepSucesso({ nome, placarBrasil, placarHaiti }: StepSucessoProps) {
   const [countdown, setCountdown] = useState(5);
   const [progress, setProgress] = useState(0);
 
@@ -121,8 +121,8 @@ export default function StepSucesso({ nome, placarBrasil, placarMarrocos }: Step
               </div>
               <span className="text-lg font-black text-white/20">×</span>
               <div className="text-center">
-                <span className="text-2xl">🇲🇦</span>
-                <p className="text-2xl font-black text-white">{placarMarrocos}</p>
+                <span className="text-2xl">🇭🇹</span>
+                <p className="text-2xl font-black text-white">{placarHaiti}</p>
               </div>
             </div>
           </div>

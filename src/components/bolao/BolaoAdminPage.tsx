@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Lock, Trophy, Loader2, CheckCircle2, Users, Send } from 'lucide-react';
+import { Lock, Trophy, Loader2, CheckCircle2, Users, Send, Trash2 } from 'lucide-react';
 import Toast, { useToast } from './Toast';
-import { fetchPalpites, finalizarJogo, type Palpite } from '../../services/bolaoService';
+import { fetchPalpites, finalizarJogo, deletePalpite, type Palpite } from '../../services/bolaoService';
 
 const ADMIN_PASSWORD = 'manos2026admin';
 
@@ -13,9 +13,10 @@ export default function BolaoAdminPage() {
   const [palpites, setPalpites] = useState<Palpite[]>([]);
   const [isLoadingPalpites, setIsLoadingPalpites] = useState(false);
   const [placarBrasil, setPlacarBrasil] = useState('');
-  const [placarMarrocos, setPlacarMarrocos] = useState('');
+  const [placarAdversario, setPlacarAdversario] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFinalized, setIsFinalized] = useState(false);
+  const [activeGameTab, setActiveGameTab] = useState<'haiti' | 'marrocos'>('haiti');
   const { toast, showToast, hideToast } = useToast();
 
   const handleLogin = (e: React.FormEvent) => {
@@ -28,7 +29,6 @@ export default function BolaoAdminPage() {
     }
   };
 
-  // Load palpites when authenticated
   useEffect(() => {
     if (isAuthenticated) {
       loadPalpites();
@@ -49,22 +49,60 @@ export default function BolaoAdminPage() {
 
   const handleFinalizar = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!placarBrasil || !placarMarrocos) {
+    if (!placarBrasil || !placarAdversario) {
       showToast('Preencha ambos os placares.', 'error');
+      return;
+    }
+
+    if (activeGameTab !== 'haiti') {
+      showToast('Apenas o jogo atual (Haiti) pode ser finalizado agora.', 'error');
       return;
     }
 
     setIsSubmitting(true);
     try {
-      await finalizarJogo(parseInt(placarBrasil, 10), parseInt(placarMarrocos, 10));
+      await finalizarJogo(parseInt(placarBrasil, 10), parseInt(placarAdversario, 10));
       setIsFinalized(true);
       showToast('Jogo finalizado com sucesso! Webhook disparado.', 'success');
+      loadPalpites();
     } catch (error) {
       showToast('Erro ao finalizar jogo. Tente novamente.', 'error');
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  const handleDeletePalpite = async (id: any, telefone: string, palpite: string) => {
+    if (!id && !telefone) return;
+    if (!window.confirm('Tem certeza que deseja excluir este palpite?')) return;
+    try {
+      await deletePalpite(id, telefone, palpite);
+      showToast('Palpite excluído com sucesso.', 'success');
+      loadPalpites();
+    } catch (error) {
+      showToast('Erro ao excluir palpite.', 'error');
+    }
+  };
+
+  // Separando os palpites por jogo
+  const activePalpites = useMemo(() => {
+    return palpites.filter(p => {
+      if (p.protocolo?.startsWith('RESULTADO')) return false; // Hide official result from list
+      return activeGameTab === 'haiti' ? p.palpite.includes('Haiti') : p.palpite.includes('Marrocos');
+    });
+  }, [palpites, activeGameTab]);
+
+  const activeOpponentName = activeGameTab === 'haiti' ? 'Haiti' : 'Marrocos';
+  const activeOpponentCode = activeGameTab === 'haiti' ? 'HT' : 'MA';
+  const activeOpponentFlag = activeGameTab === 'haiti' ? '🇭🇹' : '🇲🇦';
+
+  // Check if current tab is finalized
+  const isCurrentGameFinalized = useMemo(() => {
+    return palpites.some(p =>
+      p.protocolo?.startsWith('RESULTADO') &&
+      (activeGameTab === 'haiti' ? p.palpite.includes('Haiti') : p.palpite.includes('Marrocos'))
+    );
+  }, [palpites, activeGameTab]);
 
   // Password Gate
   if (!isAuthenticated) {
@@ -139,10 +177,34 @@ export default function BolaoAdminPage() {
         </button>
       </header>
 
-      <main className="scroll-container custom-scrollbar space-y-8">
+      <main className="scroll-container custom-scrollbar space-y-8 p-4">
+        {/* Game Tabs */}
+        <div className="flex bg-[#161616] border border-white/5 p-1 rounded-2xl">
+          <button
+            onClick={() => { setActiveGameTab('haiti'); setPlacarBrasil(''); setPlacarAdversario(''); setIsFinalized(false); }}
+            className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all ${
+              activeGameTab === 'haiti'
+                ? 'bg-manos-red text-white shadow-lg shadow-manos-red/20'
+                : 'text-white/40 hover:text-white/70'
+            }`}
+          >
+            🇧🇷 BRASIL X HAITI 🇭🇹
+          </button>
+          <button
+            onClick={() => { setActiveGameTab('marrocos'); setPlacarBrasil(''); setPlacarAdversario(''); setIsFinalized(false); }}
+            className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all ${
+              activeGameTab === 'marrocos'
+                ? 'bg-white/10 text-white'
+                : 'text-white/40 hover:text-white/70'
+            }`}
+          >
+            Anterior (Marrocos)
+          </button>
+        </div>
+
         {/* Finalizar Jogo */}
         <AnimatePresence mode="wait">
-          {!isFinalized ? (
+          {!isCurrentGameFinalized && !isFinalized && activeGameTab === 'haiti' ? (
             <motion.div
               key="finalizar"
               initial={{ opacity: 0, y: 10 }}
@@ -162,7 +224,7 @@ export default function BolaoAdminPage() {
               <form onSubmit={handleFinalizar} className="space-y-6">
                 <div className="flex items-center justify-center gap-6">
                   <div className="flex flex-col items-center gap-2">
-                    <span className="text-3xl">🇧🇷</span>
+                    <span className="text-3xl">🇧🇷 BR</span>
                     <input
                       type="text"
                       inputMode="numeric"
@@ -175,13 +237,13 @@ export default function BolaoAdminPage() {
                   </div>
                   <span className="text-2xl font-black text-white/20 pt-6">×</span>
                   <div className="flex flex-col items-center gap-2">
-                    <span className="text-3xl">🇲🇦</span>
+                    <span className="text-3xl">{activeOpponentFlag} {activeOpponentCode}</span>
                     <input
                       type="text"
                       inputMode="numeric"
                       maxLength={2}
-                      value={placarMarrocos}
-                      onChange={(e) => setPlacarMarrocos(e.target.value.replace(/\D/g, ''))}
+                      value={placarAdversario}
+                      onChange={(e) => setPlacarAdversario(e.target.value.replace(/\D/g, ''))}
                       className="w-16 h-16 text-center text-3xl font-black bg-[#1A1A1A] border border-white/10 rounded-xl outline-none focus:border-red-500/50 transition-all"
                       placeholder="0"
                     />
@@ -190,7 +252,7 @@ export default function BolaoAdminPage() {
 
                 <button
                   type="submit"
-                  disabled={isSubmitting || !placarBrasil || !placarMarrocos}
+                  disabled={isSubmitting || !placarBrasil || !placarAdversario}
                   className="w-full py-5 bg-manos-red text-white font-black uppercase rounded-2xl shadow-xl shadow-manos-red/20 disabled:opacity-30 active:scale-95 transition-all flex items-center justify-center gap-3"
                 >
                   {isSubmitting ? (
@@ -212,18 +274,15 @@ export default function BolaoAdminPage() {
               key="finalized"
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="text-center space-y-4"
+              className="text-center space-y-4 py-6"
             >
-              <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto">
-                <CheckCircle2 className="w-8 h-8 text-white" />
+              <div className="w-16 h-16 bg-green-500/10 border border-green-500/20 rounded-full flex items-center justify-center mx-auto">
+                <CheckCircle2 className="w-8 h-8 text-green-500" />
               </div>
-              <h3 className="text-xl font-black tracking-tighter italic uppercase">
-                Jogo <span className="text-green-400">Finalizado!</span>
+              <h3 className="text-xl font-black tracking-tighter italic uppercase text-white/80">
+                Jogo Finalizado
               </h3>
-              <p className="text-sm text-white/50">
-                Resultado: 🇧🇷 {placarBrasil} × {placarMarrocos} 🇲🇦
-              </p>
-              <p className="text-xs text-white/30">Webhook de resolução disparado com sucesso.</p>
+              <p className="text-xs text-white/30">O resultado deste jogo já foi processado.</p>
             </motion.div>
           )}
         </AnimatePresence>
@@ -252,16 +311,16 @@ export default function BolaoAdminPage() {
             <div className="text-center py-8">
               <Loader2 className="w-6 h-6 animate-spin text-white/30 mx-auto" />
             </div>
-          ) : palpites.length === 0 ? (
+          ) : activePalpites.length === 0 ? (
             <div className="text-center py-8">
-              <p className="text-sm text-white/30 italic">Nenhum palpite registrado ainda.</p>
+              <p className="text-sm text-white/30 italic">Nenhum palpite registrado para este jogo.</p>
             </div>
           ) : (
             <div className="space-y-2">
               <p className="text-[10px] text-white/20 uppercase tracking-widest font-black">
-                Total: {palpites.length} palpite{palpites.length !== 1 ? 's' : ''}
+                Total: {activePalpites.length} palpite{activePalpites.length !== 1 ? 's' : ''}
               </p>
-              {palpites.map((p, i) => (
+              {activePalpites.map((p, i) => (
                 <motion.div
                   key={p.id || i}
                   initial={{ opacity: 0, y: 5 }}
@@ -271,14 +330,23 @@ export default function BolaoAdminPage() {
                 >
                   <div className="space-y-1">
                     <p className="text-sm font-bold text-white/80 truncate max-w-[180px]">{p.nome}</p>
-                    <p className="text-[10px] text-white/30 font-mono">{p.whatsapp}</p>
+                    <p className="text-[10px] text-white/30 font-mono">{p.telefone}</p>
                   </div>
-                  <div className="flex items-center gap-2 bg-white/5 px-3 py-2 rounded-xl">
-                    <span className="text-sm">🇧🇷</span>
-                    <span className="text-lg font-black text-white">{p.placar_brasil}</span>
-                    <span className="text-xs text-white/30 font-black">×</span>
-                    <span className="text-lg font-black text-white">{p.placar_marrocos}</span>
-                    <span className="text-sm">🇲🇦</span>
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 bg-white/5 px-3 py-2 rounded-xl">
+                      <span className="text-sm">🇧🇷</span>
+                      <span className="text-lg font-black text-white">{p.placar_brasil}</span>
+                      <span className="text-xs text-white/30 font-black">×</span>
+                      <span className="text-lg font-black text-white">{p.placar_adversario}</span>
+                      <span className="text-sm">{activeOpponentFlag}</span>
+                    </div>
+                    <button
+                      onClick={() => handleDeletePalpite(p.id, p.telefone, p.palpite)}
+                      className="p-2 bg-manos-red/10 text-manos-red hover:bg-manos-red hover:text-white rounded-lg transition-all"
+                      title="Excluir Palpite"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </motion.div>
               ))}

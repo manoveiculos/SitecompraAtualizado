@@ -1,18 +1,21 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { ShieldCheck, Loader2, RotateCw } from 'lucide-react';
+import { verifyCode } from '../../services/bolaoService';
 
 interface StepValidacaoProps {
   whatsapp: string;
   onNext: () => void;
   isLoading: boolean;
+  onResend?: () => void | Promise<void>;
 }
 
-export default function StepValidacao({ whatsapp, onNext, isLoading }: StepValidacaoProps) {
+export default function StepValidacao({ whatsapp, onNext, isLoading, onResend }: StepValidacaoProps) {
   const [code, setCode] = useState(['', '', '', '', '', '']);
   const [error, setError] = useState('');
   const [canResend, setCanResend] = useState(false);
   const [countdown, setCountdown] = useState(30);
+  const [verifying, setVerifying] = useState(false);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   // Countdown for resend
@@ -71,20 +74,38 @@ export default function StepValidacao({ whatsapp, onNext, isLoading }: StepValid
     }
   };
 
-  const handleVerify = (fullCode: string) => {
-    // Mock validation: accept any 4-6 digit code
-    if (fullCode.length >= 4) {
+  const handleVerify = async (fullCode: string) => {
+    if (fullCode.length < 6) {
+      setError('Digite os 6 dígitos do código.');
+      return;
+    }
+    if (verifying) return;
+
+    setVerifying(true);
+    setError('');
+    const isValid = await verifyCode(whatsapp, fullCode);
+    setVerifying(false);
+
+    if (isValid) {
       onNext();
     } else {
-      setError('Código inválido. Tente novamente.');
+      setError('Código incorreto. Confira o que enviamos no seu WhatsApp.');
+      setCode(['', '', '', '', '', '']);
+      inputRefs.current[0]?.focus();
     }
   };
 
-  const handleResend = () => {
+  const handleResend = async () => {
     setCanResend(false);
     setCountdown(30);
     setCode(['', '', '', '', '', '']);
+    setError('');
     inputRefs.current[0]?.focus();
+    try {
+      await onResend?.();
+    } catch (err) {
+      console.error('Resend code error:', err);
+    }
   };
 
   // Format display phone
@@ -156,10 +177,10 @@ export default function StepValidacao({ whatsapp, onNext, isLoading }: StepValid
       {/* Verify button */}
       <button
         onClick={() => handleVerify(code.join(''))}
-        disabled={code.join('').length < 4 || isLoading}
+        disabled={code.join('').length < 6 || isLoading || verifying}
         className="w-full py-5 bg-manos-red text-white font-black text-lg uppercase rounded-2xl shadow-[0_20px_50px_rgba(237,28,36,0.3)] hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-30 disabled:scale-100 flex items-center justify-center gap-3"
       >
-        {isLoading ? (
+        {isLoading || verifying ? (
           <>
             <Loader2 className="w-5 h-5 animate-spin" />
             Verificando...

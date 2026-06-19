@@ -1,76 +1,35 @@
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import BolaoHeader from './BolaoHeader';
-import StepIdentificacao from './StepIdentificacao';
-import StepValidacao from './StepValidacao';
 import StepPalpite from './StepPalpite';
 import StepSucesso from './StepSucesso';
 import TransparenciaDashboard from './TransparenciaDashboard';
 import Toast, { useToast } from './Toast';
-import { registerLead, savePalpite, updatePalpite, getPalpiteByPhone, type Palpite } from '../../services/bolaoService';
-
-interface LeadData {
-  nome: string;
-  whatsapp: string;
-}
+import { savePalpite, getPalpiteByPhone } from '../../services/bolaoService';
 
 export default function BolaoPage() {
   const [step, setStep] = useState(1);
-  const [leadData, setLeadData] = useState<LeadData>({ nome: '', whatsapp: '' });
-  const [palpite, setPalpite] = useState({ brasil: 0, marrocos: 0 });
+  const [leadData, setLeadData] = useState({ nome: '', whatsapp: '' });
+  const [palpite, setPalpite] = useState({ brasil: 0, haiti: 0 });
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'aposta' | 'transparencia'>('aposta');
-  const [existingGuess, setExistingGuess] = useState<Palpite | null>(null);
   const { toast, showToast, hideToast } = useToast();
 
-  // Step 1: Handle lead registration
-  const handleIdentificacao = async (nome: string, whatsapp: string) => {
+  const handlePalpite = async (nome: string, whatsapp: string, placarBrasil: number, placarHaiti: number) => {
     setIsLoading(true);
     try {
-      await registerLead(nome, whatsapp);
-      setLeadData({ nome, whatsapp });
-      setStep(2);
-      showToast('Dados registrados com sucesso!', 'success');
-    } catch (error) {
-      console.error('Lead registration error:', error);
-      // Even if webhook fails, proceed (lead was captured in attempt)
-      setLeadData({ nome, whatsapp });
-      setStep(2);
-      showToast('Avançando... verifique seu WhatsApp.', 'info');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Step 2: Handle code verification & check existing guess
-  const handleValidacao = async () => {
-    setIsLoading(true);
-    try {
-      const guess = await getPalpiteByPhone(leadData.whatsapp);
+      // Regra Anti-Duplicidade
+      const guess = await getPalpiteByPhone(whatsapp);
       if (guess) {
-        setExistingGuess(guess);
-        setPalpite({ brasil: guess.placar_brasil, marrocos: guess.placar_adversario });
-        showToast('Você já possui um palpite cadastrado!', 'info');
-      } else {
-        setExistingGuess(null);
-        showToast('Código verificado com sucesso!', 'success');
+        showToast('Este número de WhatsApp já registrou um palpite para o jogo de hoje.', 'error');
+        setIsLoading(false);
+        return;
       }
-      setStep(3);
-    } catch (error) {
-      console.error('Check phone error:', error);
-      setStep(3);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
-  // Step 3 (Cenário A): Handle palpite submission
-  const handlePalpite = async (placarBrasil: number, placarMarrocos: number) => {
-    setIsLoading(true);
-    try {
-      await savePalpite(leadData.nome, leadData.whatsapp, placarBrasil, placarMarrocos);
-      setPalpite({ brasil: placarBrasil, marrocos: placarMarrocos });
-      setStep(4);
+      await savePalpite(nome, whatsapp, placarBrasil, placarHaiti);
+      setLeadData({ nome, whatsapp });
+      setPalpite({ brasil: placarBrasil, haiti: placarHaiti });
+      setStep(2);
       showToast('Palpite registrado! Boa sorte! 🍀', 'success');
     } catch (error) {
       console.error('Palpite save error:', error);
@@ -80,26 +39,9 @@ export default function BolaoPage() {
     }
   };
 
-  // Step 3 (Cenário B): Handle palpite update
-  const handleUpdatePalpite = async (placarBrasil: number, placarMarrocos: number) => {
-    setIsLoading(true);
-    try {
-      await updatePalpite(leadData.nome, leadData.whatsapp, placarBrasil, placarMarrocos);
-      setPalpite({ brasil: placarBrasil, marrocos: placarMarrocos });
-      setStep(4);
-      showToast('Palpite atualizado com sucesso! 🍀', 'success');
-    } catch (error) {
-      console.error('Palpite update error:', error);
-      showToast('Erro ao atualizar palpite. Tente novamente.', 'error');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Navigate back
   const handleBack = () => {
-    if (step > 1) {
-      setStep(step - 1);
+    if (step === 2) {
+      setStep(1);
     }
   };
 
@@ -116,13 +58,12 @@ export default function BolaoPage() {
 
       <BolaoHeader
         currentStep={activeTab === 'transparencia' ? 1 : step}
-        totalSteps={4}
+        totalSteps={2}
         onBack={handleBack}
-        showBack={activeTab === 'aposta' && step > 1 && step < 4}
+        showBack={activeTab === 'aposta' && step > 1}
       />
 
-      {/* Tab Switcher - only visible if user has not yet completed the prediction */}
-      {step < 4 && (
+      {step < 2 && (
         <div className="px-6 pb-2 pt-1 z-20 flex justify-center">
           <div className="flex bg-[#161616] border border-white/5 p-1 rounded-2xl w-full max-w-sm">
             <button
@@ -151,7 +92,7 @@ export default function BolaoPage() {
 
       <main className="scroll-container custom-scrollbar">
         <AnimatePresence mode="wait">
-          {activeTab === 'transparencia' && step < 4 ? (
+          {activeTab === 'transparencia' && step < 2 ? (
             <motion.div
               key="transparencia-dashboard"
               initial={{ opacity: 0, x: -20 }}
@@ -170,35 +111,17 @@ export default function BolaoPage() {
               transition={{ duration: 0.35 }}
             >
               {step === 1 && (
-                <StepIdentificacao
-                  onNext={handleIdentificacao}
+                <StepPalpite
+                  onSubmit={handlePalpite}
                   isLoading={isLoading}
                 />
               )}
 
               {step === 2 && (
-                <StepValidacao
-                  whatsapp={leadData.whatsapp}
-                  onNext={handleValidacao}
-                  isLoading={isLoading}
-                />
-              )}
-
-              {step === 3 && (
-                <StepPalpite
-                  nome={leadData.nome}
-                  onSubmit={handlePalpite}
-                  isLoading={isLoading}
-                  existingGuess={existingGuess}
-                  onUpdateSubmit={handleUpdatePalpite}
-                />
-              )}
-
-              {step === 4 && (
                 <StepSucesso
                   nome={leadData.nome}
                   placarBrasil={palpite.brasil}
-                  placarMarrocos={palpite.marrocos}
+                  placarHaiti={palpite.haiti}
                 />
               )}
             </motion.div>
@@ -206,8 +129,7 @@ export default function BolaoPage() {
         </AnimatePresence>
       </main>
 
-      {/* Footer branding */}
-      {step < 4 && (
+      {step < 2 && (
         <div className="sticky-footer">
           <div className="text-center py-2">
             <p className="text-[9px] text-white/10 uppercase tracking-[0.3em] font-black italic">
