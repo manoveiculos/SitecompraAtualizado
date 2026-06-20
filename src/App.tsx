@@ -14,6 +14,7 @@ import {
   Clock,
   ExternalLink,
   Star,
+  StarHalf,
   ShieldCheck,
   Shield,
   MapPin,
@@ -413,9 +414,10 @@ export default function App() {
                   <div className="flex justify-center gap-6 py-2">
                     <div className="flex flex-col items-center gap-1 opacity-60">
                       <div className="flex text-yellow-500">
-                        {[...Array(5)].map((_, i) => <Star key={i} className="w-3 h-3 fill-current" />)}
+                        {[...Array(4)].map((_, i) => <Star key={i} className="w-3 h-3 fill-current" />)}
+                        <StarHalf className="w-3 h-3 fill-current" />
                       </div>
-                      <p className="text-[9px] font-black uppercase tracking-widest text-white">4.9 ★ No Google</p>
+                      <p className="text-[9px] font-black uppercase tracking-widest text-white">4,7 ★ • 119 no Google</p>
                     </div>
                     <div className="w-px h-6 bg-white/10" />
                     <div className="flex flex-col items-center gap-1 opacity-60">
