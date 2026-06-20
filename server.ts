@@ -1,6 +1,5 @@
 
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 import {
@@ -208,8 +207,11 @@ async function startServer() {
     }
   });
 
-  // Vite middleware for development
+  // Vite middleware for development.
+  // Imported dynamically so production (npm ci --omit=dev, no vite) doesn't
+  // need it at startup — only loaded when actually running in dev.
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
