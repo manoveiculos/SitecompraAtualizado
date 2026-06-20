@@ -3,6 +3,14 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
+import {
+  getVehicles,
+  renderCatalog,
+  renderVehicle,
+  renderSitemap,
+  renderRobots,
+  findBySlug,
+} from "./server/catalog";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -30,7 +38,7 @@ function generateOtp(): string {
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   app.use(express.json());
 
@@ -124,6 +132,52 @@ async function startServer() {
     } catch (error) {
       console.error("Webhook finalizar proxy error:", error);
       res.status(500).json({ error: "Failed to forward finalizar to webhook" });
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // AEO/SEO server-rendered catalog (indexable by AI engines + crawlers).
+  // Registered BEFORE the SPA catch-all so these paths return real HTML/XML.
+  // -------------------------------------------------------------------------
+  app.get("/robots.txt", (_req, res) => {
+    res.set("Content-Type", "text/plain").send(renderRobots());
+  });
+
+  app.get("/sitemap.xml", async (_req, res) => {
+    try {
+      const vehicles = await getVehicles();
+      res.set("Content-Type", "application/xml").send(renderSitemap(vehicles));
+    } catch (err) {
+      console.error("sitemap error:", err);
+      res.status(500).send("error");
+    }
+  });
+
+  app.get("/estoque", async (_req, res) => {
+    try {
+      const vehicles = await getVehicles();
+      res
+        .set("Content-Type", "text/html; charset=utf-8")
+        .set("Cache-Control", "public, max-age=600")
+        .send(renderCatalog(vehicles));
+    } catch (err) {
+      console.error("catalog error:", err);
+      res.status(500).send("error");
+    }
+  });
+
+  app.get("/estoque/:slug", async (req, res, next) => {
+    try {
+      const vehicles = await getVehicles();
+      const vehicle = findBySlug(vehicles, req.params.slug);
+      if (!vehicle) return next(); // fall through to SPA / 404
+      res
+        .set("Content-Type", "text/html; charset=utf-8")
+        .set("Cache-Control", "public, max-age=600")
+        .send(renderVehicle(vehicle));
+    } catch (err) {
+      console.error("vehicle page error:", err);
+      res.status(500).send("error");
     }
   });
 
