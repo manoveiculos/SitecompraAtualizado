@@ -7,6 +7,9 @@ import {
   getVehicles,
   renderCatalog,
   renderVehicle,
+  renderAbout,
+  renderFAQ,
+  renderLlms,
   renderSitemap,
   renderRobots,
   findBySlug,
@@ -149,6 +152,30 @@ async function startServer() {
       res.set("Content-Type", "application/xml").send(renderSitemap(vehicles));
     } catch (err) {
       console.error("sitemap error:", err);
+      res.status(500).send("error");
+    }
+  });
+
+  app.get("/sobre", (_req, res) => {
+    res
+      .set("Content-Type", "text/html; charset=utf-8")
+      .set("Cache-Control", "public, max-age=3600")
+      .send(renderAbout());
+  });
+
+  app.get("/perguntas-frequentes", (_req, res) => {
+    res
+      .set("Content-Type", "text/html; charset=utf-8")
+      .set("Cache-Control", "public, max-age=3600")
+      .send(renderFAQ());
+  });
+
+  app.get("/llms.txt", async (_req, res) => {
+    try {
+      const vehicles = await getVehicles();
+      res.set("Content-Type", "text/plain; charset=utf-8").send(renderLlms(vehicles));
+    } catch (err) {
+      console.error("llms.txt error:", err);
       res.status(500).send("error");
     }
   });

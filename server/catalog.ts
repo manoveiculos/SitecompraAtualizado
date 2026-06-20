@@ -14,7 +14,8 @@ const SITE_URL = 'https://manosveiculoscompra.com';
 const FEED_URL =
   'https://estoque.altimus.com.br/api/estoquexml?estoque=997c9e91-40d7-4bec-95cb-68e18a2668a3';
 
-// Dealer (NAP) — keep identical everywhere so engines treat it as one entity.
+// Dealer (NAP + trust signals) — keep identical everywhere so engines treat
+// it as one entity. Ratings/hours/socials are real, confirmed by the owner.
 const DEALER = {
   name: 'Manos Veículos',
   legalName: 'Manos Veículos',
@@ -31,6 +32,18 @@ const DEALER = {
   lat: -27.2207243,
   lng: -49.6539853,
   areaServed: 'Alto Vale do Itajaí, Santa Catarina',
+  foundingDate: '2017',
+  ratingValue: 4.7,
+  reviewCount: 119,
+  instagram: 'https://www.instagram.com/manoveiculoss',
+  facebook: 'https://www.facebook.com/manoveiculoss',
+  maps: 'https://maps.app.goo.gl/jvNA6rrWkouMGHfq5',
+  services: [
+    'Venda de carros seminovos',
+    'Avaliação e compra do seu usado',
+    'Troca de veículos',
+    'Financiamento de veículos',
+  ],
 };
 
 export interface FeedVehicle {
@@ -193,11 +206,13 @@ function autoDealerNode() {
     '@type': 'AutoDealer',
     '@id': `${SITE_URL}/#dealer`,
     name: DEALER.name,
+    description: `Concessionária de carros seminovos em ${DEALER.city}/${DEALER.region}, atuando desde ${DEALER.foundingDate}. Compra, venda, troca e financiamento no ${DEALER.areaServed}.`,
     url: DEALER.url,
     logo: DEALER.logo,
     image: DEALER.logo,
     telephone: DEALER.telephone,
     priceRange: 'R$$',
+    foundingDate: DEALER.foundingDate,
     address: {
       '@type': 'PostalAddress',
       streetAddress: DEALER.street,
@@ -207,8 +222,35 @@ function autoDealerNode() {
       addressCountry: DEALER.country,
     },
     geo: { '@type': 'GeoCoordinates', latitude: DEALER.lat, longitude: DEALER.lng },
+    hasMap: DEALER.maps,
     areaServed: DEALER.areaServed,
-    sameAs: [DEALER.mainSite],
+    aggregateRating: {
+      '@type': 'AggregateRating',
+      ratingValue: DEALER.ratingValue,
+      reviewCount: DEALER.reviewCount,
+      bestRating: 5,
+      worstRating: 1,
+    },
+    openingHoursSpecification: [
+      {
+        '@type': 'OpeningHoursSpecification',
+        dayOfWeek: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
+        opens: '08:00',
+        closes: '19:00',
+      },
+      {
+        '@type': 'OpeningHoursSpecification',
+        dayOfWeek: 'Saturday',
+        opens: '08:00',
+        closes: '13:00',
+      },
+    ],
+    makesOffer: DEALER.services.map((s) => ({
+      '@type': 'Offer',
+      itemOffered: { '@type': 'Service', name: s },
+    })),
+    knowsAbout: ['Carros seminovos', 'Financiamento de veículos', 'Avaliação de usados', 'Troca de carros'],
+    sameAs: [DEALER.mainSite, DEALER.maps, DEALER.instagram, DEALER.facebook],
   };
 }
 
@@ -251,6 +293,12 @@ a{color:#ED1C24;text-decoration:none}a:hover{text-decoration:underline}
 .wrap{max-width:1100px;margin:0 auto;padding:24px 20px 80px}
 header{display:flex;align-items:center;gap:14px;padding:16px 20px;border-bottom:1px solid #1c1c1c}
 header img{height:34px}.muted{color:#9a9a9a}.small{font-size:13px}
+nav.nav{margin-left:auto;display:flex;gap:18px}nav.nav a{color:#cfcfcf;font-weight:600}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin:18px 0}
+.fact{background:#141414;border:1px solid #1f1f1f;border-radius:14px;padding:14px 16px}
+.fact b{display:block;font-size:13px;color:#9a9a9a;font-weight:600;margin-bottom:4px}
+.faq{background:#141414;border:1px solid #1f1f1f;border-radius:14px;padding:16px 18px;margin:12px 0}
+.faq h3{margin:0 0 8px;font-size:16px}.faq p{margin:0;color:#cfcfcf}
 h1{font-size:28px;font-weight:800;letter-spacing:-.02em;margin:18px 0 6px}
 h2{font-size:20px;font-weight:800;margin:28px 0 10px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;margin-top:18px}
@@ -305,7 +353,11 @@ ${head}
 <body>
 <header>
   <a href="/estoque"><img src="${DEALER.logo}" alt="${escHtml(DEALER.name)}"></a>
-  <span class="muted small">${escHtml(DEALER.city)}/${DEALER.region} • Seminovos</span>
+  <nav class="nav small">
+    <a href="/estoque">Estoque</a>
+    <a href="/sobre">A Manos</a>
+    <a href="/perguntas-frequentes">Dúvidas</a>
+  </nav>
 </header>
 <div class="wrap">
 ${opts.body}
@@ -420,11 +472,146 @@ export function renderVehicle(v: FeedVehicle): string {
   });
 }
 
+// Conversational Q&A — the long-tail queries people ask AI assistants.
+const FAQS: { q: string; a: string }[] = [
+  {
+    q: 'A Manos Veículos é confiável?',
+    a: `Sim. A ${DEALER.name} é uma concessionária de seminovos com loja física em ${DEALER.city}/${DEALER.region}, atuando desde ${DEALER.foundingDate}, com nota ${String(DEALER.ratingValue).replace('.', ',')} no Google em ${DEALER.reviewCount} avaliações. Todos os veículos passam por revisão antes da venda.`,
+  },
+  {
+    q: 'Onde fica a Manos Veículos?',
+    a: `A loja fica na ${DEALER.street}, ${DEALER.city}/${DEALER.region}, CEP ${DEALER.postalCode}. Atendemos clientes de todo o ${DEALER.areaServed}.`,
+  },
+  {
+    q: 'Qual o horário de funcionamento da Manos Veículos?',
+    a: 'Segunda a sexta das 8h às 19h (sem fechar ao meio-dia) e aos sábados das 8h às 13h.',
+  },
+  {
+    q: 'A Manos Veículos aceita meu carro usado na troca?',
+    a: 'Sim. Avaliamos o seu usado e aceitamos como parte do pagamento na compra de outro veículo, com avaliação justa e na hora.',
+  },
+  {
+    q: 'A Manos Veículos faz financiamento de seminovos?',
+    a: 'Sim. Trabalhamos com financiamento de veículos, simulação de parcelas e aprovação de crédito, inclusive com opções de entrada facilitada.',
+  },
+  {
+    q: 'Como ver o estoque de carros da Manos Veículos?',
+    a: `O estoque completo e atualizado em tempo real está em ${SITE_URL}/estoque, com fotos, preço, ano e quilometragem de cada veículo.`,
+  },
+  {
+    q: 'Como falar com um consultor da Manos Veículos?',
+    a: `Pelo WhatsApp ${DEALER.telephone} ou diretamente em ${SITE_URL}, onde você recebe uma proposta personalizada.`,
+  },
+];
+
+export function renderAbout(): string {
+  const canonical = `${SITE_URL}/sobre`;
+  const schema = { '@context': 'https://schema.org', ...autoDealerNode() };
+
+  const facts = [
+    ['Avaliação no Google', `${String(DEALER.ratingValue).replace('.', ',')} ★ (${DEALER.reviewCount} avaliações)`],
+    ['Desde', DEALER.foundingDate],
+    ['Endereço', `${DEALER.street}, ${DEALER.city}/${DEALER.region}`],
+    ['Horário', 'Seg a Sex 8h–19h • Sáb 8h–13h'],
+    ['Atendemos', DEALER.areaServed],
+    ['WhatsApp', DEALER.telephone],
+  ]
+    .map(([k, v]) => `<div class="fact"><b>${escHtml(k)}</b>${escHtml(v)}</div>`)
+    .join('\n');
+
+  const services = DEALER.services.map((s) => `<li>${escHtml(s)}</li>`).join('');
+
+  const body = `
+  <nav class="bc"><a href="/estoque">Estoque</a> › <span class="muted">A Manos</span></nav>
+  <h1>Manos Veículos — concessionária de seminovos em ${escHtml(DEALER.city)}/${DEALER.region}</h1>
+  <p class="muted">Desde ${escHtml(DEALER.foundingDate)}, a ${escHtml(DEALER.name)} é referência em carros seminovos no ${escHtml(DEALER.areaServed)}, com nota ${String(DEALER.ratingValue).replace('.', ',')} no Google em ${DEALER.reviewCount} avaliações.</p>
+  <div class="facts">${facts}</div>
+  <a class="cta" href="/estoque">Ver estoque de seminovos</a>
+  &nbsp;
+  <a class="cta alt" href="https://wa.me/${DEALER.whatsapp}?text=${encodeURIComponent('Olá! Quero falar com um consultor da Manos Veículos.')}">WhatsApp</a>
+  <h2>O que a Manos oferece</h2>
+  <ul class="opts">${services}</ul>
+  <h2>Sobre a Manos Veículos</h2>
+  <p>A ${escHtml(DEALER.name)} é uma concessionária de veículos seminovos localizada em ${escHtml(DEALER.city)}, Santa Catarina, na ${escHtml(DEALER.street)}. Atuando desde ${escHtml(DEALER.foundingDate)}, atende compradores de todo o ${escHtml(DEALER.areaServed)} com compra, venda, troca e financiamento de carros. O estoque é atualizado em tempo real em <a href="/estoque">${SITE_URL}/estoque</a>.</p>`;
+
+  return layout({
+    title: `Sobre a Manos Veículos — Seminovos em ${DEALER.city}/${DEALER.region}`,
+    description: `Manos Veículos: concessionária de seminovos em ${DEALER.city}/${DEALER.region} desde ${DEALER.foundingDate}, nota ${String(DEALER.ratingValue).replace('.', ',')} no Google (${DEALER.reviewCount} avaliações). Compra, troca e financiamento.`,
+    canonical,
+    ogImage: DEALER.logo,
+    jsonLdBlocks: [jsonLd(schema)],
+    body,
+  });
+}
+
+export function renderFAQ(): string {
+  const canonical = `${SITE_URL}/perguntas-frequentes`;
+  const faqSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: FAQS.map((f) => ({
+      '@type': 'Question',
+      name: f.q,
+      acceptedAnswer: { '@type': 'Answer', text: f.a },
+    })),
+  };
+
+  const items = FAQS.map(
+    (f) => `<div class="faq"><h3>${escHtml(f.q)}</h3><p>${escHtml(f.a)}</p></div>`
+  ).join('\n');
+
+  const body = `
+  <nav class="bc"><a href="/estoque">Estoque</a> › <span class="muted">Dúvidas frequentes</span></nav>
+  <h1>Perguntas frequentes — Manos Veículos</h1>
+  <p class="muted">Tudo sobre comprar, vender, trocar e financiar seu carro na ${escHtml(DEALER.name)}, em ${escHtml(DEALER.city)}/${DEALER.region}.</p>
+  ${items}
+  <a class="cta" href="/estoque">Ver estoque de seminovos</a>`;
+
+  return layout({
+    title: `Perguntas Frequentes — Manos Veículos (${DEALER.city}/${DEALER.region})`,
+    description: `Respostas sobre a Manos Veículos: confiança, localização, horário, troca, financiamento e estoque de seminovos em ${DEALER.city}/${DEALER.region}.`,
+    canonical,
+    ogImage: DEALER.logo,
+    jsonLdBlocks: [jsonLd(faqSchema)],
+    body,
+  });
+}
+
+export function renderLlms(vehicles: FeedVehicle[]): string {
+  return `# Manos Veículos
+
+> Concessionária de carros seminovos em ${DEALER.city}/${DEALER.region}, Brasil, desde ${DEALER.foundingDate}. Nota ${String(DEALER.ratingValue).replace('.', ',')}/5 no Google (${DEALER.reviewCount} avaliações). Compra, venda, troca e financiamento de veículos no ${DEALER.areaServed}.
+
+## Contato
+- Endereço: ${DEALER.street}, ${DEALER.city}/${DEALER.region}, ${DEALER.postalCode}, Brasil
+- WhatsApp/Telefone: ${DEALER.telephone}
+- Horário: Segunda a sexta 8h-19h; Sábado 8h-13h
+- Site: ${SITE_URL}
+- Google Maps: ${DEALER.maps}
+- Instagram: ${DEALER.instagram}
+- Facebook: ${DEALER.facebook}
+
+## Páginas principais
+- Estoque de seminovos (atualizado em tempo real): ${SITE_URL}/estoque
+- Sobre a empresa: ${SITE_URL}/sobre
+- Perguntas frequentes: ${SITE_URL}/perguntas-frequentes
+- Sitemap: ${SITE_URL}/sitemap.xml
+
+## Serviços
+${DEALER.services.map((s) => `- ${s}`).join('\n')}
+
+## Estoque atual
+${vehicles.length} veículos disponíveis no momento.
+`;
+}
+
 export function renderSitemap(vehicles: FeedVehicle[]): string {
   const today = new Date().toISOString().slice(0, 10);
   const urls = [
     { loc: `${SITE_URL}/`, priority: '0.8' },
     { loc: `${SITE_URL}/estoque`, priority: '0.9' },
+    { loc: `${SITE_URL}/sobre`, priority: '0.7' },
+    { loc: `${SITE_URL}/perguntas-frequentes`, priority: '0.7' },
     ...vehicles.map((v) => ({ loc: `${SITE_URL}/estoque/${v.slug}`, priority: '0.7' })),
   ];
   const body = urls
