@@ -13,6 +13,7 @@ import {
   renderRobots,
   findBySlug,
 } from "./server/catalog";
+import { radarMiddleware } from "./server/radar";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -43,6 +44,9 @@ async function startServer() {
   const PORT = Number(process.env.PORT) || 3000;
 
   app.use(express.json());
+
+  // AI Visit Radar — logs crawler hits + AI/search referrals (fire-and-forget)
+  app.use(radarMiddleware);
 
   // API Proxy for Altimus Stock to avoid CORS
   app.get("/api/stock", async (req, res) => {

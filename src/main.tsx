@@ -4,6 +4,7 @@ import App from './App.tsx';
 import BolaoPage from './components/bolao/BolaoPage.tsx';
 import BolaoAdminPage from './components/bolao/BolaoAdminPage.tsx';
 import TransparenciaPage from './components/bolao/TransparenciaPage.tsx';
+import RadarPage from './components/bolao/RadarPage.tsx';
 import './index.css';
 
 function Router() {
@@ -19,6 +20,10 @@ function Router() {
 
   if (path === '/bolao-transparencia') {
     return <TransparenciaPage />;
+  }
+
+  if (path === '/radar-manos') {
+    return <RadarPage />;
   }
 
   return <App />;
