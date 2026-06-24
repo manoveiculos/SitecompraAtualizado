@@ -16,7 +16,7 @@ export default function BolaoAdminPage() {
   const [placarAdversario, setPlacarAdversario] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFinalized, setIsFinalized] = useState(false);
-  const [activeGameTab, setActiveGameTab] = useState<'haiti' | 'marrocos'>('haiti');
+  const [activeGameTab, setActiveGameTab] = useState<'escocia' | 'haiti' | 'marrocos'>('escocia');
   const { toast, showToast, hideToast } = useToast();
 
   const handleLogin = (e: React.FormEvent) => {
@@ -54,8 +54,8 @@ export default function BolaoAdminPage() {
       return;
     }
 
-    if (activeGameTab !== 'haiti') {
-      showToast('Apenas o jogo atual (Haiti) pode ser finalizado agora.', 'error');
+    if (activeGameTab !== 'escocia') {
+      showToast('Apenas o jogo atual (Escócia) pode ser finalizado agora.', 'error');
       return;
     }
 
@@ -85,24 +85,25 @@ export default function BolaoAdminPage() {
   };
 
   // Separando os palpites por jogo
+  const gameKeyword = activeGameTab === 'escocia' ? 'Escócia' : activeGameTab === 'haiti' ? 'Haiti' : 'Marrocos';
+
   const activePalpites = useMemo(() => {
     return palpites.filter(p => {
       if (p.protocolo?.startsWith('RESULTADO')) return false; // Hide official result from list
-      return activeGameTab === 'haiti' ? p.palpite.includes('Haiti') : p.palpite.includes('Marrocos');
+      return p.palpite.includes(gameKeyword);
     });
-  }, [palpites, activeGameTab]);
+  }, [palpites, gameKeyword]);
 
-  const activeOpponentName = activeGameTab === 'haiti' ? 'Haiti' : 'Marrocos';
-  const activeOpponentCode = activeGameTab === 'haiti' ? 'HT' : 'MA';
-  const activeOpponentFlag = activeGameTab === 'haiti' ? '🇭🇹' : '🇲🇦';
+  const activeOpponentName = gameKeyword;
+  const activeOpponentCode = activeGameTab === 'escocia' ? 'ESC' : activeGameTab === 'haiti' ? 'HT' : 'MA';
+  const activeOpponentFlag = activeGameTab === 'escocia' ? '🏴󠁧󠁢󠁳󠁣󠁴󠁿' : activeGameTab === 'haiti' ? '🇭🇹' : '🇲🇦';
 
   // Check if current tab is finalized
   const isCurrentGameFinalized = useMemo(() => {
     return palpites.some(p =>
-      p.protocolo?.startsWith('RESULTADO') &&
-      (activeGameTab === 'haiti' ? p.palpite.includes('Haiti') : p.palpite.includes('Marrocos'))
+      p.protocolo?.startsWith('RESULTADO') && p.palpite.includes(gameKeyword)
     );
-  }, [palpites, activeGameTab]);
+  }, [palpites, gameKeyword]);
 
   // Password Gate
   if (!isAuthenticated) {
@@ -179,32 +180,42 @@ export default function BolaoAdminPage() {
 
       <main className="scroll-container custom-scrollbar space-y-8 p-4">
         {/* Game Tabs */}
-        <div className="flex bg-[#161616] border border-white/5 p-1 rounded-2xl">
+        <div className="flex bg-[#161616] border border-white/5 p-1 rounded-2xl gap-1">
           <button
-            onClick={() => { setActiveGameTab('haiti'); setPlacarBrasil(''); setPlacarAdversario(''); setIsFinalized(false); }}
-            className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all ${
-              activeGameTab === 'haiti'
+            onClick={() => { setActiveGameTab('escocia'); setPlacarBrasil(''); setPlacarAdversario(''); setIsFinalized(false); }}
+            className={`flex-1 py-2.5 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-xl transition-all ${
+              activeGameTab === 'escocia'
                 ? 'bg-manos-red text-white shadow-lg shadow-manos-red/20'
                 : 'text-white/40 hover:text-white/70'
             }`}
           >
-            🇧🇷 BRASIL X HAITI 🇭🇹
+            🏴󠁧󠁢󠁳󠁣󠁴󠁿 Escócia (Atual)
+          </button>
+          <button
+            onClick={() => { setActiveGameTab('haiti'); setPlacarBrasil(''); setPlacarAdversario(''); setIsFinalized(false); }}
+            className={`flex-1 py-2.5 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-xl transition-all ${
+              activeGameTab === 'haiti'
+                ? 'bg-white/10 text-white'
+                : 'text-white/40 hover:text-white/70'
+            }`}
+          >
+            🇭🇹 Haiti
           </button>
           <button
             onClick={() => { setActiveGameTab('marrocos'); setPlacarBrasil(''); setPlacarAdversario(''); setIsFinalized(false); }}
-            className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all ${
+            className={`flex-1 py-2.5 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-xl transition-all ${
               activeGameTab === 'marrocos'
                 ? 'bg-white/10 text-white'
                 : 'text-white/40 hover:text-white/70'
             }`}
           >
-            Anterior (Marrocos)
+            🏆 Marrocos
           </button>
         </div>
 
         {/* Finalizar Jogo */}
         <AnimatePresence mode="wait">
-          {!isCurrentGameFinalized && !isFinalized && activeGameTab === 'haiti' ? (
+          {!isCurrentGameFinalized && !isFinalized && activeGameTab === 'escocia' ? (
             <motion.div
               key="finalizar"
               initial={{ opacity: 0, y: 10 }}

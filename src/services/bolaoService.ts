@@ -10,7 +10,7 @@ const COLLECTION_NAME = 'bolao_palpites_manos';
 // dedup/lookup to the active game, so customers who played a previous round
 // (e.g. Marrocos) are NOT blocked from betting on the new one. Change this
 // single constant when the next game starts.
-const CURRENT_OPPONENT = 'Haiti';
+const CURRENT_OPPONENT = 'Escócia';
 
 /**
  * Normalize a Brazilian phone into a canonical digits-only value used for

@@ -2,16 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Loader2, Clock, Trophy, AlertCircle, CheckCircle2 } from 'lucide-react';
 import brazilFlag from './brazil-flag.png';
-import haitiFlag from './haiti-crest.png';
+import scotlandFlag from './scotland-flag.png';
 
 interface StepPalpiteProps {
   onSubmit: (nome: string, whatsapp: string, placarBrasil: number, placarHaiti: number) => void;
   isLoading: boolean;
 }
 
-// Configuração do início do jogo (Exemplo: hoje, 19/06/2026 às 21:30 horário de Brasília)
-// Lembre-se: 21:30 no Brasil (UTC-3) = 00:30 do dia seguinte em UTC
-const DEADLINE = new Date('2026-06-20T00:30:00.000Z');
+// Encerramento das inscrições: hoje, 24/06/2026 às 19h00 (horário de Brasília).
+// Lembre-se: 19:00 no Brasil (UTC-3) = 22:00 do MESMO dia em UTC.
+const DEADLINE = new Date('2026-06-24T22:00:00.000Z');
 
 export default function StepPalpite({ onSubmit, isLoading }: StepPalpiteProps) {
   const [nome, setNome] = useState('');
@@ -118,7 +118,7 @@ export default function StepPalpite({ onSubmit, isLoading }: StepPalpiteProps) {
         </h2>
 
         <p className="text-xs text-white/40 uppercase tracking-widest font-black">
-          Brasil x Haiti
+          Brasil x Escócia
         </p>
       </div>
 
@@ -212,22 +212,22 @@ export default function StepPalpite({ onSubmit, isLoading }: StepPalpiteProps) {
             <span className="text-2xl font-black text-white/20 italic">VS</span>
           </div>
 
-          {/* Haiti Glowing Card */}
-          <motion.div 
+          {/* Opponent Glowing Card */}
+          <motion.div
             whileHover={{ scale: 1.05 }}
             className={`flex-1 card-glass p-4 sm:p-5 flex flex-col items-center gap-3 transition-all duration-300 border ${
-              activeInput === 'haiti' 
-                ? 'border-manos-red shadow-[0_0_30px_rgba(237,28,36,0.25)] bg-manos-red/5' 
+              activeInput === 'haiti'
+                ? 'border-manos-red shadow-[0_0_30px_rgba(237,28,36,0.25)] bg-manos-red/5'
                 : 'border-white/5 hover:border-manos-red/40'
             }`}
           >
-            <img 
-              src={haitiFlag} 
-              alt="Haiti" 
-              className="w-16 h-16 sm:w-20 sm:h-20 object-contain drop-shadow-[0_4px_12px_rgba(237,28,36,0.35)]" 
+            <img
+              src={scotlandFlag}
+              alt="Escócia"
+              className="w-16 h-16 sm:w-20 sm:h-20 object-contain drop-shadow-[0_4px_12px_rgba(237,28,36,0.35)]"
             />
             <span className="text-xs font-black uppercase tracking-widest text-manos-red">
-              Haiti
+              Escócia
             </span>
             <input
               type="text"
