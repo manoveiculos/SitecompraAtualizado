@@ -269,7 +269,7 @@ export default function TransparenciaDashboard() {
               : 'text-white/40 hover:text-white/70'
           }`}
         >
-          🏆 Marrocos
+          🇲🇦 Marrocos
         </button>
       </div>
 
