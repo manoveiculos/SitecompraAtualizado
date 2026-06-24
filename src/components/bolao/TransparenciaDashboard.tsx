@@ -6,6 +6,9 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import type { Palpite } from '../../services/bolaoService';
+import scotlandFlag from './scotland-flag.png';
+import haitiCrest from './haiti-crest.png';
+import moroccoFlag from './morocco-flag.png';
 
 // Function to format telephone with mask: (47) *****-7855
 function formatPhoneMask(phone: string): string {
@@ -160,7 +163,7 @@ export default function TransparenciaDashboard() {
   const activeOfficialResult = activeGameTab === 'escocia' ? officialResultEscocia : activeGameTab === 'haiti' ? officialResultHaiti : officialResultMarrocos;
   const activeWinners = activeGameTab === 'escocia' ? winnersEscocia : activeGameTab === 'haiti' ? winnersHaiti : winnersMarrocos;
   const activeOpponentName = activeGameTab === 'escocia' ? 'Escócia' : activeGameTab === 'haiti' ? 'Haiti' : 'Marrocos';
-  const activeOpponentFlag = activeGameTab === 'escocia' ? '🏴󠁧󠁢󠁳󠁣󠁴󠁿' : activeGameTab === 'haiti' ? '🇭🇹' : '🇲🇦';
+  const activeOpponentFlagSrc = activeGameTab === 'escocia' ? scotlandFlag : activeGameTab === 'haiti' ? haitiCrest : moroccoFlag;
 
   // Search filter
   const filteredPalpites = useMemo(() => {
@@ -243,33 +246,33 @@ export default function TransparenciaDashboard() {
       <div className="flex bg-[#161616] border border-white/5 p-1 rounded-2xl gap-1">
         <button
           onClick={() => setActiveGameTab('escocia')}
-          className={`flex-1 py-2.5 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-xl transition-all ${
+          className={`flex-1 py-2.5 flex items-center justify-center gap-1.5 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-xl transition-all ${
             activeGameTab === 'escocia'
               ? 'bg-manos-red text-white shadow-lg shadow-manos-red/20'
               : 'text-white/40 hover:text-white/70'
           }`}
         >
-          🏴󠁧󠁢󠁳󠁣󠁴󠁿 Escócia (Atual)
+          <img src={scotlandFlag} alt="Escócia" className="w-4 h-3 object-cover rounded-sm" /> Escócia (Atual)
         </button>
         <button
           onClick={() => setActiveGameTab('haiti')}
-          className={`flex-1 py-2.5 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-xl transition-all ${
+          className={`flex-1 py-2.5 flex items-center justify-center gap-1.5 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-xl transition-all ${
             activeGameTab === 'haiti'
               ? 'bg-white/10 text-white'
               : 'text-white/40 hover:text-white/70'
           }`}
         >
-          🇭🇹 Haiti
+          <img src={haitiCrest} alt="Haiti" className="w-4 h-3 object-contain rounded-sm" /> Haiti
         </button>
         <button
           onClick={() => setActiveGameTab('marrocos')}
-          className={`flex-1 py-2.5 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-xl transition-all ${
+          className={`flex-1 py-2.5 flex items-center justify-center gap-1.5 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-xl transition-all ${
             activeGameTab === 'marrocos'
               ? 'bg-white/10 text-white'
               : 'text-white/40 hover:text-white/70'
           }`}
         >
-          🇲🇦 Marrocos
+          <img src={moroccoFlag} alt="Marrocos" className="w-4 h-3 object-cover rounded-sm" /> Marrocos
         </button>
       </div>
 
@@ -293,7 +296,7 @@ export default function TransparenciaDashboard() {
                     Jogo Finalizado! Resultado Oficial:
                   </h3>
                   <p className="text-xl font-black text-yellow-400 flex items-center gap-2">
-                    🇧🇷 {activeOfficialResult.placar_brasil} <span className="text-xs text-white/30">×</span> {activeOfficialResult.placar_adversario} {activeOpponentFlag}
+                    🇧🇷 {activeOfficialResult.placar_brasil} <span className="text-xs text-white/30">×</span> {activeOfficialResult.placar_adversario} <img src={activeOpponentFlagSrc} alt={activeOpponentName} className="w-5 h-3.5 object-cover rounded-sm inline-block" />
                   </p>
                 </div>
               </div>
@@ -345,8 +348,8 @@ export default function TransparenciaDashboard() {
                 {stats.lastBet ? stats.lastBet.nome.split(' ')[0] : 'Nenhum'}
               </p>
               {stats.lastBet && (
-                <span className="text-[10px] text-green-400 font-black font-mono">
-                  🇧🇷 {stats.lastBet.placar_brasil}×{stats.lastBet.placar_adversario} {activeOpponentFlag}
+                <span className="text-[10px] text-green-400 font-black font-mono flex items-center gap-1 mt-1">
+                  🇧🇷 {stats.lastBet.placar_brasil}×{stats.lastBet.placar_adversario} <img src={activeOpponentFlagSrc} alt={activeOpponentName} className="w-3 h-2.5 object-cover rounded-sm inline-block" />
                 </span>
               )}
             </div>
@@ -388,8 +391,8 @@ export default function TransparenciaDashboard() {
                 </div>
 
                 <div>
-                  <div className="flex justify-between text-[10px] uppercase font-black text-white/70 mb-1">
-                    <span>Vitória do {activeOpponentName} {activeOpponentFlag}</span>
+                  <div className="flex items-center justify-between text-[10px] uppercase font-black text-white/70 mb-1">
+                    <span className="flex items-center gap-1.5">Vitória do {activeOpponentName} <img src={activeOpponentFlagSrc} alt={activeOpponentName} className="w-3 h-2 object-cover rounded-[1px] inline-block opacity-80" /></span>
                     <span className="text-manos-red">{stats.distribution.oppWins}%</span>
                   </div>
                   <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden">
@@ -494,7 +497,7 @@ export default function TransparenciaDashboard() {
                         <span className="text-xs font-black text-white">{p.placar_brasil}</span>
                         <span className="text-[9px] text-white/20">×</span>
                         <span className="text-xs font-black text-white">{p.placar_adversario}</span>
-                        <span className="text-[10px]">{activeOpponentFlag}</span>
+                        <img src={activeOpponentFlagSrc} alt={activeOpponentName} className="w-3.5 h-2.5 object-cover rounded-sm" />
                       </div>
                     </div>
                   ))}

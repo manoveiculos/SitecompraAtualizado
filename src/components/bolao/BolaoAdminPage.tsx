@@ -3,6 +3,9 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Lock, Trophy, Loader2, CheckCircle2, Users, Send, Trash2 } from 'lucide-react';
 import Toast, { useToast } from './Toast';
 import { fetchPalpites, finalizarJogo, deletePalpite, type Palpite } from '../../services/bolaoService';
+import scotlandFlag from './scotland-flag.png';
+import haitiCrest from './haiti-crest.png';
+import moroccoFlag from './morocco-flag.png';
 
 const ADMIN_PASSWORD = 'manos2026admin';
 
@@ -96,7 +99,7 @@ export default function BolaoAdminPage() {
 
   const activeOpponentName = gameKeyword;
   const activeOpponentCode = activeGameTab === 'escocia' ? 'ESC' : activeGameTab === 'haiti' ? 'HT' : 'MA';
-  const activeOpponentFlag = activeGameTab === 'escocia' ? '🏴󠁧󠁢󠁳󠁣󠁴󠁿' : activeGameTab === 'haiti' ? '🇭🇹' : '🇲🇦';
+  const activeOpponentFlagSrc = activeGameTab === 'escocia' ? scotlandFlag : activeGameTab === 'haiti' ? haitiCrest : moroccoFlag;
 
   // Check if current tab is finalized
   const isCurrentGameFinalized = useMemo(() => {
@@ -183,33 +186,33 @@ export default function BolaoAdminPage() {
         <div className="flex bg-[#161616] border border-white/5 p-1 rounded-2xl gap-1">
           <button
             onClick={() => { setActiveGameTab('escocia'); setPlacarBrasil(''); setPlacarAdversario(''); setIsFinalized(false); }}
-            className={`flex-1 py-2.5 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-xl transition-all ${
+            className={`flex-1 py-2.5 flex items-center justify-center gap-1.5 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-xl transition-all ${
               activeGameTab === 'escocia'
                 ? 'bg-manos-red text-white shadow-lg shadow-manos-red/20'
                 : 'text-white/40 hover:text-white/70'
             }`}
           >
-            🏴󠁧󠁢󠁳󠁣󠁴󠁿 Escócia (Atual)
+            <img src={scotlandFlag} alt="Escócia" className="w-4 h-3 object-cover rounded-sm" /> Escócia (Atual)
           </button>
           <button
             onClick={() => { setActiveGameTab('haiti'); setPlacarBrasil(''); setPlacarAdversario(''); setIsFinalized(false); }}
-            className={`flex-1 py-2.5 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-xl transition-all ${
+            className={`flex-1 py-2.5 flex items-center justify-center gap-1.5 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-xl transition-all ${
               activeGameTab === 'haiti'
                 ? 'bg-white/10 text-white'
                 : 'text-white/40 hover:text-white/70'
             }`}
           >
-            🇭🇹 Haiti
+            <img src={haitiCrest} alt="Haiti" className="w-4 h-3 object-contain rounded-sm" /> Haiti
           </button>
           <button
             onClick={() => { setActiveGameTab('marrocos'); setPlacarBrasil(''); setPlacarAdversario(''); setIsFinalized(false); }}
-            className={`flex-1 py-2.5 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-xl transition-all ${
+            className={`flex-1 py-2.5 flex items-center justify-center gap-1.5 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-xl transition-all ${
               activeGameTab === 'marrocos'
                 ? 'bg-white/10 text-white'
                 : 'text-white/40 hover:text-white/70'
             }`}
           >
-            🇲🇦 Marrocos
+            <img src={moroccoFlag} alt="Marrocos" className="w-4 h-3 object-cover rounded-sm" /> Marrocos
           </button>
         </div>
 
@@ -248,7 +251,7 @@ export default function BolaoAdminPage() {
                   </div>
                   <span className="text-2xl font-black text-white/20 pt-6">×</span>
                   <div className="flex flex-col items-center gap-2">
-                    <span className="text-3xl">{activeOpponentFlag} {activeOpponentCode}</span>
+                    <span className="flex items-center gap-2 text-3xl font-black uppercase tracking-wider"><img src={activeOpponentFlagSrc} alt={activeOpponentName} className="w-8 h-6 object-cover rounded-md" /> {activeOpponentCode}</span>
                     <input
                       type="text"
                       inputMode="numeric"
@@ -349,7 +352,7 @@ export default function BolaoAdminPage() {
                       <span className="text-lg font-black text-white">{p.placar_brasil}</span>
                       <span className="text-xs text-white/30 font-black">×</span>
                       <span className="text-lg font-black text-white">{p.placar_adversario}</span>
-                      <span className="text-sm">{activeOpponentFlag}</span>
+                      <img src={activeOpponentFlagSrc} alt={activeOpponentName} className="w-5 h-3.5 object-cover rounded-sm ml-1" />
                     </div>
                     <button
                       onClick={() => handleDeletePalpite(p.id, p.telefone, p.palpite)}
