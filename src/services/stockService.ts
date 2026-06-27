@@ -7,11 +7,28 @@ export interface Vehicle {
   image: string;
   priceFormatted: string;
   km: string;
+  link: string; // permalink público do veículo (/estoque/<slug>)
 }
 
 const STOCK_XML_URL = '/api/stock';
-const CACHE_KEY = 'manos_veiculos_stock_cache_v3';
+// Site do funil — usado para montar o permalink de cada veículo, batendo com
+// a rota SSR /estoque/<slug> definida em server/catalog.ts.
+const SITE_URL = 'https://manosveiculoscompra.com';
+const CACHE_KEY = 'manos_veiculos_stock_cache_v4'; // bump ao mudar o shape de Vehicle
 const CACHE_TTL = 1000 * 60 * 15; // 15 minutes
+
+// Espelha o slugify() de server/catalog.ts para os links do client baterem
+// com as páginas geradas no servidor.
+function slugify(input: string): string {
+  return (input || '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80)
+    .replace(/-+$/g, '');
+}
 
 interface CachedData {
   timestamp: number;
@@ -50,15 +67,18 @@ export async function fetchStock(): Promise<Vehicle[]> {
 
         const valorRaw = getTag('valor');
         const price = parseFloat(valorRaw.replace(',', '.') || '0');
+        const id = getTag('id') || String(i);
+        const description = getTag('descricao');
 
         vehicles.push({
-            id: getTag('id') || String(i),
-            description: getTag('descricao'),
+            id,
+            description,
             year: getTag('ano'),
             price: price,
             priceFormatted: price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
             image: firstImage || 'https://via.placeholder.com/600x400?text=Manos+Veículos',
-            km: getTag('km') ? `${getTag('km')} km` : '0 km'
+            km: getTag('km') ? `${getTag('km')} km` : '0 km',
+            link: `${SITE_URL}/estoque/${slugify(description)}-${id}`
         });
     }
 
