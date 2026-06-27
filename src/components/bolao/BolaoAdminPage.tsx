@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Lock, Trophy, Loader2, CheckCircle2, Users, Send, Trash2 } from 'lucide-react';
 import Toast, { useToast } from './Toast';
 import { fetchPalpites, finalizarJogo, deletePalpite, type Palpite } from '../../services/bolaoService';
+import japanFlag from './japan-flag.png';
 import scotlandFlag from './scotland-flag.png';
 import haitiCrest from './haiti-crest.png';
 import moroccoFlag from './morocco-flag.png';
@@ -19,7 +20,7 @@ export default function BolaoAdminPage() {
   const [placarAdversario, setPlacarAdversario] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFinalized, setIsFinalized] = useState(false);
-  const [activeGameTab, setActiveGameTab] = useState<'escocia' | 'haiti' | 'marrocos'>('escocia');
+  const [activeGameTab, setActiveGameTab] = useState<'japao' | 'escocia' | 'haiti' | 'marrocos'>('japao');
   const { toast, showToast, hideToast } = useToast();
 
   const handleLogin = (e: React.FormEvent) => {
@@ -57,8 +58,8 @@ export default function BolaoAdminPage() {
       return;
     }
 
-    if (activeGameTab !== 'escocia') {
-      showToast('Apenas o jogo atual (Escócia) pode ser finalizado agora.', 'error');
+    if (activeGameTab !== 'japao') {
+      showToast('Apenas o jogo atual (Japão) pode ser finalizado agora.', 'error');
       return;
     }
 
@@ -88,7 +89,7 @@ export default function BolaoAdminPage() {
   };
 
   // Separando os palpites por jogo
-  const gameKeyword = activeGameTab === 'escocia' ? 'Escócia' : activeGameTab === 'haiti' ? 'Haiti' : 'Marrocos';
+  const gameKeyword = activeGameTab === 'japao' ? 'Japão' : activeGameTab === 'escocia' ? 'Escócia' : activeGameTab === 'haiti' ? 'Haiti' : 'Marrocos';
 
   const activePalpites = useMemo(() => {
     return palpites.filter(p => {
@@ -98,8 +99,8 @@ export default function BolaoAdminPage() {
   }, [palpites, gameKeyword]);
 
   const activeOpponentName = gameKeyword;
-  const activeOpponentCode = activeGameTab === 'escocia' ? 'ESC' : activeGameTab === 'haiti' ? 'HT' : 'MA';
-  const activeOpponentFlagSrc = activeGameTab === 'escocia' ? scotlandFlag : activeGameTab === 'haiti' ? haitiCrest : moroccoFlag;
+  const activeOpponentCode = activeGameTab === 'japao' ? 'JP' : activeGameTab === 'escocia' ? 'ESC' : activeGameTab === 'haiti' ? 'HT' : 'MA';
+  const activeOpponentFlagSrc = activeGameTab === 'japao' ? japanFlag : activeGameTab === 'escocia' ? scotlandFlag : activeGameTab === 'haiti' ? haitiCrest : moroccoFlag;
 
   // Check if current tab is finalized
   const isCurrentGameFinalized = useMemo(() => {
@@ -185,14 +186,24 @@ export default function BolaoAdminPage() {
         {/* Game Tabs */}
         <div className="flex bg-[#161616] border border-white/5 p-1 rounded-2xl gap-1">
           <button
-            onClick={() => { setActiveGameTab('escocia'); setPlacarBrasil(''); setPlacarAdversario(''); setIsFinalized(false); }}
+            onClick={() => { setActiveGameTab('japao'); setPlacarBrasil(''); setPlacarAdversario(''); setIsFinalized(false); }}
             className={`flex-1 py-2.5 flex items-center justify-center gap-1.5 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-xl transition-all ${
-              activeGameTab === 'escocia'
+              activeGameTab === 'japao'
                 ? 'bg-manos-red text-white shadow-lg shadow-manos-red/20'
                 : 'text-white/40 hover:text-white/70'
             }`}
           >
-            <img src={scotlandFlag} alt="Escócia" className="w-4 h-3 object-cover rounded-sm" /> Escócia (Atual)
+            <img src={japanFlag} alt="Japão" className="w-4 h-3 object-cover rounded-sm" /> Japão
+          </button>
+          <button
+            onClick={() => { setActiveGameTab('escocia'); setPlacarBrasil(''); setPlacarAdversario(''); setIsFinalized(false); }}
+            className={`flex-1 py-2.5 flex items-center justify-center gap-1.5 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-xl transition-all ${
+              activeGameTab === 'escocia'
+                ? 'bg-white/10 text-white'
+                : 'text-white/40 hover:text-white/70'
+            }`}
+          >
+            <img src={scotlandFlag} alt="Escócia" className="w-4 h-3 object-cover rounded-sm" /> Escócia
           </button>
           <button
             onClick={() => { setActiveGameTab('haiti'); setPlacarBrasil(''); setPlacarAdversario(''); setIsFinalized(false); }}
@@ -218,7 +229,7 @@ export default function BolaoAdminPage() {
 
         {/* Finalizar Jogo */}
         <AnimatePresence mode="wait">
-          {!isCurrentGameFinalized && !isFinalized && activeGameTab === 'escocia' ? (
+          {!isCurrentGameFinalized && !isFinalized && activeGameTab === 'japao' ? (
             <motion.div
               key="finalizar"
               initial={{ opacity: 0, y: 10 }}

@@ -2,16 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Loader2, Clock, Trophy, AlertCircle, CheckCircle2 } from 'lucide-react';
 import brazilFlag from './brazil-flag.png';
-import scotlandFlag from './scotland-flag.png';
+import japanFlag from './japan-flag.png';
 
 interface StepPalpiteProps {
   onSubmit: (nome: string, whatsapp: string, placarBrasil: number, placarHaiti: number) => void;
   isLoading: boolean;
 }
 
-// Encerramento das inscrições: hoje, 24/06/2026 às 19h00 (horário de Brasília).
-// Lembre-se: 19:00 no Brasil (UTC-3) = 22:00 do MESMO dia em UTC.
-const DEADLINE = new Date('2026-06-24T22:00:00.000Z');
+// Encerramento das inscrições: 29/06/2026 às 14h00 (horário de Brasília),
+// no apito inicial de Brasil x Japão.
+// Lembre-se: 14:00 no Brasil (UTC-3) = 17:00 do MESMO dia em UTC.
+const DEADLINE = new Date('2026-06-29T17:00:00.000Z');
 
 export default function StepPalpite({ onSubmit, isLoading }: StepPalpiteProps) {
   const [nome, setNome] = useState('');
@@ -83,7 +84,7 @@ export default function StepPalpite({ onSubmit, isLoading }: StepPalpiteProps) {
             Inscrições <span className="text-manos-red">Encerradas!</span>
           </h2>
           <p className="text-sm text-white/50 leading-relaxed max-w-xs mx-auto">
-            O jogo já vai começar. As inscrições foram encerradas às 19h.
+            O jogo já vai começar. As inscrições foram encerradas às 14h.
           </p>
         </div>
 
@@ -118,7 +119,7 @@ export default function StepPalpite({ onSubmit, isLoading }: StepPalpiteProps) {
         </h2>
 
         <p className="text-xs text-white/40 uppercase tracking-widest font-black">
-          Brasil x Escócia
+          Brasil x Japão
         </p>
       </div>
 
@@ -222,12 +223,12 @@ export default function StepPalpite({ onSubmit, isLoading }: StepPalpiteProps) {
             }`}
           >
             <img
-              src={scotlandFlag}
-              alt="Escócia"
+              src={japanFlag}
+              alt="Japão"
               className="w-16 h-16 sm:w-20 sm:h-20 object-contain drop-shadow-[0_4px_12px_rgba(237,28,36,0.35)]"
             />
             <span className="text-xs font-black uppercase tracking-widest text-manos-red">
-              Escócia
+              Japão
             </span>
             <input
               type="text"
