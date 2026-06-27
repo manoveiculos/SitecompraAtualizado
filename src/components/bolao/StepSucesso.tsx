@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { CheckCircle2, Car, ExternalLink } from 'lucide-react';
 import brazilFlag from './brazil-flag.png';
-import scotlandFlag from './scotland-flag.png';
+import japanFlag from './japan-flag.png';
 
 interface StepSucessoProps {
   nome: string;
@@ -123,7 +123,7 @@ export default function StepSucesso({ nome, placarBrasil, placarHaiti }: StepSuc
               </div>
               <span className="text-lg font-black text-white/20">×</span>
               <div className="text-center">
-                <img src={scotlandFlag} alt="Escócia" className="w-9 h-7 object-contain inline-block" />
+                <img src={japanFlag} alt="Japão" className="w-9 h-7 object-contain inline-block" />
                 <p className="text-2xl font-black text-white">{placarHaiti}</p>
               </div>
             </div>

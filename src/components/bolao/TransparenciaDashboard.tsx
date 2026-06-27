@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import type { Palpite } from '../../services/bolaoService';
+import japanFlag from './japan-flag.png';
 import scotlandFlag from './scotland-flag.png';
 import haitiCrest from './haiti-crest.png';
 import moroccoFlag from './morocco-flag.png';
@@ -65,7 +66,7 @@ export default function TransparenciaDashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 8;
-  const [activeGameTab, setActiveGameTab] = useState<'escocia' | 'haiti' | 'marrocos'>('escocia');
+  const [activeGameTab, setActiveGameTab] = useState<'japao' | 'escocia' | 'haiti' | 'marrocos'>('japao');
 
   const fetchData = async () => {
     setLoading(true);
@@ -101,7 +102,25 @@ export default function TransparenciaDashboard() {
 
   // --- SEPARATE GAMES ---
 
-  // ESCÓCIA (Current Game)
+  // JAPÃO (Current Game)
+  const officialResultJapao = useMemo(() => {
+    return palpites.find(p => p.protocolo?.startsWith('RESULTADO') && p.palpite.includes('Japão'));
+  }, [palpites]);
+
+  const userPalpitesJapao = useMemo(() => {
+    return dedupeBySuffix(palpites.filter(p => !p.protocolo?.startsWith('RESULTADO') && p.palpite.includes('Japão')));
+  }, [palpites]);
+
+  const winnersJapao = useMemo(() => {
+    if (!officialResultJapao) return [];
+    const matched = userPalpitesJapao.filter(p =>
+      p.placar_brasil === officialResultJapao.placar_brasil &&
+      p.placar_adversario === officialResultJapao.placar_adversario
+    );
+    return matched.length > 0 ? [matched[matched.length - 1]] : [];
+  }, [userPalpitesJapao, officialResultJapao]);
+
+  // ESCÓCIA (Past Game)
   const officialResultEscocia = useMemo(() => {
     return palpites.find(p => p.protocolo?.startsWith('RESULTADO') && p.palpite.includes('Escócia'));
   }, [palpites]);
@@ -159,11 +178,11 @@ export default function TransparenciaDashboard() {
   }, [userPalpitesMarrocos, officialResultMarrocos]);
 
   // Active Context Based on Tab
-  const activePalpites = activeGameTab === 'escocia' ? userPalpitesEscocia : activeGameTab === 'haiti' ? userPalpitesHaiti : userPalpitesMarrocos;
-  const activeOfficialResult = activeGameTab === 'escocia' ? officialResultEscocia : activeGameTab === 'haiti' ? officialResultHaiti : officialResultMarrocos;
-  const activeWinners = activeGameTab === 'escocia' ? winnersEscocia : activeGameTab === 'haiti' ? winnersHaiti : winnersMarrocos;
-  const activeOpponentName = activeGameTab === 'escocia' ? 'Escócia' : activeGameTab === 'haiti' ? 'Haiti' : 'Marrocos';
-  const activeOpponentFlagSrc = activeGameTab === 'escocia' ? scotlandFlag : activeGameTab === 'haiti' ? haitiCrest : moroccoFlag;
+  const activePalpites = activeGameTab === 'japao' ? userPalpitesJapao : activeGameTab === 'escocia' ? userPalpitesEscocia : activeGameTab === 'haiti' ? userPalpitesHaiti : userPalpitesMarrocos;
+  const activeOfficialResult = activeGameTab === 'japao' ? officialResultJapao : activeGameTab === 'escocia' ? officialResultEscocia : activeGameTab === 'haiti' ? officialResultHaiti : officialResultMarrocos;
+  const activeWinners = activeGameTab === 'japao' ? winnersJapao : activeGameTab === 'escocia' ? winnersEscocia : activeGameTab === 'haiti' ? winnersHaiti : winnersMarrocos;
+  const activeOpponentName = activeGameTab === 'japao' ? 'Japão' : activeGameTab === 'escocia' ? 'Escócia' : activeGameTab === 'haiti' ? 'Haiti' : 'Marrocos';
+  const activeOpponentFlagSrc = activeGameTab === 'japao' ? japanFlag : activeGameTab === 'escocia' ? scotlandFlag : activeGameTab === 'haiti' ? haitiCrest : moroccoFlag;
 
   // Search filter
   const filteredPalpites = useMemo(() => {
@@ -245,14 +264,24 @@ export default function TransparenciaDashboard() {
       {/* Game Tabs */}
       <div className="flex bg-[#161616] border border-white/5 p-1 rounded-2xl gap-1">
         <button
-          onClick={() => setActiveGameTab('escocia')}
+          onClick={() => setActiveGameTab('japao')}
           className={`flex-1 py-2.5 flex items-center justify-center gap-1.5 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-xl transition-all ${
-            activeGameTab === 'escocia'
+            activeGameTab === 'japao'
               ? 'bg-manos-red text-white shadow-lg shadow-manos-red/20'
               : 'text-white/40 hover:text-white/70'
           }`}
         >
-          <img src={scotlandFlag} alt="Escócia" className="w-4 h-3 object-cover rounded-sm" /> Escócia (Atual)
+          <img src={japanFlag} alt="Japão" className="w-4 h-3 object-cover rounded-sm" /> Japão
+        </button>
+        <button
+          onClick={() => setActiveGameTab('escocia')}
+          className={`flex-1 py-2.5 flex items-center justify-center gap-1.5 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-xl transition-all ${
+            activeGameTab === 'escocia'
+              ? 'bg-white/10 text-white'
+              : 'text-white/40 hover:text-white/70'
+          }`}
+        >
+          <img src={scotlandFlag} alt="Escócia" className="w-4 h-3 object-cover rounded-sm" /> Escócia
         </button>
         <button
           onClick={() => setActiveGameTab('haiti')}
