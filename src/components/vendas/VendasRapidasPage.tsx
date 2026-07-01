@@ -470,7 +470,7 @@ export default function VendasRapidasPage() {
               </div>
 
               <div className="space-y-3 max-w-xs mx-auto pt-2">
-                <a href="https://manosveiculos.com.br" className="btn-manos">
+                <a href="/estoque" className="btn-manos">
                   <Car className="w-5 h-5" /> Ver carros à venda
                 </a>
               </div>
