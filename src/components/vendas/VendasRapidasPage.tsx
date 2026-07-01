@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Loader2, ArrowRight, CheckCircle2, AlertCircle, Car, Search,
-  ShieldCheck, Banknote, Clock, Lock, Gauge, Palette, Tag,
+  ShieldCheck, Banknote, Home, Clock, Lock, Gauge, Palette, Tag,
 } from 'lucide-react';
 import { registrarLeadVenda, consultarPlaca, enviarVenda, type VeiculoPlaca } from '../../services/vendasService';
 
@@ -166,7 +166,7 @@ export default function VendasRapidasPage() {
               <div className="grid grid-cols-2 gap-3 max-w-sm mx-auto">
                 {[
                   { icon: <ShieldCheck className="w-4 h-4 text-green-400" />, t: 'Avaliação gratuita' },
-                  { icon: <Banknote className="w-4 h-4 text-green-400" />, t: 'Pagamento à vista' },
+                  { icon: <Home className="w-4 h-4 text-green-400" />, t: 'Venda sem sair de casa' },
                   { icon: <Clock className="w-4 h-4 text-green-400" />, t: 'Retorno em minutos' },
                   { icon: <Lock className="w-4 h-4 text-green-400" />, t: 'Processo 100% seguro' },
                 ].map((v) => (
@@ -458,7 +458,15 @@ export default function VendasRapidasPage() {
       </main>
 
       <div className="sticky-footer">
-        <div className="text-center py-2">
+        <div className="text-center py-2 space-y-1.5">
+          <a
+            href="/politica-de-privacidade"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="min-h-0 inline-block text-[10px] text-white/40 underline underline-offset-2 hover:text-white/70 transition-colors"
+          >
+            Política de Privacidade
+          </a>
           <p className="text-[9px] text-white/10 uppercase tracking-[0.3em] font-black italic">
             Manos Veículos • Compra e Venda
           </p>

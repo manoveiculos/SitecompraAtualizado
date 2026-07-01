@@ -8,6 +8,7 @@ import {
   renderVehicle,
   renderAbout,
   renderFAQ,
+  renderPrivacy,
   renderLlms,
   renderSitemap,
   renderRobots,
@@ -247,6 +248,13 @@ async function startServer() {
       .set("Content-Type", "text/html; charset=utf-8")
       .set("Cache-Control", "public, max-age=3600")
       .send(renderFAQ());
+  });
+
+  app.get("/politica-de-privacidade", (_req, res) => {
+    res
+      .set("Content-Type", "text/html; charset=utf-8")
+      .set("Cache-Control", "public, max-age=3600")
+      .send(renderPrivacy());
   });
 
   app.get("/llms.txt", async (_req, res) => {

@@ -577,6 +577,62 @@ export function renderFAQ(): string {
   });
 }
 
+export function renderPrivacy(): string {
+  const canonical = `${SITE_URL}/politica-de-privacidade`;
+  const body = `
+  <nav class="bc"><a href="/estoque">Início</a> › <span class="muted">Política de Privacidade</span></nav>
+  <h1>Política de Privacidade</h1>
+  <p class="muted">Última atualização: julho de 2026. Esta política explica como a ${escHtml(DEALER.legalName)} coleta, usa e protege seus dados pessoais, em conformidade com a Lei Geral de Proteção de Dados (LGPD — Lei nº 13.709/2018).</p>
+
+  <h2>1. Quem somos</h2>
+  <p>A ${escHtml(DEALER.name)} é uma concessionária de veículos seminovos localizada em ${escHtml(DEALER.street)}, ${escHtml(DEALER.city)}/${DEALER.region}, ${escHtml(DEALER.postalCode)}. Somos a controladora dos dados coletados neste site.</p>
+
+  <h2>2. Dados que coletamos</h2>
+  <p>Ao preencher nosso formulário de avaliação para venda do seu veículo, coletamos:</p>
+  <ul>
+    <li><strong>Dados de contato:</strong> nome, telefone e cidade.</li>
+    <li><strong>Dados do veículo:</strong> placa, marca, modelo, ano, quilometragem, cor e o valor desejado.</li>
+  </ul>
+  <p>Também podemos coletar automaticamente dados de navegação (endereço IP, tipo de dispositivo e páginas visitadas) por meio de cookies e tecnologias similares.</p>
+
+  <h2>3. Como usamos seus dados</h2>
+  <ul>
+    <li>Avaliar seu veículo e elaborar uma proposta comercial de compra.</li>
+    <li>Permitir que nossa equipe comercial entre em contato por telefone.</li>
+    <li>Melhorar nossos serviços e a sua experiência no site.</li>
+    <li>Mensurar e otimizar nossas campanhas de anúncios.</li>
+  </ul>
+
+  <h2>4. Cookies e anúncios (Google e Meta/Facebook)</h2>
+  <p>Utilizamos cookies e pixels de rastreamento, que podem incluir Google Ads, Google Analytics e Meta (Facebook/Instagram) Pixel, para medir a eficácia dos nossos anúncios e exibir ofertas relevantes. Esses parceiros tratam dados conforme suas próprias políticas de privacidade. Você pode gerenciar ou bloquear cookies nas configurações do seu navegador.</p>
+
+  <h2>5. Compartilhamento de dados</h2>
+  <p>Nós não vendemos seus dados pessoais. Podemos compartilhá-los com prestadores de serviço que nos apoiam (por exemplo, ferramentas de CRM e automação) e com plataformas de anúncios (Google e Meta), exclusivamente para as finalidades descritas acima e com as devidas medidas de segurança.</p>
+
+  <h2>6. Por quanto tempo guardamos</h2>
+  <p>Mantemos seus dados apenas pelo tempo necessário às finalidades descritas ou conforme exigido por lei. Depois disso, eles são excluídos ou anonimizados.</p>
+
+  <h2>7. Seus direitos (LGPD)</h2>
+  <p>Você pode, a qualquer momento, solicitar: confirmação e acesso aos seus dados, correção, anonimização, portabilidade, exclusão e revogação do consentimento. Para exercer esses direitos, entre em contato conosco pelos canais abaixo.</p>
+
+  <h2>8. Segurança</h2>
+  <p>Adotamos medidas técnicas e organizacionais para proteger seus dados contra acesso não autorizado, perda ou alteração.</p>
+
+  <h2>9. Contato</h2>
+  <p>${escHtml(DEALER.name)}<br>${escHtml(DEALER.street)}, ${escHtml(DEALER.city)}/${DEALER.region}, ${escHtml(DEALER.postalCode)}<br>Telefone: ${escHtml(DEALER.telephone)}</p>
+
+  <a class="cta" href="/vendasrapidas">Voltar e avaliar meu carro</a>`;
+
+  return layout({
+    title: 'Política de Privacidade — Manos Veículos',
+    description: 'Como a Manos Veículos coleta, usa e protege seus dados pessoais (LGPD), incluindo cookies e anúncios do Google e da Meta/Facebook.',
+    canonical,
+    ogImage: DEALER.logo,
+    jsonLdBlocks: [],
+    body,
+  });
+}
+
 export function renderLlms(vehicles: FeedVehicle[]): string {
   return `# Manos Veículos
 
