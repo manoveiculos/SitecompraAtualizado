@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Loader2, ArrowRight, CheckCircle2, AlertCircle, Car, Search,
-  ShieldCheck, Banknote, Clock, Zap, Gauge, Palette, Tag,
+  ShieldCheck, Banknote, Clock, Lock, Gauge, Palette, Tag,
 } from 'lucide-react';
 import { registrarLeadVenda, consultarPlaca, enviarVenda, type VeiculoPlaca } from '../../services/vendasService';
 
@@ -34,8 +34,6 @@ function onlyNumber(masked: string): number {
   const d = masked.replace(/\D/g, '');
   return d ? parseInt(d, 10) : 0;
 }
-
-const STEP_LABELS = ['Contato', 'Placa', 'Veículo', 'Pronto'];
 
 export default function VendasRapidasPage() {
   const [step, setStep] = useState(1);
@@ -127,28 +125,8 @@ export default function VendasRapidasPage() {
       <div className="bolao-glow" />
 
       {/* Header */}
-      <header className="p-4 flex flex-col items-center gap-4 z-20 backdrop-blur-md bg-manos-dark/50 lg:rounded-t-[32px]">
-        <img src={LOGO} alt="Manos Veículos" className="h-8 w-auto object-contain" />
-        <div className="w-full flex items-center justify-center gap-3">
-          {STEP_LABELS.map((label, i) => (
-            <div key={label} className="flex items-center gap-3">
-              <div className="flex flex-col items-center gap-1">
-                <motion.div
-                  initial={false}
-                  animate={{
-                    scale: i + 1 === step ? 1.2 : 1,
-                    backgroundColor: i + 1 < step ? '#22c55e' : i + 1 === step ? '#ED1C24' : 'rgba(255,255,255,0.1)',
-                  }}
-                  className="w-3 h-3 rounded-full"
-                  transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-                />
-              </div>
-              {i < STEP_LABELS.length - 1 && (
-                <div className={`w-6 h-0.5 rounded-full ${i + 1 < step ? 'bg-green-500/50' : 'bg-white/10'}`} />
-              )}
-            </div>
-          ))}
-        </div>
+      <header className="p-4 flex items-center justify-center z-20 backdrop-blur-md bg-manos-dark/50 lg:rounded-t-[32px]">
+        <img src={LOGO} alt="Manos Veículos" className="h-9 w-auto object-contain" />
       </header>
 
       <main className="scroll-container custom-scrollbar">
@@ -164,10 +142,10 @@ export default function VendasRapidasPage() {
               className="space-y-7"
             >
               <div className="text-center space-y-4">
-                <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-green-500/10 border border-green-500/20 rounded-full">
+                <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-green-500/10 border border-green-500/40 rounded-full shadow-[0_0_20px_rgba(34,197,94,0.15)]">
                   <Banknote className="w-3.5 h-3.5 text-green-400" />
                   <span className="text-[10px] font-black text-green-400 uppercase tracking-widest">
-                    Compramos seu carro • Pagamento à vista
+                    Compramos seu carro • Pagamento à vista via PIX
                   </span>
                 </div>
 
@@ -178,19 +156,19 @@ export default function VendasRapidasPage() {
                 </h1>
 
                 <p className="text-sm text-white/60 leading-relaxed max-w-sm mx-auto">
-                  Faça uma avaliação em <span className="text-white font-bold">1 minuto</span>. Nossa equipe de compras
-                  te chama no WhatsApp com uma <span className="text-white font-bold">proposta justa</span> — sem
-                  anúncio, sem espera e sem burocracia.
+                  Faça uma <span className="text-white font-bold">avaliação gratuita em 1 minuto</span>. Preencha os
+                  dados do seu veículo abaixo e receba nossa oferta comercial direto no seu telefone. Sem anúncios,
+                  sem lojistas incomodando e sem burocracia.
                 </p>
               </div>
 
               {/* value props */}
               <div className="grid grid-cols-2 gap-3 max-w-sm mx-auto">
                 {[
-                  { icon: <ShieldCheck className="w-4 h-4 text-green-400" />, t: 'Avaliação justa' },
+                  { icon: <ShieldCheck className="w-4 h-4 text-green-400" />, t: 'Avaliação gratuita' },
                   { icon: <Banknote className="w-4 h-4 text-green-400" />, t: 'Pagamento à vista' },
-                  { icon: <Clock className="w-4 h-4 text-yellow-400" />, t: 'Sem espera' },
-                  { icon: <Zap className="w-4 h-4 text-yellow-400" />, t: 'Sem anúncio' },
+                  { icon: <Clock className="w-4 h-4 text-green-400" />, t: 'Retorno em minutos' },
+                  { icon: <Lock className="w-4 h-4 text-green-400" />, t: 'Processo 100% seguro' },
                 ].map((v) => (
                   <div key={v.t} className="card-glass p-3 flex items-center gap-2">
                     {v.icon}
@@ -211,7 +189,7 @@ export default function VendasRapidasPage() {
                     onChange={(e) => setNome(e.target.value)}
                   />
                 </Field>
-                <Field label="WhatsApp (com DDD)">
+                <Field label="Telefone (com DDD)">
                   <input
                     type="tel"
                     required
@@ -243,7 +221,7 @@ export default function VendasRapidasPage() {
                   {leadLoading ? (
                     <><Loader2 className="w-5 h-5 animate-spin" /> Enviando...</>
                   ) : (
-                    <>Quero vender meu carro <ArrowRight className="w-5 h-5" /></>
+                    <>Quero receber minha avaliação <ArrowRight className="w-5 h-5" /></>
                   )}
                 </button>
                 <p className="text-center text-[9px] text-white/20 uppercase tracking-[0.3em] font-black">
@@ -464,7 +442,7 @@ export default function VendasRapidasPage() {
                 </h2>
                 <p className="text-sm text-white/60 leading-relaxed max-w-xs mx-auto">
                   Nossa <span className="text-white font-bold">equipe de compras</span> já vai analisar os dados e
-                  entra em contato pelo <span className="text-white font-bold">WhatsApp</span> com a proposta.
+                  entra em contato pelo <span className="text-white font-bold">telefone</span> com a sua proposta.
                   Fique de olho! 🚗💨
                 </p>
               </div>
