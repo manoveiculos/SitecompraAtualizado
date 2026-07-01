@@ -32,7 +32,7 @@ export default function StepSucesso({ nome, placarBrasil, placarHaiti }: StepSuc
         if (prev <= 1) {
           clearInterval(countdownInterval);
           // Redirect to main catalog
-          window.location.href = 'https://manosveiculos.com.br/estoque/';
+          window.location.href = 'https://manosveiculos.com.br';
           return 0;
         }
         return prev - 1;
@@ -46,7 +46,7 @@ export default function StepSucesso({ nome, placarBrasil, placarHaiti }: StepSuc
   }, []);
 
   const handleGoToCatalog = () => {
-    window.location.href = 'https://manosveiculos.com.br/estoque/';
+    window.location.href = 'https://manosveiculos.com.br';
   };
 
   const handleGoToSite = () => {

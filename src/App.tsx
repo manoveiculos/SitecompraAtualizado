@@ -343,8 +343,8 @@ export default function App() {
 
               <div className="px-4 space-y-4">
                 <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/20 text-center">Enquanto isso, explore:</p>
-                <a 
-                  href="https://manosveiculos.com.br/estoque/"
+                <a
+                  href="https://manosveiculos.com.br"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-full bg-white/5 border border-white/10 p-6 rounded-2xl flex items-center gap-4 group hover:bg-white/10 transition-all text-left shadow-xl shadow-black/20"

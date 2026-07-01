@@ -53,6 +53,8 @@ export default function VendasRapidasPage() {
 
   // step 3
   const [veiculo, setVeiculo] = useState<VeiculoPlaca | null>(null);
+  const [marcaManual, setMarcaManual] = useState('');
+  const [modeloManual, setModeloManual] = useState('');
   const [km, setKm] = useState('');
   const [cor, setCor] = useState('');
   const [valor, setValor] = useState('');
@@ -60,7 +62,11 @@ export default function VendasRapidasPage() {
 
   const rawPhone = telefone.replace(/\D/g, '');
   const contatoValido = nome.trim().length >= 3 && rawPhone.length >= 10 && cidade.trim().length >= 2;
-  const veiculoValido = km.trim() !== '' && cor.trim() !== '' && valor.trim() !== '';
+  // Sem placa (ou placa sem retorno): pedimos marca e modelo manualmente.
+  const precisaMarcaModelo = !veiculo || (!veiculo.marca && !veiculo.modelo);
+  const veiculoValido =
+    km.trim() !== '' && cor.trim() !== '' && valor.trim() !== '' &&
+    (!precisaMarcaModelo || (marcaManual.trim() !== '' && modeloManual.trim() !== ''));
 
   // ---- handlers -----------------------------------------------------------
   const handleContato = async (e: React.FormEvent) => {
@@ -101,8 +107,8 @@ export default function VendasRapidasPage() {
       telefone: rawPhone,
       cidade: cidade.trim(),
       placa: placa || null,
-      marca: veiculo?.marca || null,
-      modelo: veiculo?.modelo || null,
+      marca: veiculo?.marca || marcaManual.trim() || null,
+      modelo: veiculo?.modelo || modeloManual.trim() || null,
       versao: veiculo?.versao || null,
       ano: veiculo?.ano || null,
       combustivel: veiculo?.combustivel || null,
@@ -364,6 +370,30 @@ export default function VendasRapidasPage() {
               )}
 
               <form onSubmit={handleEnviar} className="space-y-4 max-w-sm mx-auto">
+                {precisaMarcaModelo && (
+                  <>
+                    <Field label="Marca" icon={<Car className="w-4 h-4 text-white/30" />}>
+                      <input
+                        type="text"
+                        required
+                        className="input-manos"
+                        placeholder="Ex.: Volkswagen"
+                        value={marcaManual}
+                        onChange={(e) => setMarcaManual(e.target.value)}
+                      />
+                    </Field>
+                    <Field label="Modelo" icon={<Car className="w-4 h-4 text-white/30" />}>
+                      <input
+                        type="text"
+                        required
+                        className="input-manos"
+                        placeholder="Ex.: Gol 1.6 Highline"
+                        value={modeloManual}
+                        onChange={(e) => setModeloManual(e.target.value)}
+                      />
+                    </Field>
+                  </>
+                )}
                 <Field label="Quilometragem (km)" icon={<Gauge className="w-4 h-4 text-white/30" />}>
                   <input
                     type="text"
@@ -440,7 +470,7 @@ export default function VendasRapidasPage() {
               </div>
 
               <div className="space-y-3 max-w-xs mx-auto pt-2">
-                <a href="https://manosveiculos.com.br/estoque/" className="btn-manos">
+                <a href="https://manosveiculos.com.br" className="btn-manos">
                   <Car className="w-5 h-5" /> Ver carros à venda
                 </a>
               </div>
