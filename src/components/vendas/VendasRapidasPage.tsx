@@ -2,12 +2,11 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Loader2, ArrowRight, CheckCircle2, AlertCircle, Car, Search,
-  ShieldCheck, Banknote, Clock, Zap, MessageCircle, Gauge, Palette, Tag,
+  ShieldCheck, Banknote, Clock, Zap, Gauge, Palette, Tag,
 } from 'lucide-react';
 import { registrarLeadVenda, consultarPlaca, enviarVenda, type VeiculoPlaca } from '../../services/vendasService';
 
 const LOGO = 'https://manosveiculos.com.br/wp-content/uploads/2024/02/LogoManos.png';
-const WHATSAPP_URL = 'https://wa.me/5547988467855';
 
 // ---- formatters -----------------------------------------------------------
 function formatPhone(val: string): string {
@@ -441,14 +440,8 @@ export default function VendasRapidasPage() {
               </div>
 
               <div className="space-y-3 max-w-xs mx-auto pt-2">
-                <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="btn-manos no-underline">
-                  <MessageCircle className="w-5 h-5" /> Falar agora no WhatsApp
-                </a>
-                <a
-                  href="https://manosveiculos.com.br/estoque/"
-                  className="w-full py-4 bg-white/5 border border-white/10 text-white/60 font-bold text-sm uppercase rounded-2xl hover:bg-white/10 transition-all flex items-center justify-center gap-2 no-underline"
-                >
-                  <Car className="w-4 h-4" /> Ver carros à venda
+                <a href="https://manosveiculos.com.br/estoque/" className="btn-manos">
+                  <Car className="w-5 h-5" /> Ver carros à venda
                 </a>
               </div>
             </motion.div>
