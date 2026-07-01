@@ -64,6 +64,14 @@
     @apply bg-white/[0.03] backdrop-blur-3xl border border-white/5 rounded-[24px];
   }
 
+  /* Vendas Rápidas — reusable input + primary button */
+  .input-manos {
+    @apply w-full py-5 px-6 bg-[#1A1A1A] border border-white/5 rounded-2xl focus:border-manos-red/40 transition-all outline-none text-base;
+  }
+  .btn-manos {
+    @apply w-full py-5 bg-manos-red text-white font-black text-lg uppercase rounded-2xl shadow-[0_20px_50px_rgba(237,28,36,0.3)] hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-30 disabled:scale-100 flex items-center justify-center gap-3 no-underline;
+  }
+
   .custom-scrollbar::-webkit-scrollbar {
     width: 2px;
   }

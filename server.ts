@@ -142,6 +142,82 @@ async function startServer() {
   });
 
   // -------------------------------------------------------------------------
+  // Vendas Rápidas — funil de compra de veículos (/vendasrapidas).
+  // Lead (nome/telefone/cidade) -> placa (apiplacas) -> detalhes -> finaliza.
+  // -------------------------------------------------------------------------
+  const PLACA_TOKEN = process.env.PLACA_TOKEN || "97e59dd0a4790f25a020ca4623f9a902";
+
+  // Step 1: captura inicial (enviada cedo p/ não perder o contato se desistir).
+  app.post("/api/vendas/lead", async (req, res) => {
+    try {
+      const response = await fetch("https://n8n.drivvoo.com/webhook/2ea982be-39f1-4224-b378-c45dee5230c7", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(req.body),
+      });
+      res.status(response.ok ? 200 : response.status).json({ ok: response.ok });
+    } catch (error) {
+      console.error("Vendas lead proxy error:", error);
+      res.status(500).json({ ok: false, error: "Failed to forward vendas lead" });
+    }
+  });
+
+  // Placa lookup (apiplacas/wdapi2). Token fica no servidor; nunca no client.
+  app.get("/api/placa/:placa", async (req, res) => {
+    try {
+      const placa = String(req.params.placa || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 7);
+      if (!/^[A-Z]{3}[0-9][0-9A-Z][0-9]{2}$/.test(placa)) {
+        return res.status(200).json({ ok: false, error: "Placa inválida. Use o formato ABC1D23 ou ABC1234." });
+      }
+      const r = await fetch(`https://wdapi2.com.br/consulta/${placa}/${PLACA_TOKEN}`);
+      const data: any = await r.json().catch(() => null);
+      if (!data || data.message || (!data.marca && !data.MARCA)) {
+        return res.status(200).json({ ok: false, error: "Não encontramos os dados dessa placa. Você pode seguir sem ela." });
+      }
+      // FIPE: escolhe o maior score (melhor correspondência) p/ valor + versão.
+      let fipeValor = "";
+      let versaoFipe = "";
+      const fipeList = data?.fipe?.dados;
+      if (Array.isArray(fipeList) && fipeList.length) {
+        const best = [...fipeList].sort((a: any, b: any) => (b?.score || 0) - (a?.score || 0))[0];
+        fipeValor = best?.texto_valor || "";
+        versaoFipe = best?.texto_modelo || "";
+      }
+      const veiculo = {
+        marca: data.marca || data.MARCA || "",
+        modelo: data.modelo || data.MODELO || "",
+        versao: versaoFipe || data.VERSAO || data.SUBMODELO || "",
+        ano: data.ano || data.anoModelo || "",
+        cor: data.cor || "",
+        combustivel: data?.extra?.combustivel || "",
+        municipio: data.municipio || data?.extra?.municipio || "",
+        uf: data.uf || data?.extra?.uf_placa || "",
+        fipeValor,
+        logo: data.logo || "",
+      };
+      res.json({ ok: true, veiculo });
+    } catch (error) {
+      console.error("Placa lookup error:", error);
+      res.status(200).json({ ok: false, error: "Erro ao consultar a placa. Você pode seguir sem ela." });
+    }
+  });
+
+  // Final: envia todos os dados coletados p/ a equipe de compras.
+  app.post("/api/vendas/finalizar", async (req, res) => {
+    try {
+      const response = await fetch("https://n8n.drivvoo.com/webhook/b612877b-56f9-4a22-88d2-acd74541c812", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(req.body),
+      });
+      res.status(response.ok ? 200 : response.status).json({ ok: response.ok });
+    } catch (error) {
+      console.error("Vendas finalizar proxy error:", error);
+      res.status(500).json({ ok: false, error: "Failed to forward vendas finalizar" });
+    }
+  });
+
+  // -------------------------------------------------------------------------
   // AEO/SEO server-rendered catalog (indexable by AI engines + crawlers).
   // Registered BEFORE the SPA catch-all so these paths return real HTML/XML.
   // -------------------------------------------------------------------------
