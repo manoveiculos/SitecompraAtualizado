@@ -672,7 +672,7 @@ export default function App() {
               {/* Steps 2-X for Venda */}
               {quiz.type === 'Venda' && quiz.step === 2 && (
                 <div className="space-y-6">
-                  <h2 className="text-3xl font-black tracking-tighter italic uppercase text-center领先">Dados do seu Veículo</h2>
+                  <h2 className="text-3xl font-black tracking-tighter italic uppercase text-center">Dados do seu Veículo</h2>
                   <div className="space-y-4">
                     <div className="space-y-2">
                        <label className="text-[10px] font-black uppercase tracking-widest text-white/20 ml-4">Qual o seu carro? (Marca, Modelo, Versão)</label>

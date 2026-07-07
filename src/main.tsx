@@ -6,6 +6,7 @@ import BolaoAdminPage from './components/bolao/BolaoAdminPage.tsx';
 import TransparenciaPage from './components/bolao/TransparenciaPage.tsx';
 import RadarPage from './components/bolao/RadarPage.tsx';
 import VendasRapidasPage from './components/vendas/VendasRapidasPage.tsx';
+import ErrorBoundary from './components/ErrorBoundary.tsx';
 import './index.css';
 
 function Router() {
@@ -36,6 +37,8 @@ function Router() {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <Router />
+    <ErrorBoundary>
+      <Router />
+    </ErrorBoundary>
   </StrictMode>,
 );
