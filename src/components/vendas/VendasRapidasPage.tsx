@@ -158,13 +158,13 @@ export default function VendasRapidasPage() {
                 <p className="text-sm text-white/60 leading-relaxed max-w-sm mx-auto">
                   <span className="text-white font-bold">Avaliação gratuita em 1 minuto.</span> Preencha abaixo e
                   receba nossa proposta direto no seu telefone. Sem anúncio, sem estranho vendo seu carro
-                  e sem burocracia — a Manos cuida de tudo.
+                  e sem burocracia. A Manos cuida de tudo.
                 </p>
 
                 <div className="flex items-center justify-center gap-1.5 pt-0.5">
                   <Star className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400" />
                   <span className="text-[11px] font-bold text-white/50">
-                    <span className="text-white">4,7</span> no Google · 119 avaliações de quem já vendeu
+                    <span className="text-white">4,7</span> no Google • 119 avaliações de quem já vendeu
                   </span>
                 </div>
               </div>
@@ -256,8 +256,7 @@ export default function VendasRapidasPage() {
                   Qual a <span className="text-manos-red">placa</span> do carro?
                 </h2>
                 <p className="text-sm text-white/50 leading-relaxed max-w-xs mx-auto">
-                  Puxamos a marca, modelo e ano automaticamente pra agilizar. Não tem a placa em mãos?
-                  <span className="text-white/80 font-bold"> Sem problema, é só seguir.</span>
+                  Com a placa a gente já traz <span className="text-white/80 font-bold">marca, modelo, ano e a tabela FIPE</span> do seu carro. Sua avaliação sai mais rápida e mais justa.
                 </p>
               </div>
 
@@ -277,6 +276,14 @@ export default function VendasRapidasPage() {
                   />
                 </div>
 
+                {/* Reforço de segurança — muitos travam aqui com medo de golpe */}
+                <div className="flex items-start gap-2 text-left bg-green-500/5 border border-green-500/20 rounded-xl px-3 py-2.5">
+                  <ShieldCheck className="w-4 h-4 text-green-400 flex-shrink-0 mt-0.5" />
+                  <p className="text-[11px] leading-snug text-white/60">
+                    <span className="text-white/90 font-bold">Loja física em Rio do Sul/SC.</span> Usamos a placa só para identificar o modelo e a FIPE do seu carro. Seus dados ficam protegidos (LGPD).
+                  </p>
+                </div>
+
                 {placaError && (
                   <div className="flex items-start gap-2 text-manos-red text-xs font-bold px-1">
                     <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
@@ -292,12 +299,21 @@ export default function VendasRapidasPage() {
                   )}
                 </button>
 
-                <button
-                  onClick={handleSemPlaca}
-                  className="w-full py-4 bg-white/5 border border-white/10 text-white/60 font-bold text-sm uppercase rounded-2xl hover:bg-white/10 transition-all"
-                >
-                  Continuar sem a placa
-                </button>
+                {/* Opção sem placa — clara para leigos e para quem tem receio */}
+                <div className="pt-1 text-center space-y-2">
+                  <p className="text-xs text-white/50">
+                    Não tem a placa em mãos ou prefere não informar?
+                  </p>
+                  <button
+                    onClick={handleSemPlaca}
+                    className="w-full py-4 bg-white/10 border border-white/20 text-white font-bold text-sm uppercase rounded-2xl hover:bg-white/15 active:scale-[0.98] transition-all"
+                  >
+                    Continuar sem a placa
+                  </button>
+                  <p className="text-[10px] text-white/30 leading-snug">
+                    Sem problema: você digita a marca e o modelo na próxima tela. Leva menos de 1 minuto.
+                  </p>
+                </div>
               </div>
             </motion.div>
           )}
