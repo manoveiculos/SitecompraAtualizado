@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Loader2, ArrowRight, CheckCircle2, AlertCircle, Car, Search,
-  ShieldCheck, Banknote, Home, Clock, Lock, Gauge, Palette, Tag,
+  ShieldCheck, Banknote, Home, Clock, Lock, Gauge, Palette, Tag, Star,
 } from 'lucide-react';
 import { registrarLeadVenda, consultarPlaca, enviarVenda, type VeiculoPlaca } from '../../services/vendasService';
 
@@ -145,21 +145,28 @@ export default function VendasRapidasPage() {
                 <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-green-500/10 border border-green-500/40 rounded-full shadow-[0_0_20px_rgba(34,197,94,0.15)]">
                   <Banknote className="w-3.5 h-3.5 text-green-400" />
                   <span className="text-[10px] font-black text-green-400 uppercase tracking-widest">
-                    Compramos seu carro • Pagamento à vista via PIX
+                    Pagamento à vista no PIX • Sem troca obrigatória
                   </span>
                 </div>
 
                 <h1 className="text-3xl sm:text-4xl font-black tracking-tighter leading-[0.95] italic uppercase">
-                  Venda seu carro
+                  Venda seu carro rápido
                   <br />
-                  <span className="text-manos-red">rápido e sem dor de cabeça</span>
+                  <span className="text-manos-red">e receba à vista no PIX</span>
                 </h1>
 
                 <p className="text-sm text-white/60 leading-relaxed max-w-sm mx-auto">
-                  Faça uma <span className="text-white font-bold">avaliação gratuita em 1 minuto</span>. Preencha os
-                  dados do seu veículo abaixo e receba nossa oferta comercial direto no seu telefone. Sem anúncios,
-                  sem lojistas incomodando e sem burocracia.
+                  <span className="text-white font-bold">Avaliação gratuita em 1 minuto.</span> Preencha abaixo e
+                  receba nossa proposta direto no seu telefone. Sem anúncio, sem estranho vendo seu carro
+                  e sem burocracia — a Manos cuida de tudo.
                 </p>
+
+                <div className="flex items-center justify-center gap-1.5 pt-0.5">
+                  <Star className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400" />
+                  <span className="text-[11px] font-bold text-white/50">
+                    <span className="text-white">4,7</span> no Google · 119 avaliações de quem já vendeu
+                  </span>
+                </div>
               </div>
 
               {/* value props */}
@@ -221,11 +228,11 @@ export default function VendasRapidasPage() {
                   {leadLoading ? (
                     <><Loader2 className="w-5 h-5 animate-spin" /> Enviando...</>
                   ) : (
-                    <>Quero receber minha avaliação <ArrowRight className="w-5 h-5" /></>
+                    <>Quero minha avaliação grátis <ArrowRight className="w-5 h-5" /></>
                   )}
                 </button>
                 <p className="text-center text-[9px] text-white/20 uppercase tracking-[0.3em] font-black">
-                  Seus dados estão seguros • LGPD
+                  Dados protegidos • Sem spam • LGPD
                 </p>
               </form>
             </motion.div>
