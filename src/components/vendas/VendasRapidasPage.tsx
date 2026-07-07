@@ -145,7 +145,7 @@ export default function VendasRapidasPage() {
                 <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-green-500/10 border border-green-500/40 rounded-full shadow-[0_0_20px_rgba(34,197,94,0.15)]">
                   <Banknote className="w-3.5 h-3.5 text-green-400" />
                   <span className="text-[10px] font-black text-green-400 uppercase tracking-widest">
-                    Pagamento à vista no PIX • Sem troca obrigatória
+                    Pagamento à vista no PIX • Avaliação no seu local
                   </span>
                 </div>
 
