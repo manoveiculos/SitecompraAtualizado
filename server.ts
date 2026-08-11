@@ -1,4 +1,5 @@
 
+import "dotenv/config";
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -50,6 +51,11 @@ function generateOtp(): string {
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
+
+  // Em produção o nginx faz proxy reverso para esta porta. Sem isto, req.ip é
+  // sempre 127.0.0.1 — e o IP do visitante é um dos sinais que a Meta usa para
+  // casar o evento do Conversions API com a pessoa certa.
+  app.set("trust proxy", 1);
 
   app.use(express.json());
 

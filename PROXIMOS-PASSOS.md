@@ -65,6 +65,14 @@ ali, troque a chave para a service role e feche o `select`.
 **Conferir:** abrir `/api/health/tracking`. O campo `lead_scores` deve sair de
 "sem registros ainda" para "gravando" depois do primeiro lead.
 
+> **Limpar o registro de teste.** Ao validar a tabela eu gravei uma linha
+> `_smoke_test_` pelo caminho real (REST + chave publishable) para confirmar que
+> o upsert funciona. Ela ainda está lá e apareceria no painel. Rode uma vez:
+>
+> ```sql
+> delete from public.lead_scores where lead_id = '_smoke_test_';
+> ```
+
 ---
 
 ## 3. n8n — deduplicar por `lead_id` ⚠️ o mais importante

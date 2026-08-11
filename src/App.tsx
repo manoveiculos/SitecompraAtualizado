@@ -185,13 +185,13 @@ export default function App() {
           // Pede o contato de imediato (com o carro à vista na tela) e só então
           // segue para troca / financiamento / cidade — antes esse visitante
           // caía num formulário nu no passo 9 e virava o lead mais fraco da fila.
-          setQuiz({
+          setQuiz(prev => ({
             step: 5, // troca -> financiamento -> cidade -> confirmação
             type: 'Compra',
-            data: { has_interest: 'Sim', vehicle_id: vehicle.id, origem: 'catalogo' },
+            data: comContato(prev, { has_interest: 'Sim', vehicle_id: vehicle.id, origem: 'catalogo' }),
             selectedVehicle: vehicle,
             fase: 'contato',
-          });
+          }));
         }
       }
     };
@@ -212,43 +212,59 @@ export default function App() {
     }));
   };
 
+  /**
+   * Monta o `data` de um novo trecho do funil PRESERVANDO o contato já digitado.
+   *
+   * Sem isto havia um beco sem saída: depois de dar o telefone, voltar para a
+   * home zerava name/phone enquanto `contatoSalvo` continuava true. A tela final
+   * então pulava o formulário (porque o contato "já existe"), mostrava os dados
+   * em branco e deixava o botão Finalizar desabilitado para sempre — o cliente
+   * ficava preso e o lead completo nunca chegava ao consultor.
+   */
+  const comContato = (prev: QuizState, extra: Record<string, any> = {}) =>
+    prev.data.name ? { name: prev.data.name, phone: prev.data.phone, ...extra } : { ...extra };
+
+  /** Volta ao início mantendo o contato já capturado. */
+  const voltarAoInicio = () =>
+    setQuiz(prev => ({ step: 1, type: null, data: comContato(prev), selectedVehicle: null, fase: 'quiz' }));
+
   /** Carro escolhido direto na home — pula o menu e o passo "qual o seu foco". */
   const escolherDaHome = (vehicle: Vehicle) => {
     trackFunnelStart('Compra');
     trackSelectVehicle(vehicle);
-    setQuiz({
+    setQuiz(prev => ({
       step: 5, // troca -> financiamento -> cidade -> confirmação
       type: 'Compra',
-      data: { has_interest: 'Sim', vehicle_id: vehicle.id, origem: 'home' },
+      data: comContato(prev, { has_interest: 'Sim', vehicle_id: vehicle.id, origem: 'home' }),
       selectedVehicle: vehicle,
       fase: contatoSalvo ? 'quiz' : 'contato',
-    });
+    }));
   };
 
   /** Lista completa do estoque, com a busca já digitada na home preservada. */
   const irParaEstoque = () => {
     trackFunnelStart('Compra');
-    setQuiz({ step: 3, type: 'Compra', data: { has_interest: 'Sim' }, selectedVehicle: null, fase: 'quiz' });
+    setQuiz(prev => ({ step: 3, type: 'Compra', data: comContato(prev, { has_interest: 'Sim' }), selectedVehicle: null, fase: 'quiz' }));
   };
 
   /** Para quem ainda não sabe o modelo: entra pela faixa de preço. */
   const irParaFaixaDePreco = () => {
     trackFunnelStart('Compra');
-    setQuiz({ step: 3, type: 'Compra', data: { has_interest: 'Não' }, selectedVehicle: null, fase: 'quiz' });
+    setQuiz(prev => ({ step: 3, type: 'Compra', data: comContato(prev, { has_interest: 'Não' }), selectedVehicle: null, fase: 'quiz' }));
   };
 
   const handleInitialChoice = (type: LeadType) => {
     trackFunnelStart(type);
-    setQuiz({
+    setQuiz(prev => ({
       step: 2,
       type,
-      data: {},
+      data: comContato(prev),
       selectedVehicle: null,
       // Venda e Financiamento entregam justamente o retorno do consultor, então
       // o contato vem primeiro (mesmo padrão do /vendasrapidas). Compra precisa
       // mostrar carro antes de pedir telefone.
       fase: type === 'Compra' || contatoSalvo ? 'quiz' : 'contato',
-    });
+    }));
   };
 
   const handleDataChange = (field: string, value: any) => {
@@ -310,7 +326,7 @@ export default function App() {
       } else if (quiz.type === 'Compra' && quiz.selectedVehicle) {
         setQuiz(prev => ({ ...prev, fase: 'quiz', step: prev.data.has_interest === 'Sim' ? 3 : 4 }));
       } else {
-        setQuiz({ step: 1, type: null, data: {}, selectedVehicle: null, fase: 'quiz' });
+        voltarAoInicio();
       }
       return;
     }
@@ -318,11 +334,11 @@ export default function App() {
     // Compra entra direto no passo 3 pela home — o passo 2 não existe mais nesse
     // funil, então voltar dali tem que ir para o início.
     if (quiz.step === 3 && quiz.type === 'Compra') {
-      setQuiz({ step: 1, type: null, data: {}, selectedVehicle: null, fase: 'quiz' });
+      voltarAoInicio();
     } else if (quiz.step === 7 && quiz.data.tem_troca === 'Não' && quiz.type === 'Compra') {
       setQuiz(prev => ({ ...prev, step: 5 }));
     } else if (quiz.step === 2) {
-      setQuiz({ step: 1, type: null, data: {}, selectedVehicle: null, fase: 'quiz' });
+      voltarAoInicio();
     } else if (quiz.step > 1) {
       setQuiz(prev => ({ ...prev, step: prev.step - 1 }));
     }
