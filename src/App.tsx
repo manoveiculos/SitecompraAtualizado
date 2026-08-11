@@ -20,20 +20,77 @@ import {
   MapPin,
   Zap,
   Building2,
-  History,
-  LayoutGrid
+  LayoutGrid,
+  Phone
 } from 'lucide-react';
 import { cn } from './lib/utils';
-import { createLead, testConnection } from './lib/leads';
+import { createLead, registrarLeadParcial, novoLeadId } from './lib/leads';
+import {
+  trackFunnelStart,
+  trackFunnelStep,
+  trackViewVehicle,
+  trackSelectVehicle,
+  trackLead,
+  trackLeadParcial,
+  trackContato,
+} from './lib/tracking';
 import { fetchStock, type Vehicle } from './services/stockService';
+import { lojaAberta, promessaDeRetorno, statusConsultores } from './lib/horario';
 
 type LeadType = 'Compra' | 'Venda' | 'Financiamento';
 
+/**
+ * `fase` roda por fora da numeração de passos de propósito: a tela de contato
+ * entra em momentos diferentes de cada funil (logo de cara em Venda e
+ * Financiamento; depois de escolher o carro em Compra) sem renumerar o quiz.
+ */
 interface QuizState {
   step: number;
   type: LeadType | null;
   data: Record<string, any>;
   selectedVehicle: Vehicle | null;
+  fase: 'quiz' | 'contato';
+}
+
+// ---------------------------------------------------------------------------
+// Persistência da sessão do funil (UX-09).
+// sessionStorage, não localStorage: retomar de onde parou faz sentido na mesma
+// visita; dias depois, o estoque e a intenção já mudaram.
+// ---------------------------------------------------------------------------
+const SESSAO_KEY = 'manos_funil_sessao_v1';
+
+interface SessaoSalva {
+  quiz: QuizState;
+  leadId: string;
+  contatoSalvo: boolean;
+}
+
+function sessaoSalva(): SessaoSalva | null {
+  try {
+    const raw = sessionStorage.getItem(SESSAO_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as SessaoSalva;
+    if (!parsed?.quiz || typeof parsed.quiz.step !== 'number') return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function salvarSessao(sessao: SessaoSalva): void {
+  try {
+    sessionStorage.setItem(SESSAO_KEY, JSON.stringify(sessao));
+  } catch {
+    /* modo privado / storage cheio — o funil segue normalmente */
+  }
+}
+
+function limparSessao(): void {
+  try {
+    sessionStorage.removeItem(SESSAO_KEY);
+  } catch {
+    /* noop */
+  }
 }
 
 export default function App() {
@@ -42,6 +99,7 @@ export default function App() {
     type: null,
     data: {},
     selectedVehicle: null,
+    fase: 'quiz',
   });
   const [stock, setStock] = useState<Vehicle[]>([]);
   const [isLoadingStock, setIsLoadingStock] = useState(false);
@@ -51,6 +109,32 @@ export default function App() {
   const [isSuccess, setIsSuccess] = useState(false);
   const [showPlanB, setShowPlanB] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Mesmo id no lead parcial e no completo, para o n8n atualizar o registro em
+  // vez de criar dois.
+  const [leadId] = useState(() => sessaoSalva()?.leadId ?? novoLeadId());
+  const [contatoSalvo, setContatoSalvo] = useState(() => sessaoSalva()?.contatoSalvo ?? false);
+  const [salvandoContato, setSalvandoContato] = useState(false);
+
+  // Retoma de onde parou. Antes, recarregar a página — ou sair para o WhatsApp e
+  // voltar — jogava a pessoa de volta no passo 1, com todas as respostas
+  // perdidas. A sessão é descartada assim que o lead é finalizado.
+  useEffect(() => {
+    const salva = sessaoSalva();
+    if (!salva) return;
+    // Um deep link novo (?id=) manda mais que a sessão antiga.
+    if (new URLSearchParams(window.location.search).get('id')) return;
+    if (salva.quiz.step > 1 || salva.quiz.fase === 'contato') setQuiz(salva.quiz);
+  }, []);
+
+  useEffect(() => {
+    if (isSuccess) {
+      limparSessao();
+      return;
+    }
+    if (quiz.step === 1 && quiz.fase === 'quiz') return;
+    salvarSessao({ quiz, leadId, contatoSalvo });
+  }, [quiz, leadId, contatoSalvo, isSuccess]);
 
   const formatPhone = (val: string) => {
     let r = val.replace(/\D/g, "");
@@ -68,36 +152,21 @@ export default function App() {
   };
 
   useEffect(() => {
-    // Track Step changes as PageViews to keep activity high
-    if (typeof window !== 'undefined' && (window as any).fbq) {
-      (window as any).fbq('track', 'PageView', {
-        step: quiz.step,
-        type: quiz.type || 'None'
-      });
-    }
+    // Evento de funil dedicado. A versão anterior disparava PageView a cada
+    // passo "para manter a atividade alta" — o que inflava o volume de PageView
+    // ~9x sem mexer no Lead e ensinava a Meta com um sinal falso de qualidade.
+    if (quiz.step > 1) trackFunnelStep(quiz.type, quiz.step);
   }, [quiz.step, quiz.type]);
 
   const handleWhatsAppClick = (context: string) => {
-    // Lead event on WhatsApp click - Using standard 'Contact' event for Meta
-    if (typeof window !== 'undefined' && (window as any).fbq) {
-      (window as any).fbq('track', 'Contact', { 
-        content_name: context,
-        source: 'WhatsApp Button'
-      });
-    }
+    trackContato('whatsapp', context);
     const message = encodeURIComponent(`Olá, estou no site e gostaria de falar com um consultor sobre ${context}.`);
     window.open(`https://wa.me/554733001352?text=${message}`, '_blank');
   };
 
-  const isBusinessHours = () => {
-    const now = new Date();
-    const hours = now.getHours();
-    const day = now.getDay(); // 0 is Sunday, 6 is Saturday
-    return day >= 1 && day <= 5 && hours >= 8 && hours < 18;
-  };
+  const lojaEstaAberta = lojaAberta();
 
   useEffect(() => {
-    testConnection();
     const loadStock = async () => {
       setIsLoadingStock(true);
       const data = await fetchStock();
@@ -111,23 +180,18 @@ export default function App() {
       if (contentId && data.length > 0) {
         const vehicle = data.find(v => v.id === contentId);
         if (vehicle) {
-          // Fire ViewContent for Facebook Catalog Match
-          if ((window as any).fbq) {
-            (window as any).fbq('track', 'ViewContent', {
-              content_ids: [vehicle.id],
-              content_type: 'product',
-              content_name: vehicle.description,
-              value: vehicle.price,
-              currency: 'BRL'
-            });
-          }
-          // Set as selected and jump to relevant step
-          setQuiz({
-            step: 9, // Jump to contact step for 'Compra'
+          trackViewVehicle(vehicle);
+          // Quem chega por link direto do catálogo é a maior intenção do site.
+          // Pede o contato de imediato (com o carro à vista na tela) e só então
+          // segue para troca / financiamento / cidade — antes esse visitante
+          // caía num formulário nu no passo 9 e virava o lead mais fraco da fila.
+          setQuiz(prev => ({
+            step: 5, // troca -> financiamento -> cidade -> confirmação
             type: 'Compra',
-            data: { has_interest: 'Sim', vehicle_id: vehicle.id },
-            selectedVehicle: vehicle
-          });
+            data: comContato(prev, { has_interest: 'Sim', vehicle_id: vehicle.id, origem: 'catalogo' }),
+            selectedVehicle: vehicle,
+            fase: 'contato',
+          }));
         }
       }
     };
@@ -135,27 +199,72 @@ export default function App() {
   }, []);
 
   const handleSelectVehicle = (vehicle: Vehicle) => {
-    // Track AddToCart (Selection) for Facebook
-    if ((window as any).fbq) {
-      (window as any).fbq('track', 'AddToCart', {
-        content_ids: [vehicle.id],
-        content_type: 'product',
-        content_name: vehicle.description,
-        value: vehicle.price,
-        currency: 'BRL'
-      });
-    }
+    trackSelectVehicle(vehicle);
 
-    setQuiz(prev => ({ 
-      ...prev, 
-      selectedVehicle: vehicle, 
-      step: prev.type === 'Compra' ? 5 : 4 
+    setQuiz(prev => ({
+      ...prev,
+      selectedVehicle: vehicle,
+      step: prev.type === 'Compra' ? 5 : 4,
+      // Em Compra o contato é pedido AQUI: a pessoa já viu o estoque e escolheu
+      // um carro (recebeu valor e mostrou intenção), mas ainda faltam 4 telas
+      // de qualificação — que antes eram respondidas por um visitante anônimo.
+      fase: contatoSalvo ? 'quiz' : 'contato',
     }));
   };
 
+  /**
+   * Monta o `data` de um novo trecho do funil PRESERVANDO o contato já digitado.
+   *
+   * Sem isto havia um beco sem saída: depois de dar o telefone, voltar para a
+   * home zerava name/phone enquanto `contatoSalvo` continuava true. A tela final
+   * então pulava o formulário (porque o contato "já existe"), mostrava os dados
+   * em branco e deixava o botão Finalizar desabilitado para sempre — o cliente
+   * ficava preso e o lead completo nunca chegava ao consultor.
+   */
+  const comContato = (prev: QuizState, extra: Record<string, any> = {}) =>
+    prev.data.name ? { name: prev.data.name, phone: prev.data.phone, ...extra } : { ...extra };
+
+  /** Volta ao início mantendo o contato já capturado. */
+  const voltarAoInicio = () =>
+    setQuiz(prev => ({ step: 1, type: null, data: comContato(prev), selectedVehicle: null, fase: 'quiz' }));
+
+  /** Carro escolhido direto na home — pula o menu e o passo "qual o seu foco". */
+  const escolherDaHome = (vehicle: Vehicle) => {
+    trackFunnelStart('Compra');
+    trackSelectVehicle(vehicle);
+    setQuiz(prev => ({
+      step: 5, // troca -> financiamento -> cidade -> confirmação
+      type: 'Compra',
+      data: comContato(prev, { has_interest: 'Sim', vehicle_id: vehicle.id, origem: 'home' }),
+      selectedVehicle: vehicle,
+      fase: contatoSalvo ? 'quiz' : 'contato',
+    }));
+  };
+
+  /** Lista completa do estoque, com a busca já digitada na home preservada. */
+  const irParaEstoque = () => {
+    trackFunnelStart('Compra');
+    setQuiz(prev => ({ step: 3, type: 'Compra', data: comContato(prev, { has_interest: 'Sim' }), selectedVehicle: null, fase: 'quiz' }));
+  };
+
+  /** Para quem ainda não sabe o modelo: entra pela faixa de preço. */
+  const irParaFaixaDePreco = () => {
+    trackFunnelStart('Compra');
+    setQuiz(prev => ({ step: 3, type: 'Compra', data: comContato(prev, { has_interest: 'Não' }), selectedVehicle: null, fase: 'quiz' }));
+  };
+
   const handleInitialChoice = (type: LeadType) => {
-    // Lead Type 'Compra' now goes straight to identifying the vehicle or budget
-    setQuiz({ step: 2, type, data: {}, selectedVehicle: null });
+    trackFunnelStart(type);
+    setQuiz(prev => ({
+      step: 2,
+      type,
+      data: comContato(prev),
+      selectedVehicle: null,
+      // Venda e Financiamento entregam justamente o retorno do consultor, então
+      // o contato vem primeiro (mesmo padrão do /vendasrapidas). Compra precisa
+      // mostrar carro antes de pedir telefone.
+      fase: type === 'Compra' || contatoSalvo ? 'quiz' : 'contato',
+    }));
   };
 
   const handleDataChange = (field: string, value: any) => {
@@ -169,13 +278,67 @@ export default function App() {
     setQuiz(prev => ({ ...prev, step: prev.step + 1 }));
   };
 
+  /**
+   * Grava o contato assim que ele é digitado, no meio do funil. É a correção de
+   * maior impacto do site: antes, o lead só passava a existir no último passo
+   * (9 em Compra, 10 em Venda), então todo abandono era invisível.
+   * Nunca bloqueia — se a entrega falhar, o cliente segue e o envio final
+   * tenta de novo.
+   */
+  const handleContatoSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!isFormValid || salvandoContato || !quiz.type) return;
+
+    setSalvandoContato(true);
+    setError(null);
+
+    const phone = quiz.data.phone.replace(/\D/g, '');
+    const eventId = trackLeadParcial({
+      tipo: quiz.type,
+      valor: quiz.selectedVehicle?.price ?? null,
+    });
+
+    await registrarLeadParcial({
+      lead_id: leadId,
+      name: quiz.data.name,
+      phone,
+      lead_type: quiz.type,
+      event_id: eventId,
+      details: {
+        id_veiculo: quiz.selectedVehicle?.id,
+        nome_veiculo: quiz.selectedVehicle?.description,
+        valor_veiculo: quiz.selectedVehicle?.price,
+        link_veiculo: quiz.selectedVehicle?.link,
+        origem: quiz.data.origem,
+      },
+    });
+
+    setContatoSalvo(true);
+    setSalvandoContato(false);
+    setQuiz(prev => ({ ...prev, fase: 'quiz' }));
+  };
+
   const navigateBack = () => {
-    if (quiz.step === 7 && quiz.type === 'Venda') {
-      setQuiz(prev => ({ ...prev, step: 2 }));
+    // Sair da tela de contato volta para o passo do quiz que a originou.
+    if (quiz.fase === 'contato') {
+      if (contatoSalvo) {
+        setQuiz(prev => ({ ...prev, fase: 'quiz' }));
+      } else if (quiz.type === 'Compra' && quiz.selectedVehicle) {
+        setQuiz(prev => ({ ...prev, fase: 'quiz', step: prev.data.has_interest === 'Sim' ? 3 : 4 }));
+      } else {
+        voltarAoInicio();
+      }
+      return;
+    }
+
+    // Compra entra direto no passo 3 pela home — o passo 2 não existe mais nesse
+    // funil, então voltar dali tem que ir para o início.
+    if (quiz.step === 3 && quiz.type === 'Compra') {
+      voltarAoInicio();
     } else if (quiz.step === 7 && quiz.data.tem_troca === 'Não' && quiz.type === 'Compra') {
       setQuiz(prev => ({ ...prev, step: 5 }));
     } else if (quiz.step === 2) {
-      setQuiz({ step: 1, type: null, data: {}, selectedVehicle: null });
+      voltarAoInicio();
     } else if (quiz.step > 1) {
       setQuiz(prev => ({ ...prev, step: prev.step - 1 }));
     }
@@ -192,26 +355,24 @@ export default function App() {
 
     setIsSubmitting(true);
     setError(null);
-    
+
     try {
       const { name, phone: rawPhone, ...otherData } = quiz.data;
-      
-      // Track Lead event for Facebook with all required metadata for Catalog Match Rate
-      if ((window as any).fbq) {
-        (window as any).fbq('track', 'Lead', {
-          content_name: quiz.type,
-          content_category: quiz.type,
-          value: quiz.selectedVehicle?.price || 0,
-          currency: 'BRL',
-          content_ids: quiz.selectedVehicle ? [quiz.selectedVehicle.id] : [],
-          content_type: 'product'
-        });
-      }
 
-      const leadId = await createLead({
+      const eventId = trackLead({
+        tipo: quiz.type!,
+        valor: quiz.selectedVehicle?.price ?? null,
+        vehicleId: quiz.selectedVehicle?.id ?? null,
+        vehicleName: quiz.selectedVehicle?.description ?? null,
+      });
+
+      await createLead({
+        lead_id: leadId,
         name,
         phone,
-        lead_type: quiz.type,
+        lead_type: quiz.type!,
+        stage: 'completo',
+        event_id: eventId,
         details: {
           ...otherData,
           id_veiculo: quiz.selectedVehicle?.id,
@@ -225,16 +386,23 @@ export default function App() {
       setIsSuccess(true);
     } catch (err) {
       console.error("Submission error:", err);
-      setError("Ocorreu um erro ao salvar seus dados.");
+      // O contato já foi gravado no início do funil: mesmo com erro aqui, o
+      // consultor tem como retomar. A mensagem reflete isso em vez de assustar.
+      setError(
+        contatoSalvo
+          ? "Não conseguimos enviar os últimos detalhes, mas seu contato já está com a gente."
+          : "Ocorreu um erro ao salvar seus dados.",
+      );
       setShowPlanB(true);
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  // Venda saiu daqui: agora roda inteiro no /vendasrapidas (contato -> placa ->
+  // detalhes), em vez de pedir o preço desejado na segunda tela.
   const getMaxSteps = () => {
     if (quiz.type === 'Compra') return 9;
-    if (quiz.type === 'Venda') return 10;
     if (quiz.type === 'Financiamento') return 6;
     return 1;
   };
@@ -243,6 +411,30 @@ export default function App() {
   const progressValue = (quiz.step / maxSteps) * 100;
   const isPhoneValid = (quiz.data.phone?.replace(/\D/g, '') || '').length >= 10;
   const isFormValid = quiz.data.name && isPhoneValid;
+
+  /**
+   * Fonte única da verdade para "esta é a tela final". As três condições viviam
+   * duplicadas no corpo e no rodapé e já tinham divergido: o rodapé habilitava
+   * o Finalizar do Financiamento no passo 5 enquanto o formulário só aparecia
+   * no 6 — botão morto numa tela, rodapé morto na outra.
+   */
+  const isContactStep =
+    quiz.fase === 'quiz' &&
+    ((quiz.step === 9 && quiz.type === 'Compra') ||
+      (quiz.step === 6 && quiz.type === 'Financiamento'));
+
+  // Listas derivadas, extraídas do JSX para as telas conseguirem reagir ao
+  // resultado vazio em vez de renderizar espaço em branco.
+  const resultadosBusca = stock.filter(v =>
+    v.description.toLowerCase().includes(searchQuery.trim().toLowerCase()),
+  );
+
+  const resultadosFaixa = stock.filter(v => {
+    if (priceFilter === '50k') return v.price <= 50000;
+    if (priceFilter === '100k') return v.price > 50000 && v.price <= 100000;
+    if (priceFilter === 'plus') return v.price > 100000;
+    return true;
+  });
 
   return (
     <div className="app-viewport lg:max-w-none lg:h-auto lg:min-h-screen lg:bg-black/40 lg:flex lg:items-center lg:justify-center lg:p-12">
@@ -279,10 +471,11 @@ export default function App() {
             <div className="w-full space-y-2">
               <div className="flex justify-between items-center px-1">
                  <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">
-                    {quiz.step <= 2 ? 'Início' : 
+                    {quiz.fase === 'contato' ? 'Seus dados' :
+                     quiz.step <= 2 ? 'Início' :
                      quiz.step < maxSteps ? 'Preferências' : 'Finalizando'}
                  </span>
-                 <button 
+                 <button
                    onClick={navigateBack}
                    className="flex items-center gap-1 text-[10px] font-black text-manos-red uppercase tracking-widest hover:brightness-125 active:scale-95 transition-all"
                  >
@@ -290,7 +483,7 @@ export default function App() {
                    Voltar
                  </button>
                  <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">
-                    Passo {quiz.step} de {maxSteps}
+                    {quiz.fase === 'contato' ? 'Leva 20 segundos' : `Passo ${quiz.step} de ${maxSteps}`}
                  </span>
               </div>
               <div className="w-full flex items-center gap-3">
@@ -368,6 +561,127 @@ export default function App() {
                 </button>
               </div>
             </motion.div>
+          ) : quiz.fase === 'contato' ? (
+            /* -----------------------------------------------------------------
+             * Captura de contato antecipada (LEAD-01).
+             * Entra logo no início em Venda/Financiamento e logo após a escolha
+             * do carro em Compra. A partir daqui o lead existe no CRM mesmo se a
+             * pessoa abandonar o resto do funil.
+             * ----------------------------------------------------------------- */
+            <motion.div
+              key="contato"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.3, ease: 'easeOut' }}
+              className="space-y-6 pb-12"
+            >
+              {quiz.selectedVehicle && (
+                <div className="card-glass p-4 flex items-center gap-4">
+                  <div className="w-20 h-16 rounded-xl overflow-hidden bg-white/5 flex-shrink-0">
+                    <img
+                      src={quiz.selectedVehicle.image}
+                      alt={quiz.selectedVehicle.description}
+                      className="w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-green-500">Carro selecionado</p>
+                    <h4 className="font-black text-sm tracking-tighter leading-tight uppercase italic line-clamp-2">
+                      {quiz.selectedVehicle.description}
+                    </h4>
+                    <p className="text-manos-red font-black text-base tracking-tighter italic">
+                      {quiz.selectedVehicle.priceFormatted}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div className="text-center space-y-3">
+                <div className="inline-flex items-center gap-2 px-3 py-1 bg-green-500/10 border border-green-500/20 rounded-full">
+                  <Zap className="w-3 h-3 text-green-500 fill-current" />
+                  <span className="text-[10px] font-black text-green-500 uppercase tracking-widest">
+                    {promessaDeRetorno()}
+                  </span>
+                </div>
+                <h2 className="text-3xl font-black tracking-tighter italic uppercase leading-[0.9]">
+                  {quiz.type === 'Financiamento' ? (
+                    <>Para onde enviamos <br /><span className="text-manos-red">sua simulação?</span></>
+                  ) : (
+                    <>Para onde enviamos <br /><span className="text-manos-red">sua proposta?</span></>
+                  )}
+                </h2>
+                <p className="text-xs text-white/40 uppercase font-bold tracking-widest">
+                  Um consultor fala com você pelo WhatsApp
+                </p>
+              </div>
+
+              <form onSubmit={handleContatoSubmit} className="space-y-5">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-white/20 ml-4">Como devemos te chamar?</label>
+                  <input
+                    type="text"
+                    required
+                    autoComplete="name"
+                    autoFocus
+                    className="w-full py-5 px-6"
+                    placeholder="Nome completo"
+                    value={quiz.data.name || ''}
+                    onChange={(e) => handleDataChange('name', e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-white/20 ml-4">Seu WhatsApp de contato</label>
+                  <div className="relative">
+                    <input
+                      type="tel"
+                      required
+                      inputMode="numeric"
+                      autoComplete="tel"
+                      className={cn(
+                        "w-full py-5 px-6 pr-12 transition-all",
+                        quiz.data.phone && (isPhoneValid ? "border-green-500/50" : "border-manos-red/50")
+                      )}
+                      placeholder="(47) 99999-9999"
+                      value={quiz.data.phone || ''}
+                      onChange={(e) => handleDataChange('phone', formatPhone(e.target.value))}
+                    />
+                    {quiz.data.phone && (
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                        {isPhoneValid ? (
+                          <CheckCircle2 className="w-6 h-6 text-green-500" />
+                        ) : (
+                          <AlertCircle className="w-6 h-6 text-manos-red" />
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <PrivacyNotice />
+
+                <button
+                  type="submit"
+                  disabled={!isFormValid || salvandoContato}
+                  className="w-full py-6 bg-manos-red text-white font-black text-lg uppercase rounded-2xl shadow-[0_20px_50px_rgba(237,28,36,0.3)] active:scale-95 transition-all disabled:opacity-30 disabled:scale-100"
+                >
+                  {salvandoContato ? 'Enviando...' : 'Continuar'}
+                </button>
+
+                <div className="flex items-center justify-center gap-4 text-center">
+                  <button
+                    type="button"
+                    onClick={() => handleWhatsAppClick('Atendimento direto')}
+                    className="text-[10px] font-black text-white/30 uppercase tracking-widest hover:text-white/60 transition-colors"
+                  >
+                    Falar no WhatsApp
+                  </button>
+                  <span className="w-px h-4 bg-white/10" />
+                  <PhoneLink label="Ligar agora" />
+                </div>
+              </form>
+            </motion.div>
           ) : (
             <motion.div
               key={quiz.step}
@@ -386,24 +700,74 @@ export default function App() {
                     </h1>
                     <div className="flex items-center justify-center gap-2">
                        <span className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                       <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">Consultores online agora</span>
+                       <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">{statusConsultores()}</span>
                     </div>
                   </div>
                   
-                  <div className="grid gap-4">
-                    <MainOption 
-                      icon={<Car className="w-8 h-8" />}
-                      title="Ver Carros em Estoque"
-                      desc="Encontre seu sonho agora"
-                      onClick={() => handleInitialChoice('Compra')}
-                    />
-                    <MainOption 
+                  {/* Carros logo de cara. A home antes era um menu de três
+                      botões: quem vinha de um anúncio de veículo precisava dar
+                      dois toques antes de ver o primeiro carro. */}
+                  <div className="space-y-4">
+                    <div className="relative">
+                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30 w-5 h-5" />
+                      <input
+                        type="text"
+                        className="w-full bg-[#1A1A1A] border border-white/5 rounded-2xl p-4 pl-12 focus:ring-2 focus:ring-manos-red/30 outline-none text-base transition-all"
+                        placeholder="Buscar por marca ou modelo..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') irParaEstoque(); }}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      {isLoadingStock
+                        ? Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
+                        : resultadosBusca.slice(0, 4).map(v => (
+                            <VehicleCardMini key={v.id} vehicle={v} onClick={() => escolherDaHome(v)} />
+                          ))}
+                    </div>
+
+                    {!isLoadingStock && resultadosBusca.length === 0 && searchQuery && (
+                      <p className="text-center text-xs text-white/40 py-2">
+                        Não temos <span className="text-white font-bold">{searchQuery}</span> no pátio agora —
+                        <button onClick={irParaEstoque} className="min-h-0 text-manos-red font-bold underline underline-offset-2 ml-1">
+                          ver o que temos
+                        </button>
+                      </p>
+                    )}
+
+                    <button
+                      onClick={irParaEstoque}
+                      className="w-full py-4 bg-white/5 border border-white/10 rounded-2xl text-white/70 font-black text-xs uppercase tracking-widest hover:bg-white/10 active:scale-[0.98] transition-all"
+                    >
+                      {stock.length > 0 ? `Ver todos os ${stock.length} carros` : 'Ver estoque completo'}
+                    </button>
+
+                    <button
+                      onClick={irParaFaixaDePreco}
+                      className="w-full text-[10px] font-black text-white/30 uppercase tracking-widest hover:text-white/60 transition-colors"
+                    >
+                      Não sei qual carro — buscar por faixa de preço &rarr;
+                    </button>
+                  </div>
+
+                  <div className="pt-2 space-y-3">
+                    <div className="flex items-center gap-3">
+                      <div className="flex-grow h-px bg-white/5" />
+                      <span className="text-[9px] font-black text-white/20 uppercase tracking-[0.3em]">Ou</span>
+                      <div className="flex-grow h-px bg-white/5" />
+                    </div>
+                    <MainOption
                       icon={<Handshake className="w-8 h-8" />}
                       title="Avaliar meu Carro agora"
-                      desc="Melhor proposta da região"
-                      onClick={() => handleInitialChoice('Venda')}
+                      desc="Pagamento à vista no PIX"
+                      /* Unifica os dois funis de venda: leva para o /vendasrapidas,
+                         que pede contato primeiro e busca FIPE pela placa, em vez
+                         do caminho antigo que pedia o preço desejado na 2ª tela. */
+                      onClick={() => { trackFunnelStart('Venda'); window.location.href = '/vendasrapidas'; }}
                     />
-                    <MainOption 
+                    <MainOption
                       icon={<CreditCard className="w-8 h-8" />}
                       title="Simular meu Financiamento"
                       desc="Aprovação rápida e fácil"
@@ -426,13 +790,15 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="text-center px-4">
-                    <button 
+                  <div className="flex items-center justify-center gap-4 px-4">
+                    <button
                       onClick={() => handleWhatsAppClick('Atendimento Prioritário')}
                       className="text-[10px] font-black text-white/30 uppercase tracking-[0.2em] hover:text-white/60 transition-colors"
                     >
-                      Prefiro falar com um especialista agora &rarr;
+                      Falar com especialista
                     </button>
+                    <span className="w-px h-4 bg-white/10" />
+                    <PhoneLink label="(47) 3300-1352" />
                   </div>
                   
                   <div className="mt-8 pt-8 border-t border-white/5 flex flex-col items-center gap-4">
@@ -466,33 +832,31 @@ export default function App() {
                 </div>
               )}
 
-              {quiz.step === 2 && (quiz.type === 'Compra' || quiz.type === 'Financiamento') && (
+              {/* Só Financiamento passa por aqui. Em Compra, a home já leva
+                  direto para o estoque ou para a faixa de preço — a tela
+                  "Qual o seu foco hoje?" repetia a pergunta que a pessoa
+                  acabara de responder ao tocar em ver carros. */}
+              {quiz.step === 2 && quiz.type === 'Financiamento' && (
                 <div className="space-y-6">
                   <h2 className="text-3xl font-black tracking-tighter italic uppercase text-center">
-                    {quiz.type === 'Compra' ? "Qual o seu foco hoje?" : "Já escolheu o carro?"}
+                    Já escolheu o carro?
                   </h2>
                   <div className="grid gap-4">
-                    <QuizButton 
+                    <QuizButton
                       icon={<Search className="w-6 h-6" />}
-                      label={quiz.type === 'Compra' ? "Ver um carro específico" : "Sim, do estoque"}
-                      onClick={() => { 
-                        handleDataChange(quiz.type === 'Compra' ? 'has_interest' : 'has_car', quiz.type === 'Compra' ? 'Sim' : 'Sim, do estoque'); 
-                        nextStep(); 
-                      }}
+                      label="Sim, do estoque"
+                      onClick={() => { handleDataChange('has_car', 'Sim, do estoque'); nextStep(); }}
                     />
-                    <QuizButton 
+                    <QuizButton
                       icon={<Car className="w-6 h-6" />}
-                      label={quiz.type === 'Compra' ? "Quero ver sugestões" : "Não, ainda procurando"}
-                      onClick={() => { 
-                        handleDataChange(quiz.type === 'Compra' ? 'has_interest' : 'has_car', quiz.type === 'Compra' ? 'Não' : 'Não, ainda procurando'); 
-                        nextStep(); 
-                      }}
+                      label="Não, ainda procurando"
+                      onClick={() => { handleDataChange('has_car', 'Não, ainda procurando'); nextStep(); }}
                     />
                   </div>
                   <div className="pt-4 text-center">
                     <p className="text-[10px] text-white/20 uppercase tracking-widest font-black">Ou</p>
-                    <button 
-                      onClick={() => handleWhatsAppClick('Dúvidas sobre o Estoque')}
+                    <button
+                      onClick={() => handleWhatsAppClick('Dúvidas sobre financiamento')}
                       className="mt-2 text-xs font-bold text-manos-red uppercase tracking-wider underline underline-offset-4"
                     >
                       Dúvida rápida? Chamar no Whats
@@ -522,18 +886,35 @@ export default function App() {
                         {isLoadingStock ? (
                           Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} />)
                         ) : (
-                          stock
-                            .filter(v => v.description.toLowerCase().includes(searchQuery.toLowerCase()))
-                            .slice(0, 10)
-                            .map(v => (
-                              <VehicleCard 
-                                key={v.id} 
-                                vehicle={v} 
-                                onClick={() => handleSelectVehicle(v)} 
+                          <>
+                            {resultadosBusca.slice(0, 10).map(v => (
+                              <VehicleCard
+                                key={v.id}
+                                vehicle={v}
+                                onClick={() => handleSelectVehicle(v)}
                               />
-                            ))
+                            ))}
+                            {/* Antes, a mensagem de vazio olhava para stock.length em vez do
+                                resultado filtrado: quem buscava um modelo fora do pátio via
+                                uma tela em branco, sem aviso e sem saída. */}
+                            {resultadosBusca.length === 0 && (
+                              <EmptyStock
+                                titulo={searchQuery ? `Não temos ${searchQuery} no pátio agora` : 'Estoque indisponível no momento'}
+                                descricao={
+                                  searchQuery
+                                    ? 'O estoque gira toda semana. Deixe seu contato que avisamos assim que entrar um — ou fale agora com um consultor, que buscamos para você.'
+                                    : 'Não conseguimos carregar o estoque agora. Um consultor te manda as opções na hora.'
+                                }
+                                onAvisar={() => {
+                                  handleDataChange('modelo_procurado', searchQuery);
+                                  handleDataChange('has_interest', 'Busca sem resultado');
+                                  setQuiz(prev => ({ ...prev, step: 5, fase: contatoSalvo ? 'quiz' : 'contato' }));
+                                }}
+                                onFalar={() => handleWhatsAppClick(`Procuro um ${searchQuery || 'carro'}`)}
+                              />
+                            )}
+                          </>
                         )}
-                        {!isLoadingStock && stock.length === 0 && <p className="text-center text-white/30 py-8 italic uppercase text-xs font-bold">Nenhum veículo encontrado.</p>}
                       </div>
                     </div>
                   ) : (
@@ -567,17 +948,26 @@ export default function App() {
                     {isLoadingStock ? (
                       Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} />)
                     ) : (
-                      stock
-                        .filter(v => {
-                          if (priceFilter === '50k') return v.price <= 50000;
-                          if (priceFilter === '100k') return v.price > 50000 && v.price <= 100000;
-                          if (priceFilter === 'plus') return v.price > 100000;
-                          return true;
-                        })
-                        .slice(0, 10)
-                        .map(v => (
+                      <>
+                        {resultadosFaixa.slice(0, 10).map(v => (
                           <VehicleCard key={v.id} vehicle={v} onClick={() => handleSelectVehicle(v)} />
-                        ))
+                        ))}
+                        {/* Esta lista não tinha estado vazio nenhum: faixa de preço sem
+                            carro devolvia tela morta. */}
+                        {resultadosFaixa.length === 0 && (
+                          <EmptyStock
+                            titulo="Nenhum carro nessa faixa agora"
+                            descricao="O estoque gira toda semana. Deixe seu contato que avisamos assim que entrar um no seu orçamento — ou veja o que temos nas outras faixas."
+                            onAvisar={() => {
+                              handleDataChange('faixa_procurada', priceFilter);
+                              setQuiz(prev => ({ ...prev, step: 5, fase: contatoSalvo ? 'quiz' : 'contato' }));
+                            }}
+                            onFalar={() => handleWhatsAppClick('Quero ver outras faixas de preço')}
+                            rotuloSecundario="Ver todas as faixas"
+                            onSecundario={() => { setPriceFilter(null); setQuiz(prev => ({ ...prev, step: 3 })); }}
+                          />
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -669,115 +1059,6 @@ export default function App() {
                 </div>
               )}
 
-              {/* Steps 2-X for Venda */}
-              {quiz.type === 'Venda' && quiz.step === 2 && (
-                <div className="space-y-6">
-                  <h2 className="text-3xl font-black tracking-tighter italic uppercase text-center">Dados do seu Veículo</h2>
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                       <label className="text-[10px] font-black uppercase tracking-widest text-white/20 ml-4">Qual o seu carro? (Marca, Modelo, Versão)</label>
-                       <input 
-                         type="text" 
-                         className="w-full bg-[#1A1A1A] border border-white/5 rounded-2xl p-6 outline-none focus:border-manos-red/40 text-lg"
-                         placeholder="Ex: Corolla XEi 2022"
-                         value={quiz.data.marca_modelo || ''}
-                         onChange={(e) => handleDataChange('marca_modelo', e.target.value)}
-                         autoFocus
-                       />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-white/20 ml-4">KM Atual</label>
-                        <input 
-                          type="text" 
-                          inputMode="numeric"
-                          className="w-full bg-[#1A1A1A] border border-white/5 rounded-2xl p-5 outline-none focus:border-manos-red/40 text-base"
-                          placeholder="Ex: 45.000"
-                          value={quiz.data.km || ''}
-                          onChange={(e) => handleDataChange('km', e.target.value.replace(/\D/g, '').replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1.'))}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-white/20 ml-4">Preço Desejado</label>
-                        <input 
-                          type="text" 
-                          inputMode="numeric"
-                          className="w-full bg-[#1A1A1A] border border-white/5 rounded-2xl p-5 outline-none focus:border-manos-red/40 text-base"
-                          placeholder="Ex: 95.000"
-                          value={quiz.data.preco_esperado || ''}
-                          onChange={(e) => handleDataChange('preco_esperado', e.target.value.replace(/\D/g, '').replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1.'))}
-                        />
-                      </div>
-                    </div>
-                    <button 
-                      onClick={() => setQuiz(prev => ({ ...prev, step: 7 }))} 
-                      disabled={!quiz.data.marca_modelo}
-                      className="w-full py-5 bg-manos-red text-white font-black uppercase rounded-2xl shadow-xl shadow-manos-red/20 disabled:opacity-30 active:scale-95 transition-all"
-                    >
-                      Continuar Avaliação
-                    </button>
-                    <div className="text-center">
-                       <button 
-                        onClick={() => window.open('https://wa.me/554733001352?text=Quero%20uma%20avalia%C3%A7%C3%A3o%20r%C3%A1pida%20do%20meu%20carro.', '_blank')}
-                        className="text-[10px] font-black text-white/30 uppercase tracking-widest hover:text-white/60 transition-colors"
-                      >
-                        Ou prefiro enviar pelo WhatsApp &rarr;
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {quiz.type === 'Venda' && quiz.step === 7 && (
-                <div className="space-y-6">
-                  <h2 className="text-3xl font-black tracking-tighter italic uppercase text-center text-balance leading-none">Quando podemos olhar o seu carro?</h2>
-                  <div className="grid gap-3">
-                    {['Ainda hoje', 'Próximos dias', 'Quero agendar'].map(v => (
-                      <StepOption 
-                        key={v} 
-                        label={v} 
-                        active={quiz.data.disponibilidade === v} 
-                        onClick={() => { handleDataChange('disponibilidade', v); nextStep(); }} 
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {quiz.type === 'Venda' && quiz.step === 8 && (
-                <div className="space-y-6">
-                  <h2 className="text-3xl font-black tracking-tighter italic uppercase text-center text-balance leading-none">Como prefere a avaliação?</h2>
-                  <div className="grid gap-4">
-                    <QuizButton 
-                      icon={<Car className="w-6 h-6" />}
-                      label="Vou até a Manos"
-                      onClick={() => { handleDataChange('preferencia_avaliacao', 'Vou até a loja'); nextStep(); }}
-                    />
-                    <QuizButton 
-                      icon={<Search className="w-6 h-6" />}
-                      label="Especialista vir até mim"
-                      onClick={() => { handleDataChange('preferencia_avaliacao', 'Especialista vem até mim'); nextStep(); }}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {quiz.type === 'Venda' && quiz.step === 9 && (
-                <div className="space-y-6">
-                  <h2 className="text-3xl font-black tracking-tighter italic uppercase text-center uppercase">Quando pretende fechar negócio?</h2>
-                  <div className="grid gap-3">
-                    {['O quanto antes', 'Sem pressa', 'Apenas avaliando'].map(v => (
-                      <StepOption 
-                        key={v} 
-                        label={v} 
-                        active={quiz.data.urgency === v} 
-                        onClick={() => { handleDataChange('urgency', v); nextStep(); }} 
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-
               {/* Step 4 for Financiamento */}
               {(quiz.step === 4 && quiz.type === 'Financiamento') && (
                 <div className="space-y-8">
@@ -812,59 +1093,86 @@ export default function App() {
                 </div>
               )}
 
-              {((quiz.step === 9 && quiz.type === 'Compra') || (quiz.step === 10 && quiz.type === 'Venda') || (quiz.step === 6 && quiz.type === 'Financiamento')) && (
+              {isContactStep && (
                 <div className="space-y-8 pb-12">
                   <div className="text-center space-y-4">
                     <div className="inline-flex items-center gap-2 px-3 py-1 bg-green-500/10 border border-green-500/20 rounded-full">
                        <Zap className="w-3 h-3 text-green-500 fill-current" />
-                       <span className="text-[10px] font-black text-green-500 uppercase tracking-widest">Resposta em até 5 minutos</span>
+                       <span className="text-[10px] font-black text-green-500 uppercase tracking-widest">
+                          {promessaDeRetorno()}
+                       </span>
                     </div>
                     <h2 className="text-4xl font-black tracking-tighter italic uppercase leading-[0.8]">
                       Tudo pronto! <br />
                       <span className="text-manos-red">Receba sua oferta</span>
                     </h2>
-                    <p className="text-xs text-white/40 uppercase font-bold tracking-widest">Onde enviamos as informações?</p>
+                    <p className="text-xs text-white/40 uppercase font-bold tracking-widest">
+                      {contatoSalvo ? 'Confirme e enviamos para o consultor' : 'Onde enviamos as informações?'}
+                    </p>
                   </div>
                   <form onSubmit={handleSubmit} className="space-y-6">
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-white/20 ml-4">Como devemos te chamar?</label>
-                      <input type="text" required autoComplete="name" className="w-full py-5 px-6" placeholder="Nome completo" value={quiz.data.name || ''} onChange={(e) => handleDataChange('name', e.target.value)} />
-                    </div>
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-white/20 ml-4">Seu WhatsApp de contato</label>
-                      <div className="relative">
-                        <input type="tel" required inputMode="numeric" autoComplete="tel" 
-                          className={cn(
-                            "w-full py-5 px-6 pr-12 transition-all",
-                            quiz.data.phone && (isPhoneValid ? "border-green-500/50" : "border-manos-red/50")
-                          )}
-                          placeholder="(47) 99999-9999" 
-                          value={quiz.data.phone || ''} 
-                          onChange={(e) => {
-                            const formatted = formatPhone(e.target.value);
-                            handleDataChange('phone', formatted);
-                          }} 
-                        />
-                        {quiz.data.phone && (
-                          <div className="absolute right-4 top-1/2 -translate-y-1/2">
-                            {isPhoneValid ? (
-                              <CheckCircle2 className="w-6 h-6 text-green-500 animate-in zoom-in" />
-                            ) : (
-                              <AlertCircle className="w-6 h-6 text-manos-red animate-in fade-in" />
-                            )}
+                    {contatoSalvo ? (
+                      /* O contato já foi gravado no início do funil — repetir os
+                         campos aqui só criaria atrito na última tela. */
+                      <div className="card-glass p-5 space-y-3">
+                        {quiz.selectedVehicle && (
+                          <div className="flex items-center justify-between gap-3 pb-3 border-b border-white/5">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-white/20">Veículo</span>
+                            <span className="text-xs font-bold text-white text-right line-clamp-1">{quiz.selectedVehicle.description}</span>
                           </div>
                         )}
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-white/20">Nome</span>
+                          <span className="text-xs font-bold text-white">{quiz.data.name}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-white/20">WhatsApp</span>
+                          <span className="text-xs font-bold text-white">{quiz.data.phone}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setQuiz(prev => ({ ...prev, fase: 'contato' }))}
+                          className="text-[10px] font-black uppercase tracking-widest text-manos-red hover:brightness-125 transition-all"
+                        >
+                          Corrigir meus dados
+                        </button>
                       </div>
-                    </div>
-                    
-                    <div className="px-2 space-y-4">
-                      <div className="flex items-start gap-3 p-4 bg-white/5 rounded-2xl border border-white/5">
-                        <Shield className="w-5 h-5 text-manos-red flex-shrink-0" />
-                        <p className="text-[10px] text-white/40 leading-relaxed font-medium uppercase tracking-wide">
-                          Ao clicar em finalizar, você concorda com nossa <span className="text-white/60">Política de Privacidade (LGPD)</span> e autoriza o contato de nossos especialistas.
-                        </p>
-                      </div>
-                    </div>
+                    ) : (
+                      <>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-white/20 ml-4">Como devemos te chamar?</label>
+                          <input type="text" required autoComplete="name" className="w-full py-5 px-6" placeholder="Nome completo" value={quiz.data.name || ''} onChange={(e) => handleDataChange('name', e.target.value)} />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-white/20 ml-4">Seu WhatsApp de contato</label>
+                          <div className="relative">
+                            <input type="tel" required inputMode="numeric" autoComplete="tel"
+                              className={cn(
+                                "w-full py-5 px-6 pr-12 transition-all",
+                                quiz.data.phone && (isPhoneValid ? "border-green-500/50" : "border-manos-red/50")
+                              )}
+                              placeholder="(47) 99999-9999"
+                              value={quiz.data.phone || ''}
+                              onChange={(e) => {
+                                const formatted = formatPhone(e.target.value);
+                                handleDataChange('phone', formatted);
+                              }}
+                            />
+                            {quiz.data.phone && (
+                              <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                                {isPhoneValid ? (
+                                  <CheckCircle2 className="w-6 h-6 text-green-500 animate-in zoom-in" />
+                                ) : (
+                                  <AlertCircle className="w-6 h-6 text-manos-red animate-in fade-in" />
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    <PrivacyNotice />
 
                     {error && (
                       <div className="space-y-4">
@@ -914,9 +1222,12 @@ export default function App() {
               >
                 <ChevronLeft className="w-8 h-8" />
               </button>
-              {((quiz.step === 9 && quiz.type === 'Compra') || (quiz.step === 10 && quiz.type === 'Venda') || (quiz.step === 5 && quiz.type === 'Financiamento')) ? (
-                <button 
-                  onClick={() => handleSubmit()} 
+              {/* Usa a mesma condição do formulário. Antes o rodapé habilitava o
+                  Finalizar do Financiamento no passo 5 enquanto o formulário só
+                  aparecia no 6: botão morto numa tela, rodapé morto na outra. */}
+              {isContactStep ? (
+                <button
+                  onClick={() => handleSubmit()}
                   disabled={isSubmitting || !isFormValid}
                   className="flex-grow bg-manos-red text-white font-black text-lg uppercase rounded-2xl shadow-2xl shadow-manos-red/20 active:scale-95 transition-all disabled:opacity-30"
                 >
@@ -932,18 +1243,120 @@ export default function App() {
             <div className="text-center py-2 space-y-4">
               <div className="flex items-center justify-center gap-3">
                 <div className="flex -space-x-2">
-                  {Array.from({ length: isBusinessHours() ? 5 : 1 }).map((_, i) => (
+                  {Array.from({ length: lojaEstaAberta ? 5 : 1 }).map((_, i) => (
                     <div key={i} className="w-6 h-6 rounded-full border-2 border-manos-dark bg-white/10 flex items-center justify-center text-[8px] font-black text-white/40">M</div>
                   ))}
                 </div>
                 <span className="text-[10px] font-black tracking-widest uppercase text-white/20 italic">
-                  {isBusinessHours() ? '5 consultores online no momento' : '1 consultor disponível no momento'}
+                  {lojaEstaAberta ? '5 consultores online no momento' : 'Seg a Sex 8h–19h • Sáb 8h–13h'}
                 </span>
               </div>
             </div>
           )}
         </div>
       )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Telefone clicável. Antes o único `tel:` do site inteiro estava na tela de
+ * erro — e parte relevante de quem compra carro liga em vez de digitar.
+ */
+function PhoneLink({ label, className }: { label: string; className?: string }) {
+  return (
+    <a
+      href="tel:+554733001352"
+      onClick={() => trackContato('telefone', label)}
+      className={cn(
+        'min-h-0 inline-flex items-center gap-1.5 text-[10px] font-black text-white/30 uppercase tracking-widest hover:text-white/60 transition-colors no-underline',
+        className,
+      )}
+    >
+      <Phone className="w-3 h-3" />
+      {label}
+    </a>
+  );
+}
+
+/**
+ * Aviso de LGPD. A política precisa ser um link acessível: Meta e Google exigem
+ * isso em formulário de captação, e antes o texto era um <span> morto — risco de
+ * reprovação de anúncio, não só detalhe de interface.
+ */
+function PrivacyNotice() {
+  return (
+    <div className="px-2">
+      <div className="flex items-start gap-3 p-4 bg-white/5 rounded-2xl border border-white/5">
+        <Shield className="w-5 h-5 text-manos-red flex-shrink-0" />
+        <p className="text-[10px] text-white/40 leading-relaxed font-medium uppercase tracking-wide">
+          Ao continuar, você concorda com nossa{' '}
+          <a
+            href="/politica-de-privacidade"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="min-h-0 inline text-white/70 underline underline-offset-2 hover:text-white transition-colors"
+          >
+            Política de Privacidade (LGPD)
+          </a>{' '}
+          e autoriza o contato de nossos especialistas.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Saída para lista vazia. Sem isto, buscar um modelo fora do pátio (ou uma faixa
+ * de preço sem carro) devolvia uma tela em branco — sem aviso e sem caminho.
+ * Cada opção aqui é também uma captura de lead.
+ */
+function EmptyStock({
+  titulo,
+  descricao,
+  onAvisar,
+  onFalar,
+  rotuloSecundario,
+  onSecundario,
+}: {
+  titulo: string;
+  descricao: string;
+  onAvisar: () => void;
+  onFalar: () => void;
+  rotuloSecundario?: string;
+  onSecundario?: () => void;
+}) {
+  return (
+    <div className="card-glass p-6 space-y-5 text-center">
+      <div className="w-14 h-14 bg-manos-red/10 border border-manos-red/20 rounded-2xl flex items-center justify-center mx-auto">
+        <Search className="w-7 h-7 text-manos-red" />
+      </div>
+      <div className="space-y-2">
+        <h3 className="font-black text-lg tracking-tighter uppercase italic leading-tight text-balance">{titulo}</h3>
+        <p className="text-xs text-white/50 leading-relaxed">{descricao}</p>
+      </div>
+      <div className="space-y-3">
+        <button
+          onClick={onAvisar}
+          className="w-full py-4 bg-manos-red text-white font-black text-sm uppercase rounded-2xl shadow-lg shadow-manos-red/20 active:scale-95 transition-all"
+        >
+          Quero ser avisado quando chegar
+        </button>
+        {rotuloSecundario && onSecundario && (
+          <button
+            onClick={onSecundario}
+            className="w-full py-4 bg-white/5 border border-white/10 text-white/70 font-bold text-xs uppercase tracking-wider rounded-2xl hover:bg-white/10 active:scale-95 transition-all"
+          >
+            {rotuloSecundario}
+          </button>
+        )}
+        <button
+          onClick={onFalar}
+          className="text-[10px] font-black text-white/30 uppercase tracking-widest hover:text-white/60 transition-colors"
+        >
+          Ou falar com um consultor agora &rarr;
+        </button>
       </div>
     </div>
   );
@@ -994,6 +1407,40 @@ function VehicleCard({ vehicle, onClick }: { vehicle: Vehicle, onClick: () => vo
             {vehicle.priceFormatted}
           </p>
         </div>
+      </div>
+    </motion.button>
+  );
+}
+
+/** Versão compacta para a grade de 2 colunas da home. */
+function VehicleCardMini({ vehicle, onClick }: { vehicle: Vehicle, onClick: () => void, key?: any }) {
+  return (
+    <motion.button
+      whileTap={{ scale: 0.97 }}
+      onClick={onClick}
+      className="card-glass p-2.5 text-left group overflow-hidden transition-all hover:border-manos-red/30 flex flex-col gap-2"
+    >
+      <div className="aspect-[4/3] w-full rounded-xl overflow-hidden bg-white/5">
+        <img
+          src={vehicle.image}
+          alt={vehicle.description}
+          loading="lazy"
+          className="w-full h-full object-cover group-hover:scale-105 transition-all duration-500"
+          referrerPolicy="no-referrer"
+        />
+      </div>
+      <div className="space-y-1">
+        <h4 className="font-black text-[11px] tracking-tighter leading-tight uppercase italic line-clamp-2">
+          {vehicle.description}
+        </h4>
+        <div className="flex items-center gap-1.5 text-white/30 text-[8px] font-black uppercase tracking-widest">
+          <span>{vehicle.year}</span>
+          <span>•</span>
+          <span className="truncate">{vehicle.km}</span>
+        </div>
+        <p className="text-manos-red font-black text-sm tracking-tighter italic">
+          {vehicle.priceFormatted}
+        </p>
       </div>
     </motion.button>
   );
@@ -1068,16 +1515,4 @@ function StepOption({ label, active, onClick }: { label: string, active: boolean
   );
 }
 
-function BackButton({ onClick, className }: { onClick: () => void, className?: string }) {
-  return (
-    <button 
-      onClick={onClick}
-      type="button"
-      className={cn("flex items-center gap-2 text-white/40 hover:text-white transition-all text-sm font-bold uppercase tracking-widest", className)}
-    >
-      <ChevronLeft className="w-4 h-4" />
-      Voltar
-    </button>
-  );
-}
 

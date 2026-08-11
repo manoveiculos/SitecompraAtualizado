@@ -7,7 +7,7 @@
     "dev": "tsx watch server.ts",
     "start": "node server.js",
     "build": "vite build && npm run build:server",
-    "build:server": "esbuild server.ts --bundle --platform=node --format=esm --outfile=server.js --external:vite --external:express --external:path --external:url",
+    "build:server": "esbuild server.ts --bundle --platform=node --format=esm --outfile=server.js --external:vite --external:express --external:path --external:url --external:dotenv",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit"

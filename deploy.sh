@@ -18,4 +18,12 @@ pm2 save
 
 echo ""
 echo "✅ Deploy concluído. App em produção na porta 3000 (proxy do nginx)."
-echo "   Valide: /estoque  /sobre  /sitemap.xml  /llms.txt  /radar-manos"
+echo ""
+echo "   Valide as rotas:"
+echo "     /  /vendasrapidas  /estoque  /estoque?faixa=ate-50k"
+echo "     /sobre  /sitemap.xml  /llms.txt  /radar-manos  /leads-manos"
+echo "     /estoque/carro-inexistente-999   (tem que devolver 410)"
+echo ""
+echo "   Valide a mensuração:"
+echo "     curl -s localhost:3000/api/health/tracking"
+echo "     -> meta_capi deve dizer 'configurado' (precisa de META_CAPI_TOKEN no .env)"

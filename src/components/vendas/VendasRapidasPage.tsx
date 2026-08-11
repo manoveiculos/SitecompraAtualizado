@@ -1,10 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Loader2, ArrowRight, CheckCircle2, AlertCircle, Car, Search,
   ShieldCheck, Banknote, Home, Clock, Lock, Gauge, Palette, Tag, Star,
 } from 'lucide-react';
 import { registrarLeadVenda, consultarPlaca, enviarVenda, type VeiculoPlaca } from '../../services/vendasService';
+import { novoLeadId } from '../../lib/leads';
+import {
+  trackFunnelStart,
+  trackFunnelStep,
+  trackLeadParcial,
+  trackLead,
+  trackPlacaConsultada,
+} from '../../lib/tracking';
 
 const LOGO = 'https://manosveiculos.com.br/wp-content/uploads/2024/02/LogoManos.png';
 
@@ -37,6 +45,20 @@ function onlyNumber(masked: string): number {
 
 export default function VendasRapidasPage() {
   const [step, setStep] = useState(1);
+
+  // Mesmo id no lead parcial (passo 1) e no completo (passo 3), para o n8n
+  // atualizar o registro em vez de criar dois — igual ao funil principal.
+  const [leadId] = useState(novoLeadId);
+
+  // Este funil não reportava nada para plataforma nenhuma — nem Meta, nem
+  // Google, nem GA4 — então campanha apontada para cá não tinha como otimizar.
+  useEffect(() => {
+    trackFunnelStart('Venda');
+  }, []);
+
+  useEffect(() => {
+    if (step > 1) trackFunnelStep('Venda', step);
+  }, [step]);
 
   // step 1
   const [nome, setNome] = useState('');
@@ -71,7 +93,8 @@ export default function VendasRapidasPage() {
     e.preventDefault();
     if (!contatoValido || leadLoading) return;
     setLeadLoading(true);
-    await registrarLeadVenda({ nome: nome.trim(), telefone: rawPhone, cidade: cidade.trim() });
+    trackLeadParcial({ tipo: 'Venda' });
+    await registrarLeadVenda({ lead_id: leadId, nome: nome.trim(), telefone: rawPhone, cidade: cidade.trim() });
     setLeadLoading(false);
     setStep(2);
   };
@@ -82,6 +105,7 @@ export default function VendasRapidasPage() {
     setPlacaError('');
     const res = await consultarPlaca(placa);
     setPlacaLoading(false);
+    trackPlacaConsultada(Boolean(res.ok && res.veiculo));
     if (res.ok && res.veiculo) {
       setVeiculo(res.veiculo);
       if (res.veiculo.cor) setCor(res.veiculo.cor);
@@ -100,7 +124,16 @@ export default function VendasRapidasPage() {
     e.preventDefault();
     if (!veiculoValido || sending) return;
     setSending(true);
+    const eventId = trackLead({
+      tipo: 'Venda',
+      // Valor pedido pelo cliente: dá ao Google e à Meta uma conversão com peso
+      // real, em vez de tratar todo lead como equivalente.
+      valor: onlyNumber(valor) / 100,
+      vehicleName: [veiculo?.marca || marcaManual, veiculo?.modelo || modeloManual].filter(Boolean).join(' ') || null,
+    });
     await enviarVenda({
+      lead_id: leadId,
+      event_id: eventId,
       nome: nome.trim(),
       telefone: rawPhone,
       cidade: cidade.trim(),

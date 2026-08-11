@@ -7,7 +7,12 @@ import TransparenciaPage from './components/bolao/TransparenciaPage.tsx';
 import RadarPage from './components/bolao/RadarPage.tsx';
 import VendasRapidasPage from './components/vendas/VendasRapidasPage.tsx';
 import ErrorBoundary from './components/ErrorBoundary.tsx';
+import { initAttribution } from './lib/attribution.ts';
 import './index.css';
+
+// Lê utm/gclid/fbclid/ttclid e o referrer antes de qualquer render, para toda
+// captura de lead — inclusive as parciais — sair com a origem do anúncio junto.
+initAttribution();
 
 function Router() {
   const path = window.location.pathname;
@@ -35,7 +40,13 @@ function Router() {
   return <App />;
 }
 
-createRoot(document.getElementById('root')!).render(
+const container = document.getElementById('root')!;
+// Remove o bloco de emergência do index.html (telefone/WhatsApp/endereço) antes
+// de montar. Explícito de propósito: o fallback só deve aparecer quando o React
+// nunca chega a rodar.
+container.innerHTML = '';
+
+createRoot(container).render(
   <StrictMode>
     <ErrorBoundary>
       <Router />

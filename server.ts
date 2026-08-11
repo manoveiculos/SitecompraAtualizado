@@ -1,4 +1,5 @@
 
+import "dotenv/config";
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -12,9 +13,18 @@ import {
   renderLlms,
   renderSitemap,
   renderRobots,
+  renderSold,
   findBySlug,
+  findSimilar,
+  aplicarFiltro,
 } from "./server/catalog";
 import { radarMiddleware } from "./server/radar";
+import { calcularScore, acaoRecomendada } from "./server/scoring";
+import { enviarEventoCapi, capiConfigurado } from "./server/meta";
+import { registrarScore, lerScores } from "./server/leadStats";
+import { renderLeadsPanel } from "./server/leadsPanel";
+import { basicAuth } from "./server/auth";
+import { digitosNacionais } from "./server/telefone";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -30,11 +40,9 @@ const otpStore = new Map<string, OtpEntry>();
 const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const OTP_MAX_ATTEMPTS = 5;
 
-function normalizePhone(phone: string): string {
-  let digits = (phone || "").replace(/\D/g, "");
-  if (digits.length > 11 && digits.startsWith("55")) digits = digits.slice(2);
-  return digits;
-}
+// Mesma normalização usada no score e no Meta CAPI (server/telefone.ts), para
+// os três não divergirem sobre o que é código de país e o que é DDD.
+const normalizePhone = digitosNacionais;
 
 function generateOtp(): string {
   return String(Math.floor(100000 + Math.random() * 900000)); // 6 digits
@@ -43,6 +51,11 @@ function generateOtp(): string {
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
+
+  // Em produção o nginx faz proxy reverso para esta porta. Sem isto, req.ip é
+  // sempre 127.0.0.1 — e o IP do visitante é um dos sinais que a Meta usa para
+  // casar o evento do Conversions API com a pessoa certa.
+  app.set("trust proxy", 1);
 
   app.use(express.json());
 
@@ -61,6 +74,126 @@ async function startServer() {
     } catch (error) {
       console.error('Proxy error:', error);
       res.status(500).json({ error: 'Failed to fetch stock' });
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Leads do funil principal (/) — Compra, Venda e Financiamento.
+  //
+  // Antes, o navegador gravava no Firestore e SÓ ENTÃO chamava o webhook do n8n.
+  // Qualquer falha na gravação (bloqueador de anúncio, rede de celular ruim,
+  // regra recusada) derrubava as duas coisas e o consultor nunca ficava sabendo
+  // do lead. Aqui a ordem se inverte: a entrega ao n8n — que é o que chega no
+  // time comercial — acontece no servidor, sem depender do navegador do cliente.
+  //
+  // O mesmo endpoint recebe o lead PARCIAL (contato capturado no início do
+  // funil) e o COMPLETO (qualificação inteira). Os dois carregam o mesmo
+  // `lead_id`, para o n8n atualizar o registro em vez de duplicar.
+  // -------------------------------------------------------------------------
+  // Sobrescrevíveis por ambiente para dar para apontar a um mock em homologação
+  // sem gerar lead falso na fila do consultor.
+  const LEAD_WEBHOOKS: Record<string, string> = {
+    Compra: process.env.N8N_WEBHOOK_COMPRA || "https://n8n.drivvoo.com/webhook/c238d26a-ebce-4c00-ac3c-ba506042ab46",
+    Venda: process.env.N8N_WEBHOOK_VENDA || "https://n8n.drivvoo.com/webhook/684eb74d-9112-47c5-94af-a0982dbdcf35",
+    Financiamento: process.env.N8N_WEBHOOK_FINANCIAMENTO || "https://n8n.drivvoo.com/webhook/a5d2e1c0-cf84-4206-9a79-5957bc8fda00",
+  };
+
+  app.post("/api/leads", async (req, res) => {
+    try {
+      const body = req.body ?? {};
+      const leadType = String(body.lead_type || "");
+      const name = String(body.name || "").trim();
+      const phone = normalizePhone(body.phone ?? "");
+
+      if (!LEAD_WEBHOOKS[leadType]) {
+        return res.status(400).json({ ok: false, error: "lead_type inválido" });
+      }
+      if (!name || phone.length < 10) {
+        return res.status(400).json({ ok: false, error: "Nome e WhatsApp são obrigatórios" });
+      }
+
+      const stage = body.stage === "completo" ? "completo" : "parcial";
+      const atribuicao = (body.atribuicao ?? {}) as Record<string, string | undefined>;
+      const details = (body.details ?? {}) as Record<string, unknown>;
+
+      // Nota de qualificação. O consultor recebe a nota, a faixa e o porquê —
+      // em vez de uma fila indistinta onde "quero fechar essa semana" e "só
+      // estou avaliando" chegam iguais.
+      const qualificacao = calcularScore({
+        lead_type: leadType,
+        phone,
+        cidade: String(details.cidade ?? ""),
+        canal: atribuicao.canal,
+        details,
+      });
+
+      const payload = {
+        ...body,
+        name,
+        phone,
+        // stage: "parcial" = só contato; "completo" = qualificação inteira.
+        stage,
+        score: qualificacao.score,
+        faixa: qualificacao.faixa,
+        score_motivos: qualificacao.motivos,
+        fora_do_raio: qualificacao.fora_do_raio,
+        descartar: qualificacao.descartar,
+        acao_recomendada: acaoRecomendada(qualificacao),
+        source: body.source || "Funil Manos Web App",
+        server_received_at: new Date().toISOString(),
+        user_agent: String(req.headers["user-agent"] || "").slice(0, 300),
+      };
+
+      const response = await fetch(LEAD_WEBHOOKS[leadType], {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        console.error(`Lead webhook respondeu ${response.status} para ${leadType}`);
+        return res.status(502).json({ ok: false, error: "Falha ao entregar o lead" });
+      }
+
+      registrarScore({
+        lead_id: String(body.lead_id ?? ""),
+        stage,
+        lead_type: leadType,
+        score: qualificacao.score,
+        faixa: qualificacao.faixa,
+        descartado: qualificacao.descartar,
+        fora_do_raio: qualificacao.fora_do_raio,
+        canal: atribuicao.canal ?? null,
+        utm_source: atribuicao.utm_source ?? null,
+        utm_campaign: atribuicao.utm_campaign ?? null,
+        utm_content: atribuicao.utm_content ?? null,
+        cidade: String(details.cidade ?? "") || null,
+      });
+
+      // Só o lead completo vira conversão no Meta. O parcial é sinal de funil,
+      // não de negócio — otimizar por ele treinaria a campanha a buscar quem
+      // apenas deixa telefone.
+      if (stage === "completo" && body.event_id) {
+        void enviarEventoCapi({
+          eventName: "Lead",
+          eventId: String(body.event_id),
+          phone,
+          firstName: name,
+          city: String(details.cidade ?? ""),
+          clientIp: req.ip,
+          userAgent: String(req.headers["user-agent"] || ""),
+          // Valor da conversão ponderado pela nota: a Meta passa a buscar quem
+          // se parece com lead bom, não com lead qualquer.
+          value: Math.round((Number(details.valor_veiculo) || 0) * (qualificacao.score / 100)),
+          contentIds: details.id_veiculo ? [String(details.id_veiculo)] : undefined,
+          contentName: details.nome_veiculo ? String(details.nome_veiculo) : undefined,
+        });
+      }
+
+      res.json({ ok: true, lead_id: body.lead_id ?? null, score: qualificacao.score, faixa: qualificacao.faixa });
+    } catch (error) {
+      console.error("Lead proxy error:", error);
+      res.status(500).json({ ok: false, error: "Falha ao entregar o lead" });
     }
   });
 
@@ -206,11 +339,71 @@ async function startServer() {
   // Final: envia todos os dados coletados p/ a equipe de compras.
   app.post("/api/vendas/finalizar", async (req, res) => {
     try {
+      const body = req.body ?? {};
+      const atribuicao = (body.atribuicao ?? {}) as Record<string, string | undefined>;
+
+      // Em Venda a nota mede viabilidade do negócio, não intenção: o peso maior
+      // está em ter placa/FIPE e no preço pedido bater com a tabela. Preço muito
+      // acima da FIPE é o principal motivo de avaliação que não fecha.
+      const qualificacao = calcularScore({
+        lead_type: "Venda",
+        phone: String(body.telefone ?? ""),
+        cidade: String(body.cidade ?? ""),
+        canal: atribuicao.canal,
+        venda: {
+          placa: body.placa ?? null,
+          fipe: body.fipe ?? null,
+          valor_desejado: body.valor_desejado ?? null,
+          km: body.km ?? null,
+          marca: body.marca ?? null,
+        },
+      });
+
       const response = await fetch("https://n8n.drivvoo.com/webhook/b612877b-56f9-4a22-88d2-acd74541c812", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(req.body),
+        body: JSON.stringify({
+          ...body,
+          score: qualificacao.score,
+          faixa: qualificacao.faixa,
+          score_motivos: qualificacao.motivos,
+          fora_do_raio: qualificacao.fora_do_raio,
+          descartar: qualificacao.descartar,
+          acao_recomendada: acaoRecomendada(qualificacao),
+          server_received_at: new Date().toISOString(),
+        }),
       });
+
+      registrarScore({
+        lead_id: String(body.lead_id ?? body.event_id ?? ""),
+        stage: "completo",
+        lead_type: "Venda",
+        score: qualificacao.score,
+        faixa: qualificacao.faixa,
+        descartado: qualificacao.descartar,
+        fora_do_raio: qualificacao.fora_do_raio,
+        canal: atribuicao.canal ?? null,
+        utm_source: atribuicao.utm_source ?? null,
+        utm_campaign: atribuicao.utm_campaign ?? null,
+        utm_content: atribuicao.utm_content ?? null,
+        cidade: String(body.cidade ?? "") || null,
+      });
+
+      if (body.event_id) {
+        void enviarEventoCapi({
+          eventName: "Lead",
+          eventId: String(body.event_id),
+          phone: String(body.telefone ?? ""),
+          firstName: String(body.nome ?? ""),
+          city: String(body.cidade ?? ""),
+          clientIp: req.ip,
+          userAgent: String(req.headers["user-agent"] || ""),
+          value: Math.round((Number(body.valor_desejado) || 0) * (qualificacao.score / 100)),
+          contentName: [body.marca, body.modelo].filter(Boolean).join(" ") || undefined,
+          sourceUrl: "https://manosveiculoscompra.com/vendasrapidas",
+        });
+      }
+
       res.status(response.ok ? 200 : response.status).json({ ok: response.ok });
     } catch (error) {
       console.error("Vendas finalizar proxy error:", error);
@@ -257,6 +450,39 @@ async function startServer() {
       .send(renderPrivacy());
   });
 
+  // Painel interno: leads por origem, campanha, criativo e nota.
+  // Protegido por Basic Auth — expõe desempenho por campanha, que é informação
+  // de negócio. Sem PANEL_PASSWORD no .env, responde 503 em vez de abrir.
+  app.get("/leads-manos", basicAuth("Painel Manos"), async (_req, res) => {
+    try {
+      const linhas = await lerScores(500);
+      res
+        .set("Content-Type", "text/html; charset=utf-8")
+        .set("Cache-Control", "no-store")
+        .set("X-Robots-Tag", "noindex, nofollow")
+        .send(renderLeadsPanel(linhas));
+    } catch (err) {
+      console.error("leads panel error:", err);
+      res.status(500).send("error");
+    }
+  });
+
+  // Diagnóstico rápido da mensuração — evita descobrir só depois da campanha
+  // no ar que o token do CAPI nunca foi configurado.
+  app.get("/api/health/tracking", async (_req, res) => {
+    const linhas = await lerScores(1);
+    res.json({
+      meta_capi: capiConfigurado() ? "configurado" : "sem META_CAPI_TOKEN",
+      // Confirma que a tabela lead_scores existe e responde de verdade, em vez
+      // de só checar se a variável de ambiente está preenchida.
+      lead_scores: linhas.length > 0 ? "gravando" : "sem registros ainda (ou tabela/RLS faltando)",
+      webhooks_n8n: {
+        compra: LEAD_WEBHOOKS.Compra.includes("n8n.drivvoo.com") ? "produção" : "sobrescrito",
+        venda: LEAD_WEBHOOKS.Venda.includes("n8n.drivvoo.com") ? "produção" : "sobrescrito",
+      },
+    });
+  });
+
   app.get("/llms.txt", async (_req, res) => {
     try {
       const vehicles = await getVehicles();
@@ -267,24 +493,39 @@ async function startServer() {
     }
   });
 
-  app.get("/estoque", async (_req, res) => {
+  app.get("/estoque", async (req, res) => {
     try {
-      const vehicles = await getVehicles();
+      const todos = await getVehicles();
+      // Filtros vêm por query string e são renderizados como links, então
+      // continuam navegáveis por crawler e sem JavaScript.
+      const filtro = {
+        faixa: typeof req.query.faixa === "string" ? req.query.faixa : undefined,
+        marca: typeof req.query.marca === "string" ? req.query.marca : undefined,
+      };
+      const vehicles = aplicarFiltro(todos, filtro);
       res
         .set("Content-Type", "text/html; charset=utf-8")
         .set("Cache-Control", "public, max-age=600")
-        .send(renderCatalog(vehicles));
+        .send(renderCatalog(vehicles, filtro, todos));
     } catch (err) {
       console.error("catalog error:", err);
       res.status(500).send("error");
     }
   });
 
-  app.get("/estoque/:slug", async (req, res, next) => {
+  app.get("/estoque/:slug", async (req, res) => {
     try {
       const vehicles = await getVehicles();
       const vehicle = findBySlug(vehicles, req.params.slug);
-      if (!vehicle) return next(); // fall through to SPA / 404
+      if (!vehicle) {
+        // Carro vendido (ou URL antiga). Antes isto caía no catch-all da SPA e
+        // devolvia a home do quiz com status 200 — porta na cara para o
+        // comprador e soft-404 para o Google.
+        return res
+          .status(410)
+          .set("Content-Type", "text/html; charset=utf-8")
+          .send(renderSold(req.params.slug, findSimilar(vehicles, req.params.slug)));
+      }
       res
         .set("Content-Type", "text/html; charset=utf-8")
         .set("Cache-Control", "public, max-age=600")

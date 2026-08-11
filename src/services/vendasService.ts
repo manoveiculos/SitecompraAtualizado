@@ -2,7 +2,14 @@
 // Os webhooks n8n e o token da API de placas ficam no servidor (server.ts),
 // nunca expostos no bundle do navegador.
 
+import { getAttribution } from '../lib/attribution';
+
 const SOURCE = 'Vendas Rápidas - Manos Veículos';
+
+/** Campos comuns a toda chamada: origem do anúncio + carimbo de tempo. */
+function envelope() {
+  return { source: SOURCE, atribuicao: getAttribution(), timestamp: new Date().toISOString() };
+}
 
 export interface VeiculoPlaca {
   marca: string;
@@ -18,6 +25,8 @@ export interface VeiculoPlaca {
 }
 
 export interface LeadVenda {
+  /** Amarra o lead parcial ao completo, para o n8n atualizar em vez de duplicar. */
+  lead_id: string;
   nome: string;
   telefone: string;
   cidade: string;
@@ -33,7 +42,7 @@ export async function registrarLeadVenda(lead: LeadVenda): Promise<void> {
     await fetch('/api/vendas/lead', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...lead, source: SOURCE, timestamp: new Date().toISOString() }),
+      body: JSON.stringify({ ...lead, ...envelope() }),
     });
   } catch (err) {
     console.error('registrarLeadVenda error:', err);
@@ -65,7 +74,7 @@ export async function enviarVenda(payload: Record<string, unknown>): Promise<voi
     await fetch('/api/vendas/finalizar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...payload, source: SOURCE, timestamp: new Date().toISOString() }),
+      body: JSON.stringify({ ...payload, ...envelope() }),
     });
   } catch (err) {
     console.error('enviarVenda error:', err);
