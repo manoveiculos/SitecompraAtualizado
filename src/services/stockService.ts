@@ -14,7 +14,9 @@ const STOCK_XML_URL = '/api/stock';
 // Site do funil — usado para montar o permalink de cada veículo, batendo com
 // a rota SSR /estoque/<slug> definida em server/catalog.ts.
 const SITE_URL = 'https://manosveiculoscompra.com';
-const CACHE_KEY = 'manos_veiculos_stock_cache_v4'; // bump ao mudar o shape de Vehicle
+// v5: passou a vir ordenado por recência — bump força o cache antigo a expirar
+// na hora, em vez de deixar até 15 min de gente vendo a ordem velha.
+const CACHE_KEY = 'manos_veiculos_stock_cache_v5';
 const CACHE_TTL = 1000 * 60 * 15; // 15 minutes
 
 // Espelha o slugify() de server/catalog.ts para os links do client baterem
@@ -82,13 +84,24 @@ export async function fetchStock(): Promise<Vehicle[]> {
         });
     }
 
+    // Mais recentes primeiro — mesma regra do catálogo SSR
+    // (ordenarPorRecencia em server/catalog.ts), para a home e o /estoque não
+    // mostrarem ordens diferentes. O feed não tem campo de data; o `id` da
+    // Altimus é sequencial, então id maior = cadastrado depois.
+    const ordenados = [...vehicles].sort((a, b) => {
+      const na = Number(a.id);
+      const nb = Number(b.id);
+      if (Number.isFinite(na) && Number.isFinite(nb)) return nb - na;
+      return String(b.id).localeCompare(String(a.id), 'pt-BR', { numeric: true });
+    });
+
     const dataToCache: CachedData = {
       timestamp: Date.now(),
-      vehicles
+      vehicles: ordenados
     };
     localStorage.setItem(CACHE_KEY, JSON.stringify(dataToCache));
 
-    return vehicles;
+    return ordenados;
   } catch (error) {
     console.error('Error fetching Altimus stock:', error);
     return [];

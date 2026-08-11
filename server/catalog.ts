@@ -179,7 +179,28 @@ function parseFeed(xml: string): FeedVehicle[] {
     });
   }
 
-  return vehicles;
+  return ordenarPorRecencia(vehicles);
+}
+
+/**
+ * Mais recentes primeiro.
+ *
+ * O feed da Altimus não traz nenhum campo de data (as tags são id, loja, tipo,
+ * marca, modelo, versao, valor, ano, descricao, km, cor, combustivel,
+ * opcionais, fotos, placa, observacao) e também não vem ordenado. O `id` é
+ * sequencial no sistema deles, então id maior = cadastrado depois — é o melhor
+ * sinal de recência disponível.
+ *
+ * `ano` NÃO serve para isso: um carro 2015 que entrou no pátio ontem é novidade
+ * na loja, e um 2022 parado há seis meses não é.
+ */
+export function ordenarPorRecencia<T extends { id: string }>(lista: T[]): T[] {
+  return [...lista].sort((a, b) => {
+    const na = Number(a.id);
+    const nb = Number(b.id);
+    if (Number.isFinite(na) && Number.isFinite(nb)) return nb - na;
+    return String(b.id).localeCompare(String(a.id), 'pt-BR', { numeric: true });
+  });
 }
 
 export async function getVehicles(): Promise<FeedVehicle[]> {
