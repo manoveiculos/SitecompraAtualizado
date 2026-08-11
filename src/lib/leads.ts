@@ -1,109 +1,102 @@
-import { collection, addDoc, serverTimestamp, doc, getDocFromServer } from 'firebase/firestore';
+// Captura e entrega de leads do funil principal.
+//
+// Ordem de prioridade, de propósito:
+//   1. POST /api/leads  -> o servidor entrega ao n8n. É o que chega no consultor.
+//      Se isso falhar, a chamada falha e a UI oferece o plano B (WhatsApp).
+//   2. Firestore        -> gravação secundária, best-effort. Pode falhar sem
+//      levar o lead junto (era exatamente o contrário antes: o Firestore vinha
+//      primeiro e derrubava o webhook quando quebrava).
+//
+// O webhook do n8n não é mais chamado do navegador — o token de rota e a
+// entrega ficam no servidor, fora do alcance de bloqueadores e de rede ruim.
+
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from './firebase';
+import { getAttribution } from './attribution';
 
-export enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
+export type LeadTipo = 'Compra' | 'Venda' | 'Financiamento';
+
+export interface LeadInput {
+  /** Mesmo id no lead parcial e no completo, para o n8n atualizar em vez de duplicar. */
+  lead_id: string;
+  name: string;
+  phone: string;
+  lead_type: LeadTipo;
+  /** "parcial" = só contato capturado; "completo" = qualificação inteira. */
+  stage: 'parcial' | 'completo';
+  /** Id do evento de conversão, para deduplicar pixel x Conversions API. */
+  event_id?: string;
+  details?: Record<string, unknown>;
 }
 
-interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId?: string | null;
-    email?: string | null;
-    emailVerified?: boolean | null;
-    isAnonymous?: boolean | null;
+/** Gera o id que amarra o lead parcial ao completo. */
+export function novoLeadId(): string {
+  try {
+    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
+  } catch {
+    /* segue para o fallback */
   }
+  return `lead_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
 }
 
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: null, // Lead is usually not logged in
-      email: null,
-      emailVerified: null,
-      isAnonymous: null,
-    },
-    operationType,
-    path
-  };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+/** Remove `undefined` recursivamente — o Firestore rejeita esses campos. */
+function sanitize<T>(obj: T): T {
+  if (obj === null || typeof obj !== 'object' || obj instanceof Date) return obj;
+  if (Array.isArray(obj)) return obj.filter((v) => v !== undefined).map(sanitize) as unknown as T;
+
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+    if (value === undefined) continue;
+    out[key] = sanitize(value);
+  }
+  return out as T;
 }
 
-export async function createLead(leadData: any) {
-  const path = 'leads_manos_crm';
-  
-  // Webhooks based on type as requested
-  const WEBHOOKS: Record<string, string> = {
-    'Compra': 'https://n8n.drivvoo.com/webhook/c238d26a-ebce-4c00-ac3c-ba506042ab46',
-    'Venda': 'https://n8n.drivvoo.com/webhook/684eb74d-9112-47c5-94af-a0982dbdcf35',
-    'Financiamento': 'https://n8n.drivvoo.com/webhook/a5d2e1c0-cf84-4206-9a79-5957bc8fda00'
-  };
-
-  const WEBHOOK_URL = WEBHOOKS[leadData.lead_type] || WEBHOOKS['Compra'];
-
-  // Helper to remove undefined values for Firestore
-  const sanitize = (obj: any): any => {
-    const newObj: any = {};
-    Object.keys(obj).forEach(key => {
-      const val = obj[key];
-      if (val === undefined) return;
-      if (val !== null && typeof val === 'object' && !Array.isArray(val) && !(val instanceof Date)) {
-        newObj[key] = sanitize(val);
-      } else {
-        newObj[key] = val;
-      }
-    });
-    return newObj;
-  };
-
-  const sanitizedData = sanitize({
-    ...leadData,
+/**
+ * Entrega o lead. Lança se a entrega ao servidor falhar, para a UI poder
+ * oferecer o WhatsApp como saída em vez de fingir sucesso.
+ */
+export async function createLead(input: LeadInput): Promise<string> {
+  const payload = sanitize({
+    ...input,
     status: 'new',
-    source: 'Qualificador Manos Web App'
+    source: 'Qualificador Manos Web App',
+    atribuicao: getAttribution(),
+    timestamp: new Date().toISOString(),
   });
 
-  try {
-    // 1. Save to Firebase
-    const docRef = await addDoc(collection(db, path), {
-      ...sanitizedData,
-      created_at: serverTimestamp(),
-      updated_at: serverTimestamp(),
-    });
+  const response = await fetch('/api/leads', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
 
-    // 2. Send to Webhook
-    fetch(WEBHOOK_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...sanitizedData,
-        firebase_id: docRef.id,
-        timestamp: new Date().toISOString()
-      })
-    }).catch(err => console.error("Webhook error:", err));
-
-    return docRef.id;
-  } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, path);
+  if (!response.ok) {
+    throw new Error(`Falha ao entregar o lead (${response.status})`);
   }
+
+  // Gravação secundária. Nunca bloqueia e nunca derruba a entrega acima.
+  void addDoc(collection(db, 'leads_manos_crm'), {
+    ...payload,
+    created_at: serverTimestamp(),
+    updated_at: serverTimestamp(),
+  }).catch((err) => console.error('[leads] Firestore (secundário) falhou:', err));
+
+  return input.lead_id;
 }
 
-export async function testConnection() {
+/**
+ * Registra o contato assim que ele é digitado, ainda no início do funil.
+ * Nunca lança: se falhar, o cliente segue respondendo o quiz normalmente e o
+ * envio completo no fim tenta de novo. Antes desta função, quem abandonava no
+ * meio do funil não deixava rastro nenhum.
+ */
+export async function registrarLeadParcial(input: Omit<LeadInput, 'stage'>): Promise<boolean> {
   try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-    console.log("Firebase connection successful.");
-  } catch (error) {
-    console.error("Firebase connection test failed:", error);
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration (Client is offline).");
-    }
+    await createLead({ ...input, stage: 'parcial' });
+    return true;
+  } catch (err) {
+    console.error('[leads] lead parcial não entregue:', err);
+    return false;
   }
 }
