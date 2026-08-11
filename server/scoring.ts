@@ -16,6 +16,8 @@
 // ~200 leads com nota gravada, cruzar nota x negócio fechado e recalibrar.
 // ---------------------------------------------------------------------------
 
+import { telefoneValido, dddDe } from './telefone';
+
 export type Faixa = 'quente' | 'morno' | 'frio';
 
 export interface ResultadoScore {
@@ -66,36 +68,32 @@ function normalizar(texto: string): string {
     .trim();
 }
 
+export { telefoneValido };
+
+/**
+ * Casamento por palavra inteira. Um `includes` simples dava falso positivo —
+ * "Taiobeiras" (MG) casava com "Taió" e ganhava os pontos de proximidade.
+ */
+function contemCidade(texto: string, cidade: string): boolean {
+  return (
+    texto === cidade ||
+    texto.startsWith(cidade + ' ') ||
+    texto.endsWith(' ' + cidade) ||
+    texto.includes(' ' + cidade + ' ')
+  );
+}
+
 export function cidadeAtendida(cidade: string): boolean {
   const c = normalizar(cidade);
   if (!c) return false;
   if (CIDADES_ATENDIDAS.has(c)) return true;
-  // "Rio do Sul SC", "Blumenau Centro" e afins.
+  // Cobre "Rio do Sul SC", "Centro Blumenau" e afins.
   for (const atendida of CIDADES_ATENDIDAS) {
-    if (c.startsWith(atendida) || c.includes(atendida)) return true;
+    if (contemCidade(c, atendida)) return true;
   }
   return false;
 }
 
-/**
- * Valida o celular brasileiro. É o único critério de descarte: sem telefone que
- * disque, não existe lead — o consultor perderia o tempo dele na fila.
- */
-export function telefoneValido(phone: string): boolean {
-  const d = (phone || '').replace(/\D/g, '').replace(/^55/, '');
-  if (d.length < 10 || d.length > 11) return false;
-
-  const ddd = d.slice(0, 2);
-  if (!/^[1-9][1-9]$/.test(ddd)) return false;
-
-  // Celular (11 dígitos) sempre começa com 9 depois do DDD.
-  if (d.length === 11 && d[2] !== '9') return false;
-
-  // Sequência repetida (99999999999, 11111111111) é preenchimento falso.
-  if (/^(\d)\1+$/.test(d.slice(2))) return false;
-
-  return true;
-}
 
 // ---------------------------------------------------------------------------
 // Sinais de origem
@@ -252,7 +250,7 @@ export function calcularScore(lead: LeadParaScore): ResultadoScore {
     motivos.push('Cidade dentro da área de atendimento');
   }
 
-  const dddCliente = (lead.phone || '').replace(/\D/g, '').replace(/^55/, '').slice(0, 2);
+  const dddCliente = dddDe(lead.phone || '');
   if (DDDS_REGIAO.has(dddCliente)) {
     score += 5;
     motivos.push(`DDD ${dddCliente} da região`);

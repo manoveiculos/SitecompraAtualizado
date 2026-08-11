@@ -24,6 +24,7 @@ import { enviarEventoCapi, capiConfigurado } from "./server/meta";
 import { registrarScore, lerScores } from "./server/leadStats";
 import { renderLeadsPanel } from "./server/leadsPanel";
 import { basicAuth } from "./server/auth";
+import { digitosNacionais } from "./server/telefone";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -39,11 +40,9 @@ const otpStore = new Map<string, OtpEntry>();
 const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const OTP_MAX_ATTEMPTS = 5;
 
-function normalizePhone(phone: string): string {
-  let digits = (phone || "").replace(/\D/g, "");
-  if (digits.length > 11 && digits.startsWith("55")) digits = digits.slice(2);
-  return digits;
-}
+// Mesma normalização usada no score e no Meta CAPI (server/telefone.ts), para
+// os três não divergirem sobre o que é código de país e o que é DDD.
+const normalizePhone = digitosNacionais;
 
 function generateOtp(): string {
   return String(Math.floor(100000 + Math.random() * 900000)); // 6 digits

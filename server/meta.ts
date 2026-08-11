@@ -15,6 +15,7 @@
 // ---------------------------------------------------------------------------
 
 import { createHash } from 'crypto';
+import { paraE164 } from './telefone';
 
 const PIXEL_ID = process.env.META_PIXEL_ID || '3253946971444443';
 const CAPI_TOKEN = process.env.META_CAPI_TOKEN || '';
@@ -25,13 +26,6 @@ const TEST_CODE = process.env.META_TEST_EVENT_CODE || '';
 /** A Meta exige SHA-256 em minúsculas para todo dado pessoal. */
 function hash(valor: string): string {
   return createHash('sha256').update(valor.trim().toLowerCase()).digest('hex');
-}
-
-/** Telefone precisa ir em E.164 sem "+": 5547999999999. */
-function normalizarTelefone(phone: string): string {
-  const d = (phone || '').replace(/\D/g, '');
-  if (!d) return '';
-  return d.startsWith('55') ? d : `55${d}`;
 }
 
 export interface EventoCapi {
@@ -68,7 +62,7 @@ export async function enviarEventoCapi(evento: EventoCapi): Promise<boolean> {
   try {
     const userData: Record<string, unknown> = {};
 
-    const telefone = normalizarTelefone(evento.phone || '');
+    const telefone = paraE164(evento.phone || '');
     if (telefone) userData.ph = [hash(telefone)];
     if (evento.firstName) userData.fn = [hash(evento.firstName.split(' ')[0])];
     if (evento.city) userData.ct = [hash(evento.city.replace(/\s/g, ''))];
