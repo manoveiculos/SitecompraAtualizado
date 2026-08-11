@@ -10,27 +10,7 @@
 // mesma do radar, que vai no bundle do servidor), então a tabela guarda apenas
 // o que pode ser lido sem expor ninguém: tipo, nota, faixa, origem e cidade.
 //
-// SQL da tabela (rodar uma vez no SQL Editor do Supabase):
-//
-//   create table if not exists lead_scores (
-//     id            bigserial primary key,
-//     created_at    timestamptz not null default now(),
-//     lead_id       text not null,
-//     stage         text not null,
-//     lead_type     text not null,
-//     score         int  not null,
-//     faixa         text not null,
-//     descartado    boolean not null default false,
-//     fora_do_raio  boolean not null default false,
-//     canal         text,
-//     utm_source    text,
-//     utm_campaign  text,
-//     utm_content   text,
-//     cidade        text
-//   );
-//   alter table lead_scores enable row level security;
-//   create policy "insert anon" on lead_scores for insert to anon with check (true);
-//   create policy "select anon" on lead_scores for select to anon using (true);
+// SQL da tabela: supabase/lead_scores.sql (rodar uma vez no SQL Editor).
 // ---------------------------------------------------------------------------
 
 const SUPABASE_URL =
@@ -55,15 +35,22 @@ export interface LinhaLeadScore {
   cidade: string | null;
 }
 
-/** Insert fire-and-forget: nunca bloqueia nem derruba a entrega do lead. */
+/**
+ * Upsert fire-and-forget: nunca bloqueia nem derruba a entrega do lead.
+ *
+ * Upsert em (lead_id, stage) porque a mesma etapa pode ser enviada duas vezes —
+ * a pessoa corrige os dados e reenvia, ou o envio final falha e ela tenta de
+ * novo. Sem isso, o painel contaria a mesma pessoa mais de uma vez e inflaria o
+ * desempenho da campanha que a trouxe.
+ */
 export function registrarScore(linha: LinhaLeadScore): void {
-  fetch(`${SUPABASE_URL}/rest/v1/lead_scores`, {
+  fetch(`${SUPABASE_URL}/rest/v1/lead_scores?on_conflict=lead_id,stage`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       apikey: SUPABASE_KEY,
       Authorization: `Bearer ${SUPABASE_KEY}`,
-      Prefer: 'return=minimal',
+      Prefer: 'return=minimal,resolution=merge-duplicates',
     },
     body: JSON.stringify(linha),
   })

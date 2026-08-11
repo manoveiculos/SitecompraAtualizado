@@ -44,32 +44,23 @@ Percorra **no celular**, não no desktop — é onde está o tráfego:
 
 Sem isso o painel `/leads-manos` fica vazio (nada mais quebra).
 
-No **SQL Editor** do Supabase, rodar uma vez:
+O SQL está pronto em **[`supabase/lead_scores.sql`](supabase/lead_scores.sql)** —
+abrir o arquivo, copiar tudo, colar no **SQL Editor** do Supabase e dar Run.
+Pode rodar mais de uma vez sem quebrar nada.
 
-```sql
-create table if not exists lead_scores (
-  id            bigserial primary key,
-  created_at    timestamptz not null default now(),
-  lead_id       text not null,
-  stage         text not null,
-  lead_type     text not null,
-  score         int  not null,
-  faixa         text not null,
-  descartado    boolean not null default false,
-  fora_do_raio  boolean not null default false,
-  canal         text,
-  utm_source    text,
-  utm_campaign  text,
-  utm_content   text,
-  cidade        text
-);
-alter table lead_scores enable row level security;
-create policy "insert anon" on lead_scores for insert to anon with check (true);
-create policy "select anon" on lead_scores for select to anon using (true);
-```
+Além da tabela, ele cria:
+
+- índice único em `(lead_id, stage)` — o servidor grava com upsert, então
+  reenvio atualiza a nota em vez de contar a mesma pessoa duas vezes
+- índices para o painel (data, campanha, canal)
+- as policies de RLS para `anon`
+
+No fim do arquivo há três consultas prontas em comentário: últimos registros,
+desempenho por campanha, e a **fila de contatos que não finalizaram**.
 
 Não há dado pessoal nessa tabela de propósito — nome, telefone e placa ficam só
-no n8n/CRM, que tem controle de acesso.
+no n8n/CRM, que tem controle de acesso. Se um dia entrar qualquer campo pessoal
+ali, troque a chave para a service role e feche o `select`.
 
 **Conferir:** abrir `/api/health/tracking`. O campo `lead_scores` deve sair de
 "sem registros ainda" para "gravando" depois do primeiro lead.
