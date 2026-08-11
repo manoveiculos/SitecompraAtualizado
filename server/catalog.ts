@@ -302,10 +302,24 @@ nav.nav{margin-left:auto;display:flex;gap:18px}nav.nav a{color:#cfcfcf;font-weig
 h1{font-size:28px;font-weight:800;letter-spacing:-.02em;margin:18px 0 6px}
 h2{font-size:20px;font-weight:800;margin:28px 0 10px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;margin-top:18px}
-.card{background:#141414;border:1px solid #1f1f1f;border-radius:16px;overflow:hidden;display:block}
-.card img{width:100%;aspect-ratio:4/3;object-fit:cover;background:#1f1f1f}
-.card .body{padding:12px 14px}.card h3{font-size:15px;margin:0 0 6px;font-weight:700;color:#fff}
+.card{background:#141414;border:1px solid #1f1f1f;border-radius:16px;overflow:hidden;display:flex;flex-direction:column}
+.card img{width:100%;aspect-ratio:4/3;object-fit:cover;background:#1f1f1f;display:block}
+.card .card-media{display:block;line-height:0}
+.card .body{padding:12px 14px;display:flex;flex-direction:column;gap:6px;flex:1}
+.card h3{font-size:15px;margin:0;font-weight:700}
+.card h3 a{color:#fff}.card h3 a:hover{color:#ED1C24;text-decoration:none}
 .price{color:#ED1C24;font-weight:800;font-size:18px}
+.card-actions{display:flex;gap:8px;margin-top:auto;padding-top:8px}
+.btn{flex:1;text-align:center;background:#ED1C24;color:#fff;font-weight:700;font-size:13px;padding:10px 8px;border-radius:10px}
+.btn:hover{text-decoration:none;filter:brightness(1.1)}
+.btn.ghost{background:#1f7a33}
+.filtros{display:flex;flex-direction:column;gap:10px;margin:18px 0 6px}
+.filtro-linha{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.filtro-linha>b{font-size:12px;color:#9a9a9a;text-transform:uppercase;letter-spacing:.08em;min-width:52px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chips .chip{color:#cfcfcf;font-size:13px}
+.chips .chip:hover{border-color:#3a3a3a;text-decoration:none}
+.chips .chip.on{background:#ED1C24;border-color:#ED1C24;color:#fff;font-weight:700}
 .specs{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
 .chip{background:#141414;border:1px solid #1f1f1f;border-radius:999px;padding:6px 12px;font-size:13px}
 .gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin:14px 0}
@@ -324,6 +338,8 @@ function layout(opts: {
   jsonLdBlocks: string[];
   body: string;
   ogImage?: string;
+  /** Sobrescreve a diretiva padrão — usado por páginas que não devem indexar. */
+  robots?: string;
 }): string {
   const head = [
     '<meta charset="utf-8">',
@@ -331,7 +347,7 @@ function layout(opts: {
     `<title>${escHtml(opts.title)}</title>`,
     `<meta name="description" content="${escHtml(opts.description)}">`,
     `<link rel="canonical" href="${escHtml(opts.canonical)}">`,
-    '<meta name="robots" content="index,follow,max-image-preview:large">',
+    `<meta name="robots" content="${escHtml(opts.robots ?? 'index,follow,max-image-preview:large')}">`,
     `<meta property="og:type" content="website">`,
     `<meta property="og:site_name" content="${escHtml(DEALER.name)}">`,
     `<meta property="og:title" content="${escHtml(opts.title)}">`,
@@ -370,8 +386,51 @@ ${opts.body}
 </html>`;
 }
 
-export function renderCatalog(vehicles: FeedVehicle[]): string {
-  const canonical = `${SITE_URL}/estoque`;
+// Faixas de preço do catálogo. Servidas como links (não JavaScript) para
+// continuarem navegáveis por crawler e por quem está sem JS.
+const FAIXAS: { chave: string; rotulo: string; min: number; max: number }[] = [
+  { chave: 'ate-50k', rotulo: 'Até R$ 50 mil', min: 0, max: 50000 },
+  { chave: '50k-100k', rotulo: 'R$ 50 a 100 mil', min: 50000, max: 100000 },
+  { chave: 'acima-100k', rotulo: 'Acima de R$ 100 mil', min: 100000, max: Infinity },
+];
+
+export interface FiltroCatalogo {
+  faixa?: string;
+  marca?: string;
+}
+
+/** Marcas presentes no estoque, com a contagem, ordenadas por volume. */
+function marcasDoEstoque(vehicles: FeedVehicle[]): { marca: string; total: number }[] {
+  const contagem = new Map<string, number>();
+  for (const v of vehicles) {
+    const m = v.brand.trim();
+    if (m) contagem.set(m, (contagem.get(m) ?? 0) + 1);
+  }
+  return [...contagem.entries()]
+    .map(([marca, total]) => ({ marca, total }))
+    .sort((a, b) => b.total - a.total || a.marca.localeCompare(b.marca));
+}
+
+export function aplicarFiltro(vehicles: FeedVehicle[], filtro: FiltroCatalogo): FeedVehicle[] {
+  let out = vehicles;
+  const faixa = FAIXAS.find((f) => f.chave === filtro.faixa);
+  if (faixa) out = out.filter((v) => v.price > faixa.min && v.price <= faixa.max);
+  if (filtro.marca) {
+    const alvo = filtro.marca.toLowerCase();
+    out = out.filter((v) => v.brand.toLowerCase() === alvo);
+  }
+  return out;
+}
+
+export function renderCatalog(
+  vehicles: FeedVehicle[],
+  filtro: FiltroCatalogo = {},
+  todos: FeedVehicle[] = vehicles,
+): string {
+  const faixaAtiva = FAIXAS.find((f) => f.chave === filtro.faixa);
+  const marcaAtiva = filtro.marca;
+  const filtrado = Boolean(faixaAtiva || marcaAtiva);
+
   const itemList = {
     '@context': 'https://schema.org',
     '@type': 'ItemList',
@@ -385,32 +444,85 @@ export function renderCatalog(vehicles: FeedVehicle[]): string {
     })),
   };
 
+  const chip = (rotulo: string, href: string, ativo: boolean) =>
+    `<a class="chip${ativo ? ' on' : ''}" href="${escHtml(href)}">${escHtml(rotulo)}</a>`;
+
+  const filtroFaixas = [
+    chip('Todos os preços', '/estoque' + (marcaAtiva ? `?marca=${encodeURIComponent(marcaAtiva)}` : ''), !faixaAtiva),
+    ...FAIXAS.map((f) =>
+      chip(
+        f.rotulo,
+        `/estoque?faixa=${f.chave}` + (marcaAtiva ? `&marca=${encodeURIComponent(marcaAtiva)}` : ''),
+        faixaAtiva?.chave === f.chave,
+      ),
+    ),
+  ].join('\n');
+
+  const filtroMarcas = [
+    chip('Todas as marcas', '/estoque' + (faixaAtiva ? `?faixa=${faixaAtiva.chave}` : ''), !marcaAtiva),
+    ...marcasDoEstoque(todos)
+      .slice(0, 12)
+      .map((m) =>
+        chip(
+          `${m.marca} (${m.total})`,
+          `/estoque?marca=${encodeURIComponent(m.marca)}` + (faixaAtiva ? `&faixa=${faixaAtiva.chave}` : ''),
+          marcaAtiva?.toLowerCase() === m.marca.toLowerCase(),
+        ),
+      ),
+  ].join('\n');
+
+  // Card com dois links em vez de um card-link só: cada carro passa a ter o CTA
+  // ao lado do preço. Antes havia um único botão de WhatsApp no topo da página,
+  // longe do carro que a pessoa estava olhando.
   const cards = vehicles
     .map(
       (v) => `
-  <a class="card" href="/estoque/${escHtml(v.slug)}">
-    ${v.images[0] ? `<img src="${escHtml(v.images[0])}" alt="${escHtml(v.title)}" loading="lazy">` : ''}
+  <div class="card">
+    <a href="/estoque/${escHtml(v.slug)}" class="card-media">
+      ${v.images[0] ? `<img src="${escHtml(v.images[0])}" alt="${escHtml(v.title)}" loading="lazy">` : ''}
+    </a>
     <div class="body">
-      <h3>${escHtml(v.title)}</h3>
+      <h3><a href="/estoque/${escHtml(v.slug)}">${escHtml(v.title)}</a></h3>
       <div class="muted small">${escHtml(v.year)} • ${escHtml(v.km)}${v.fuel ? ' • ' + escHtml(v.fuel) : ''}</div>
       <div class="price">${escHtml(v.priceFormatted)}</div>
+      <div class="card-actions">
+        <a class="btn" href="${SITE_URL}/?id=${encodeURIComponent(v.id)}">Tenho interesse</a>
+        <a class="btn ghost" href="https://wa.me/${DEALER.whatsapp}?text=${encodeURIComponent('Olá! Tenho interesse no ' + v.title)}">WhatsApp</a>
+      </div>
     </div>
-  </a>`
+  </div>`,
     )
     .join('\n');
 
+  const titulo = marcaAtiva
+    ? `${marcaAtiva} seminovos em ${DEALER.city}/${DEALER.region}`
+    : faixaAtiva
+      ? `Carros seminovos ${faixaAtiva.rotulo.toLowerCase()} em ${DEALER.city}/${DEALER.region}`
+      : `Carros seminovos em ${DEALER.city}/${DEALER.region}`;
+
   const body = `
-  <h1>Carros seminovos em ${escHtml(DEALER.city)}/${DEALER.region}</h1>
-  <p class="muted">${vehicles.length} veículos disponíveis no estoque da ${escHtml(DEALER.name)}, revenda no ${escHtml(DEALER.areaServed)}. Atualizado em tempo real.</p>
+  <h1>${escHtml(titulo)}</h1>
+  <p class="muted">${vehicles.length} ${vehicles.length === 1 ? 'veículo disponível' : 'veículos disponíveis'} no estoque da ${escHtml(DEALER.name)}, revenda no ${escHtml(DEALER.areaServed)}. Atualizado em tempo real.</p>
+  <div class="filtros">
+    <div class="filtro-linha"><b>Preço</b><div class="chips">${filtroFaixas}</div></div>
+    <div class="filtro-linha"><b>Marca</b><div class="chips">${filtroMarcas}</div></div>
+  </div>
   <a class="cta" href="https://wa.me/${DEALER.whatsapp}?text=${encodeURIComponent('Olá! Vi o estoque no site e quero falar com um consultor.')}">Falar com consultor no WhatsApp</a>
-  <div class="grid">
-  ${cards}
-  </div>`;
+  ${
+    vehicles.length
+      ? `<div class="grid">${cards}</div>`
+      : `<div class="faq"><h3>Nenhum carro nesse filtro agora</h3><p>O estoque gira toda semana. <a href="/estoque">Ver o estoque completo</a> ou <a href="https://wa.me/${DEALER.whatsapp}?text=${encodeURIComponent('Olá! Procuro um carro que não vi no site.')}">falar com um consultor</a> — a gente procura um para você.</p></div>`
+  }`;
 
   return layout({
-    title: `Estoque de Seminovos em ${DEALER.city}/${DEALER.region} | ${DEALER.name}`,
+    title: filtrado
+      ? `${titulo} | ${DEALER.name}`
+      : `Estoque de Seminovos em ${DEALER.city}/${DEALER.region} | ${DEALER.name}`,
     description: `Confira ${vehicles.length} carros seminovos revisados na ${DEALER.name}, em ${DEALER.city}/${DEALER.region}. Compra, troca e financiamento no Alto Vale do Itajaí.`,
-    canonical,
+    // Views filtradas apontam para /estoque e não indexam: evita conteúdo
+    // duplicado competindo com a página principal do catálogo.
+    canonical: `${SITE_URL}/estoque`,
+    robots: filtrado ? 'noindex,follow' : undefined,
     ogImage: vehicles[0]?.images[0] || DEALER.logo,
     jsonLdBlocks: [jsonLd(autoDealerNode()), jsonLd(itemList)],
     body,
@@ -470,6 +582,73 @@ export function renderVehicle(v: FeedVehicle): string {
     jsonLdBlocks: [jsonLd(vehicleSchema(v)), jsonLd(breadcrumb)],
     body,
   });
+}
+
+/**
+ * Página de veículo já vendido.
+ *
+ * Antes, um slug que não batia caía no catch-all da SPA e devolvia a home do
+ * quiz com status 200: para o comprador que clicou num carro específico no
+ * Google era uma porta na cara, e para o Google era um soft-404 que corroía a
+ * indexação do catálogo inteiro. Agora devolve 410 (Gone) com explicação e
+ * alternativas reais — a intenção de compra é recuperada em vez de perdida.
+ */
+export function renderSold(slug: string, similares: FeedVehicle[]): string {
+  const canonical = `${SITE_URL}/estoque`;
+
+  const cards = similares
+    .map(
+      (v) => `
+  <a class="card" href="/estoque/${escHtml(v.slug)}">
+    ${v.images[0] ? `<img src="${escHtml(v.images[0])}" alt="${escHtml(v.title)}" loading="lazy">` : ''}
+    <div class="body">
+      <h3>${escHtml(v.title)}</h3>
+      <div class="muted small">${escHtml(v.year)} • ${escHtml(v.km)}${v.fuel ? ' • ' + escHtml(v.fuel) : ''}</div>
+      <div class="price">${escHtml(v.priceFormatted)}</div>
+    </div>
+  </a>`,
+    )
+    .join('\n');
+
+  // O slug carrega a descrição do carro; vira um texto legível para a mensagem.
+  const procurado = slug
+    .replace(/-\d+$/, '')
+    .replace(/-/g, ' ')
+    .trim();
+
+  const body = `
+  <nav class="bc"><a href="/estoque">Estoque</a> › <span class="muted">Veículo vendido</span></nav>
+  <h1>Esse carro já foi vendido</h1>
+  <p class="muted">${procurado ? `O <strong>${escHtml(procurado)}</strong> saiu do nosso pátio.` : 'Esse veículo saiu do nosso pátio.'} O estoque gira toda semana — veja abaixo o que temos agora, ou fale com um consultor que a gente procura um parecido para você.</p>
+  <a class="cta" href="https://wa.me/${DEALER.whatsapp}?text=${encodeURIComponent('Olá! Vi que o ' + (procurado || 'carro') + ' já foi vendido. Vocês têm algo parecido?')}">Quero um parecido — falar no WhatsApp</a>
+  &nbsp;
+  <a class="cta alt" href="/estoque">Ver estoque completo</a>
+  ${cards ? `<h2>Disponíveis agora</h2><div class="grid">${cards}</div>` : ''}`;
+
+  return layout({
+    title: 'Veículo vendido — veja o estoque atual | Manos Veículos',
+    description: `Este veículo já foi vendido. Veja o estoque atual de seminovos da ${DEALER.name} em ${DEALER.city}/${DEALER.region}.`,
+    canonical,
+    ogImage: similares[0]?.images[0] || DEALER.logo,
+    // noindex: a URL não deve mais disputar espaço no índice.
+    robots: 'noindex,follow',
+    jsonLdBlocks: [jsonLd(autoDealerNode())],
+    body,
+  });
+}
+
+/**
+ * Escolhe substitutos para a página de vendido: mesma marca primeiro (o slug
+ * começa pela descrição, então a primeira palavra costuma ser a marca), depois
+ * completa com o restante do estoque.
+ */
+export function findSimilar(vehicles: FeedVehicle[], slug: string, limit = 3): FeedVehicle[] {
+  const marca = slug.split('-')[0]?.toLowerCase() ?? '';
+  const mesmaMarca = marca
+    ? vehicles.filter((v) => v.brand.toLowerCase() === marca || v.slug.startsWith(marca + '-'))
+    : [];
+  const resto = vehicles.filter((v) => !mesmaMarca.includes(v));
+  return [...mesmaMarca, ...resto].slice(0, limit);
 }
 
 // Conversational Q&A — the long-tail queries people ask AI assistants.
