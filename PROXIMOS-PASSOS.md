@@ -1,13 +1,13 @@
 # Próximos passos — funil de conversão
 
-Branch: `cro/funil-conversao-2026-08` (3 commits)
+Branch: `cro/funil-conversao-2026-08` (7 commits)
 
 O código está pronto e testado (typecheck, build e rotas). O que falta é
-**configuração em quatro sistemas externos**. Enquanto os itens 2 e 3 não
+**configuração em cinco sistemas externos**. Enquanto os itens 2 e 3 não
 estiverem feitos, o site funciona normalmente — mas você não vai ver os números
 novos, e o CRM vai receber cada lead duas vezes.
 
-Ordem sugerida: **1 → 2 → 3 → 4 → 5 → 6**. Reserve umas 2 horas.
+Ordem sugerida: **1 → 2 → 3 → 4 → 5 → 6 → 7**. Reserve umas 2 horas.
 
 ---
 
@@ -140,7 +140,42 @@ Variáveis do dataLayer que vale criar no GTM: `lead_tipo`, `canal`,
 
 ---
 
-## 5. Meta — token do Conversions API
+## 5. Senha do painel `/leads-manos` ⚠️ obrigatório
+
+O painel está protegido por Basic Auth, e **falha fechada**: sem senha definida
+ele responde 503 em vez de ficar aberto. Ou seja, ou você configura, ou o painel
+não abre para ninguém.
+
+No `.env` do servidor:
+
+```bash
+PANEL_USER="manos"
+PANEL_PASSWORD="cole-aqui-a-senha-gerada"
+```
+
+Gerar uma senha longa:
+
+```bash
+openssl rand -base64 24
+```
+
+Depois de mexer no `.env`, o PM2 precisa recarregar o ambiente:
+
+```bash
+pm2 reload manos --update-env
+```
+
+**Conferir:** abrir `/leads-manos` no navegador — tem que aparecer a caixa de
+usuário e senha. O resto do site (`/`, `/estoque`, `/vendasrapidas`) continua
+público, sem senha nenhuma.
+
+> Basic Auth trafega a senha em base64, não criptografada — só é seguro sobre
+> HTTPS. O site já está em HTTPS, então está tudo certo; só não use essa senha
+> em nenhum outro lugar.
+
+---
+
+## 6. Meta — token do Conversions API
 
 No Gerenciador de Eventos → pixel `3253946971444443` → Configurações → gerar
 token de acesso. Depois, no servidor:
@@ -162,9 +197,9 @@ Se aparecer duplicado, o `event_id` não está casando.
 
 ---
 
-## 6. Primeira semana — o que olhar
+## 7. Primeira semana — o que olhar
 
-Abra `/leads-manos` (não indexado, mas **sem senha** — ver aviso abaixo).
+Abra `/leads-manos` (protegido por senha, ver passo 5).
 
 Quatro números que antes não existiam:
 
@@ -185,9 +220,6 @@ partida defensável, não verdade revelada.
 
 ## Pendências conhecidas
 
-- **`/leads-manos` não tem autenticação.** Está `noindex,nofollow` e não tem dado
-  pessoal, mas quem souber a URL consegue ver os números de campanha. Se isso
-  incomodar, dá para pôr atrás de Basic Auth no nginx — me avise.
 - **Largura de 500px no desktop.** Não mexi: alargar a casca mexe na composição
   de todas as telas e eu não teria como avaliar o resultado visual daqui. Veja a
   home nova primeiro e decida.

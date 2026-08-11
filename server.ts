@@ -23,6 +23,7 @@ import { calcularScore, acaoRecomendada } from "./server/scoring";
 import { enviarEventoCapi, capiConfigurado } from "./server/meta";
 import { registrarScore, lerScores } from "./server/leadStats";
 import { renderLeadsPanel } from "./server/leadsPanel";
+import { basicAuth } from "./server/auth";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -451,7 +452,9 @@ async function startServer() {
   });
 
   // Painel interno: leads por origem, campanha, criativo e nota.
-  app.get("/leads-manos", async (_req, res) => {
+  // Protegido por Basic Auth — expõe desempenho por campanha, que é informação
+  // de negócio. Sem PANEL_PASSWORD no .env, responde 503 em vez de abrir.
+  app.get("/leads-manos", basicAuth("Painel Manos"), async (_req, res) => {
     try {
       const linhas = await lerScores(500);
       res
