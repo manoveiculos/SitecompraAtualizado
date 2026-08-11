@@ -46,7 +46,29 @@
     <noscript><img height="1" width="1" style="display:none"
     src="https://www.facebook.com/tr?id=3253946971444443&ev=PageView&noscript=1"
     /></noscript>
-    <div id="root"></div>
+    <!--
+      Conteúdo de emergência dentro do #root. O funil é 100% client-side: se o
+      bundle não carregar (rede de celular ruim, JS bloqueado, erro de deploy), a
+      página ficava totalmente preta — sem telefone, sem endereço, sem uma linha
+      de texto. O React substitui tudo isto ao montar, então o visitante só vê
+      este bloco quando é a única coisa que existe.
+    -->
+    <div id="root">
+      <div style="min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:24px;text-align:center;background:#0a0a0a;color:#fff;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif">
+        <img src="https://manosveiculos.com.br/wp-content/uploads/2024/02/LogoManos.png" alt="Manos Veículos" style="height:40px;width:auto;object-fit:contain" />
+        <h1 style="font-size:22px;font-weight:900;font-style:italic;text-transform:uppercase;line-height:1.1;margin:0">Manos Veículos</h1>
+        <p style="font-size:15px;color:rgba(255,255,255,.65);max-width:340px;line-height:1.5;margin:0">
+          Compra, venda, troca e financiamento de seminovos em Rio do Sul/SC.
+          Se a página não carregar, fale direto com a nossa equipe.
+        </p>
+        <a href="tel:+554733001352" style="padding:16px 28px;width:100%;max-width:340px;background:#ED1C24;color:#fff;font-weight:900;font-size:15px;text-transform:uppercase;border-radius:16px;text-decoration:none">Ligar: (47) 3300-1352</a>
+        <a href="https://wa.me/554733001352" style="padding:16px 28px;width:100%;max-width:340px;background:#22c55e;color:#fff;font-weight:900;font-size:15px;text-transform:uppercase;border-radius:16px;text-decoration:none">Falar no WhatsApp</a>
+        <a href="/estoque" style="padding:14px 28px;width:100%;max-width:340px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.75);font-weight:700;font-size:14px;text-transform:uppercase;border-radius:16px;text-decoration:none">Ver estoque</a>
+        <p style="font-size:12px;color:rgba(255,255,255,.35);max-width:340px;line-height:1.5;margin:0">
+          R. Dom Pedro II, 374 &ndash; Canoas, Rio do Sul/SC &bull; Seg a Sex 8h&ndash;19h &bull; Sáb 8h&ndash;13h
+        </p>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
