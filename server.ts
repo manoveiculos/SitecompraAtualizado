@@ -21,7 +21,7 @@ import {
 import { radarMiddleware } from "./server/radar";
 import { calcularScore, acaoRecomendada } from "./server/scoring";
 import { enviarEventoCapi, capiConfigurado } from "./server/meta";
-import { registrarScore, lerScores } from "./server/leadStats";
+import { registrarScore, lerScores, diagnosticoScores } from "./server/leadStats";
 import { renderLeadsPanel } from "./server/leadsPanel";
 import { basicAuth } from "./server/auth";
 import { digitosNacionais } from "./server/telefone";
@@ -128,6 +128,26 @@ async function startServer() {
         details,
       });
 
+      // Registro analítico ANTES da entrega, de propósito. Se o n8n estiver
+      // fora do ar, o lead se perde — mas a medição não pode se perder junto:
+      // é exatamente aí que interessa saber qual campanha trouxe a pessoa.
+      // Antes isto rodava só depois do webhook responder ok, então uma queda
+      // do n8n apagava o desempenho da campanha em vez de só atrasar o lead.
+      registrarScore({
+        lead_id: String(body.lead_id ?? ""),
+        stage,
+        lead_type: leadType,
+        score: qualificacao.score,
+        faixa: qualificacao.faixa,
+        descartado: qualificacao.descartar,
+        fora_do_raio: qualificacao.fora_do_raio,
+        canal: atribuicao.canal ?? null,
+        utm_source: atribuicao.utm_source ?? null,
+        utm_campaign: atribuicao.utm_campaign ?? null,
+        utm_content: atribuicao.utm_content ?? null,
+        cidade: String(details.cidade ?? "") || null,
+      });
+
       const payload = {
         ...body,
         name,
@@ -155,21 +175,6 @@ async function startServer() {
         console.error(`Lead webhook respondeu ${response.status} para ${leadType}`);
         return res.status(502).json({ ok: false, error: "Falha ao entregar o lead" });
       }
-
-      registrarScore({
-        lead_id: String(body.lead_id ?? ""),
-        stage,
-        lead_type: leadType,
-        score: qualificacao.score,
-        faixa: qualificacao.faixa,
-        descartado: qualificacao.descartar,
-        fora_do_raio: qualificacao.fora_do_raio,
-        canal: atribuicao.canal ?? null,
-        utm_source: atribuicao.utm_source ?? null,
-        utm_campaign: atribuicao.utm_campaign ?? null,
-        utm_content: atribuicao.utm_content ?? null,
-        cidade: String(details.cidade ?? "") || null,
-      });
 
       // Só o lead completo vira conversão no Meta. O parcial é sinal de funil,
       // não de negócio — otimizar por ele treinaria a campanha a buscar quem
@@ -360,21 +365,9 @@ async function startServer() {
         },
       });
 
-      const response = await fetch("https://n8n.drivvoo.com/webhook/b612877b-56f9-4a22-88d2-acd74541c812", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...body,
-          score: qualificacao.score,
-          faixa: qualificacao.faixa,
-          score_motivos: qualificacao.motivos,
-          fora_do_raio: qualificacao.fora_do_raio,
-          descartar: qualificacao.descartar,
-          acao_recomendada: acaoRecomendada(qualificacao),
-          server_received_at: new Date().toISOString(),
-        }),
-      });
-
+      // Antes da entrega, pelo mesmo motivo da rota /api/leads: se o fetch
+      // estourar (rede, DNS, timeout), a execução pula direto para o catch e a
+      // medição desta avaliação sumiria junto com o lead.
       registrarScore({
         lead_id: String(body.lead_id ?? body.event_id ?? ""),
         stage: "completo",
@@ -388,6 +381,21 @@ async function startServer() {
         utm_campaign: atribuicao.utm_campaign ?? null,
         utm_content: atribuicao.utm_content ?? null,
         cidade: String(body.cidade ?? "") || null,
+      });
+
+      const response = await fetch("https://n8n.drivvoo.com/webhook/b612877b-56f9-4a22-88d2-acd74541c812", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...body,
+          score: qualificacao.score,
+          faixa: qualificacao.faixa,
+          score_motivos: qualificacao.motivos,
+          fora_do_raio: qualificacao.fora_do_raio,
+          descartar: qualificacao.descartar,
+          acao_recomendada: acaoRecomendada(qualificacao),
+          server_received_at: new Date().toISOString(),
+        }),
       });
 
       if (body.event_id) {
@@ -471,12 +479,17 @@ async function startServer() {
   // Diagnóstico rápido da mensuração — evita descobrir só depois da campanha
   // no ar que o token do CAPI nunca foi configurado.
   app.get("/api/health/tracking", async (_req, res) => {
-    const linhas = await lerScores(1);
+    const scores = await diagnosticoScores();
     res.json({
       meta_capi: capiConfigurado() ? "configurado" : "sem META_CAPI_TOKEN",
-      // Confirma que a tabela lead_scores existe e responde de verdade, em vez
-      // de só checar se a variável de ambiente está preenchida.
-      lead_scores: linhas.length > 0 ? "gravando" : "sem registros ainda (ou tabela/RLS faltando)",
+      // Tabela quebrada e tabela vazia pedem ações opostas — conserto de RLS
+      // versus falta de tráfego. Antes as duas apareciam na mesma frase e o
+      // diagnóstico mandava procurar defeito onde não havia.
+      lead_scores: !scores.acessivel
+        ? `INACESSÍVEL (${scores.erro}) — confira a tabela e a RLS`
+        : scores.total
+          ? `gravando — ${scores.total} registro(s), último em ${scores.ultimo}`
+          : "tabela ok e gravável, porém nenhum lead registrado até agora",
       webhooks_n8n: {
         compra: LEAD_WEBHOOKS.Compra.includes("n8n.drivvoo.com") ? "produção" : "sobrescrito",
         venda: LEAD_WEBHOOKS.Venda.includes("n8n.drivvoo.com") ? "produção" : "sobrescrito",

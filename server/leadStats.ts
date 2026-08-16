@@ -60,6 +60,58 @@ export function registrarScore(linha: LinhaLeadScore): void {
     .catch((err) => console.error('lead_scores log falhou:', err?.message || err));
 }
 
+export interface DiagnosticoScores {
+  /** O Supabase aceitou a leitura? Falso = tabela ausente ou RLS fechada. */
+  acessivel: boolean;
+  total: number | null;
+  ultimo: string | null;
+  erro: string | null;
+}
+
+/**
+ * Estado da tabela, para o health check.
+ *
+ * `lerScores` devolve lista vazia tanto quando a tabela está quebrada quanto
+ * quando ela só ainda não recebeu lead — e essas duas situações pedem ações
+ * opostas: uma é conserto de RLS, a outra é falta de tráfego. Aqui elas ficam
+ * separadas, para o diagnóstico não mandar ninguém procurar defeito onde não
+ * tem.
+ */
+export async function diagnosticoScores(): Promise<DiagnosticoScores> {
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/lead_scores?select=created_at&order=created_at.desc&limit=1`,
+      {
+        headers: {
+          apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${SUPABASE_KEY}`,
+          // Faz o PostgREST devolver a contagem no cabeçalho Content-Range.
+          Prefer: 'count=exact',
+        },
+      },
+    );
+    if (!res.ok) {
+      return { acessivel: false, total: null, ultimo: null, erro: `HTTP ${res.status}` };
+    }
+    // Content-Range vem como "0-0/12" — ou "*/0" quando não há nenhuma linha.
+    const total = Number(res.headers.get('content-range')?.split('/')[1]);
+    const linhas = (await res.json()) as { created_at: string }[];
+    return {
+      acessivel: true,
+      total: Number.isFinite(total) ? total : null,
+      ultimo: linhas[0]?.created_at ?? null,
+      erro: null,
+    };
+  } catch (err) {
+    return {
+      acessivel: false,
+      total: null,
+      ultimo: null,
+      erro: (err as Error)?.message || 'falha de rede',
+    };
+  }
+}
+
 /** Leitura para o painel /leads-manos. */
 export async function lerScores(limite = 500): Promise<LinhaLeadScore[]> {
   try {
