@@ -10,13 +10,13 @@
 // Everything is generated on the fly with a short in-memory cache.
 // ---------------------------------------------------------------------------
 
-const SITE_URL = 'https://manosveiculoscompra.com';
+export const SITE_URL = 'https://manosveiculoscompra.com';
 const FEED_URL =
   'https://estoque.altimus.com.br/api/estoquexml?estoque=997c9e91-40d7-4bec-95cb-68e18a2668a3';
 
 // Dealer (NAP + trust signals) — keep identical everywhere so engines treat
 // it as one entity. Ratings/hours/socials are real, confirmed by the owner.
-const DEALER = {
+export const DEALER = {
   name: 'Manos Veículos',
   legalName: 'Manos Veículos',
   url: SITE_URL,

@@ -25,6 +25,7 @@ import { registrarScore, lerScores } from "./server/leadStats";
 import { renderLeadsPanel } from "./server/leadsPanel";
 import { basicAuth } from "./server/auth";
 import { digitosNacionais } from "./server/telefone";
+import { montarProdutos, produtosParaParquet } from "./server/openaiFeed";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -481,6 +482,50 @@ async function startServer() {
         venda: LEAD_WEBHOOKS.Venda.includes("n8n.drivvoo.com") ? "produção" : "sobrescrito",
       },
     });
+  });
+
+  // -------------------------------------------------------------------------
+  // Product feed do OpenAI Ads (snapshot completo em Parquet).
+  //
+  // É esta URL que se cola em Ads Manager › Feeds › "Conecte seu feed via URL".
+  // O painel aceita os parâmetros `file_type=full-parquet` e `prefix`; ambos
+  // são inofensivos aqui — a rota sempre devolve o catálogo inteiro, então a
+  // URL funciona com ou sem eles.
+  //
+  // `?preview=1` devolve as mesmas linhas em JSON, para conferir o conteúdo
+  // sem precisar abrir o binário.
+  // -------------------------------------------------------------------------
+  app.get("/feeds/openai/products.parquet", async (req, res) => {
+    try {
+      const vehicles = await getVehicles();
+      const produtos = montarProdutos(vehicles);
+
+      if (req.query.preview) {
+        return res
+          .set("Cache-Control", "no-store")
+          .set("X-Robots-Tag", "noindex, nofollow")
+          .json({
+            total_estoque: vehicles.length,
+            total_no_feed: produtos.length,
+            descartados_sem_preco_ou_foto: vehicles.length - produtos.length,
+            produtos,
+          });
+      }
+
+      const parquet = produtosParaParquet(produtos);
+      res
+        .set("Content-Type", "application/vnd.apache.parquet")
+        .set("Content-Disposition", 'attachment; filename="products.parquet"')
+        .set("Content-Length", String(parquet.length))
+        // O catálogo em memória tem TTL de 10 min; alinhar evita servir cache
+        // mais velho que a fonte.
+        .set("Cache-Control", "public, max-age=600")
+        .set("X-Robots-Tag", "noindex, nofollow")
+        .send(parquet);
+    } catch (err) {
+      console.error("openai feed error:", err);
+      res.status(500).json({ error: "failed to build feed" });
+    }
   });
 
   app.get("/llms.txt", async (_req, res) => {
