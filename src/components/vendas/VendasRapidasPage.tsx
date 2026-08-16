@@ -197,7 +197,7 @@ export default function VendasRapidasPage() {
                 <div className="flex items-center justify-center gap-1.5 pt-0.5">
                   <Star className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400" />
                   <span className="text-[11px] font-bold text-white/50">
-                    <span className="text-white">4,7</span> no Google • 119 avaliações de quem já vendeu
+                    <span className="text-white">4,8</span> no Google • 154 avaliações de quem já vendeu
                   </span>
                 </div>
               </div>
