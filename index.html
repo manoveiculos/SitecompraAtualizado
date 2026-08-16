@@ -37,6 +37,11 @@
     fbq('track', 'PageView');
     </script>
     <!-- End Meta Pixel Code -->
+    <!-- OpenAI Ads Pixel (anúncios dentro do ChatGPT).
+         debug:false de propósito — com true o SDK escreve no console de quem
+         está navegando. Ligue temporariamente só para conferir no Pixel Helper. -->
+    <script>!function(w,d,s,u){if(w.oaiq)return;var q=function(){q.q.push(arguments)};q.q=[];w.oaiq=q;var j=d.createElement(s);j.async=1;j.src=u;var f=d.getElementsByTagName(s)[0];f.parentNode.insertBefore(j,f)}(window,document,"script","https://bzrcdn.openai.com/sdk/oaiq.min.js");oaiq("init",{pixelId:"QhX8YkwW1KcmEMR9JPQD8Q",debug:false});</script>
+    <!-- End OpenAI Ads Pixel -->
   </head>
   <body>
     <!-- Google Tag Manager (noscript) -->

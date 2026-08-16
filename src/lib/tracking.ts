@@ -4,13 +4,16 @@
 // para o dataLayer — o Google Ads não tinha uma única conversão para otimizar, e
 // o /vendasrapidas não reportava nada para plataforma nenhuma.
 //
-// Todo evento sai por dois canais:
+// Todo evento sai por três canais:
 //   - dataLayer  -> GTM, que dispara a conversão do Google Ads e o evento do GA4
 //   - fbq        -> pixel da Meta
+//   - oaiq       -> pixel do OpenAI Ads (anúncios dentro do ChatGPT)
 //
 // Cada evento carrega um `event_id` estável. O pixel e o Conversions API
 // (server-side) precisam do MESMO id para a Meta deduplicar em vez de contar
-// duas vezes — por isso o id é gerado aqui e devolvido para quem chamar.
+// duas vezes — por isso o id é gerado aqui e devolvido para quem chamar. O
+// mesmo id vai para a OpenAI, que deduplica do mesmo jeito quando o Conversions
+// API dela entrar.
 
 import { getAttribution, getChannel } from './attribution';
 
@@ -45,6 +48,27 @@ function fbqTrack(kind: 'track' | 'trackCustom', name: string, payload: Json, id
     else fbq(kind, name, payload);
   } catch (err) {
     console.error('[tracking] fbq error:', err);
+  }
+}
+
+/**
+ * Pixel do OpenAI Ads.
+ *
+ * A assinatura é `oaiq("measure", nome, dados, opcoes)` — e a separação importa:
+ * `type`, `amount` e `currency` vão nos DADOS; `event_id` vai nas OPÇÕES. Trocar
+ * os dois de lugar não dá erro, o evento só chega sem o id de deduplicação.
+ *
+ * `amount` é inteiro na especificação, por isso o arredondamento fica aqui e não
+ * espalhado em cada chamada.
+ */
+function oaiqMeasure(evento: string, dados: Json, opcoes?: Json): void {
+  try {
+    const oaiq = (window as unknown as { oaiq?: (...args: unknown[]) => void }).oaiq;
+    if (!oaiq) return;
+    if (opcoes) oaiq('measure', evento, dados, opcoes);
+    else oaiq('measure', evento, dados);
+  } catch (err) {
+    console.error('[tracking] oaiq error:', err);
   }
 }
 
@@ -141,6 +165,15 @@ export function trackLeadParcial(args: LeadEventArgs): string {
     { lead_tipo: args.tipo, value: args.valor ?? 0, currency: 'BRL' },
     id,
   );
+  // Evento customizado, não `lead_created`: o contato parcial não é o mesmo
+  // acontecimento que o lead qualificado. Mandar os dois com o mesmo nome faria
+  // a OpenAI otimizar por quem só deixa telefone — o mesmo erro que já foi
+  // corrigido no pixel da Meta.
+  oaiqMeasure(
+    'custom',
+    { type: 'custom', amount: Math.round(args.valor ?? 0), currency: 'BRL' },
+    { event_id: id, custom_event_name: 'lead_parcial' },
+  );
   return id;
 }
 
@@ -168,6 +201,15 @@ export function trackLead(args: LeadEventArgs): string {
       currency: 'BRL',
     },
     id,
+  );
+  // `lead_created` é o evento padrão para envio de lead. O exemplo que vem no
+  // painel da OpenAI usa `registration_completed`, que descreve criação de
+  // conta — aqui ninguém cria conta, e otimizar por ele ensinaria a campanha a
+  // buscar a ação errada.
+  oaiqMeasure(
+    'lead_created',
+    { type: 'customer_action', amount: Math.round(args.valor ?? 0), currency: 'BRL' },
+    { event_id: id },
   );
   return id;
 }
