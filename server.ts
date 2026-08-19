@@ -50,6 +50,44 @@ function generateOtp(): string {
   return String(Math.floor(100000 + Math.random() * 900000)); // 6 digits
 }
 
+/** Lê um cookie do cabeçalho cru — evita uma dependência só para isto. */
+function lerCookie(req: express.Request, nome: string): string | undefined {
+  const cru = req.headers.cookie;
+  if (!cru) return undefined;
+  for (const parte of cru.split(";")) {
+    const i = parte.indexOf("=");
+    if (i < 0) continue;
+    if (parte.slice(0, i).trim() === nome) {
+      return decodeURIComponent(parte.slice(i + 1).trim()) || undefined;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Cookies `_fbp` e `_fbc`, que o pixel da Meta grava no navegador.
+ *
+ * São o sinal de correspondência mais forte que existe para evento de web —
+ * bem mais que telefone e cidade, que dependem de a pessoa ter os mesmos dados
+ * cadastrados na Meta. O código já sabia enviá-los, mas ninguém os lia: os
+ * eventos saíam com correspondência pior do que a disponível.
+ *
+ * Quando o `_fbc` ainda não existe (primeira visita: o clique chegou mas o
+ * pixel não gravou o cookie a tempo), ele é montado a partir do `fbclid` que a
+ * atribuição capturou, no formato que a Meta especifica.
+ */
+function cookiesMeta(
+  req: express.Request,
+  atribuicao: Record<string, string | undefined>,
+): { fbp?: string; fbc?: string } {
+  const fbp = lerCookie(req, "_fbp");
+  let fbc = lerCookie(req, "_fbc");
+  if (!fbc && atribuicao.fbclid) {
+    fbc = `fb.1.${Date.now()}.${atribuicao.fbclid}`;
+  }
+  return { fbp, fbc };
+}
+
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
@@ -189,6 +227,7 @@ async function startServer() {
           city: String(details.cidade ?? ""),
           clientIp: req.ip,
           userAgent: String(req.headers["user-agent"] || ""),
+          ...cookiesMeta(req, atribuicao),
           // Valor da conversão ponderado pela nota: a Meta passa a buscar quem
           // se parece com lead bom, não com lead qualquer.
           value: Math.round((Number(details.valor_veiculo) || 0) * (qualificacao.score / 100)),
@@ -421,6 +460,7 @@ async function startServer() {
           city: String(body.cidade ?? ""),
           clientIp: req.ip,
           userAgent: String(req.headers["user-agent"] || ""),
+          ...cookiesMeta(req, atribuicao),
           value: Math.round((Number(body.valor_desejado) || 0) * (qualificacao.score / 100)),
           contentName: [body.marca, body.modelo].filter(Boolean).join(" ") || undefined,
           sourceUrl: "https://manosveiculoscompra.com/vendasrapidas",
