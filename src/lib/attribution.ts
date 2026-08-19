@@ -25,7 +25,12 @@ const UTM_KEYS = [
 ] as const;
 
 // Identificadores de clique de cada plataforma. gclid/gbraid/wbraid = Google,
-// fbclid = Meta, ttclid = TikTok, msclkid = Microsoft, twclid = X.
+// fbclid = Meta, ttclid = TikTok, msclkid = Microsoft, twclid = X,
+// oppref = OpenAI Ads (anúncios no ChatGPT).
+//
+// O oppref é OPACO: a especificação da OpenAI manda repassar o valor cru, sem
+// decodificar nem parsear. Ele é o que liga a conversão server-side ao clique
+// no anúncio — sem ele, a campanha do ChatGPT não recebe crédito.
 const CLICK_ID_KEYS = [
   'gclid',
   'gbraid',
@@ -35,6 +40,7 @@ const CLICK_ID_KEYS = [
   'msclkid',
   'twclid',
   'li_fat_id',
+  'oppref',
 ] as const;
 
 export interface Attribution {
@@ -52,6 +58,7 @@ export interface Attribution {
   msclkid?: string;
   twclid?: string;
   li_fat_id?: string;
+  oppref?: string;
   /** Canal inferido quando não há utm_source — ex.: "google_organico", "chatgpt". */
   canal: string;
   referrer: string | null;
@@ -86,6 +93,7 @@ function inferChannel(params: URLSearchParams, referrer: string | null): string 
   if (params.get('fbclid')) return 'meta_ads';
   if (params.get('ttclid')) return 'tiktok_ads';
   if (params.get('msclkid')) return 'bing_ads';
+  if (params.get('oppref')) return 'openai_ads';
 
   if (!referrer) return 'direto';
 
@@ -145,7 +153,8 @@ function hasCampaignSignal(attr: Attribution): boolean {
       attr.fbclid ||
       attr.ttclid ||
       attr.msclkid ||
-      attr.twclid,
+      attr.twclid ||
+      attr.oppref,
   );
 }
 

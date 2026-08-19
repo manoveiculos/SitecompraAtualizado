@@ -21,6 +21,7 @@ import {
 import { radarMiddleware } from "./server/radar";
 import { calcularScore, acaoRecomendada } from "./server/scoring";
 import { enviarEventoCapi, capiConfigurado } from "./server/meta";
+import { enviarEventoOpenAiAds, openAiAdsConfigurado } from "./server/openaiAds";
 import { registrarScore, lerScores, diagnosticoScores } from "./server/leadStats";
 import { renderLeadsPanel } from "./server/leadsPanel";
 import { basicAuth } from "./server/auth";
@@ -193,6 +194,19 @@ async function startServer() {
           value: Math.round((Number(details.valor_veiculo) || 0) * (qualificacao.score / 100)),
           contentIds: details.id_veiculo ? [String(details.id_veiculo)] : undefined,
           contentName: details.nome_veiculo ? String(details.nome_veiculo) : undefined,
+        });
+
+        // Mesmo event_id do pixel oaiq: e o que faz a OpenAI entender que
+        // navegador e servidor descrevem a mesma conversao.
+        void enviarEventoOpenAiAds({
+          eventName: "lead_created",
+          eventId: String(body.event_id),
+          phone,
+          city: String(details.cidade ?? ""),
+          clientIp: req.ip,
+          userAgent: String(req.headers["user-agent"] || ""),
+          oppref: atribuicao.oppref ?? null,
+          value: Math.round((Number(details.valor_veiculo) || 0) * (qualificacao.score / 100)),
         });
       }
 
@@ -411,6 +425,18 @@ async function startServer() {
           contentName: [body.marca, body.modelo].filter(Boolean).join(" ") || undefined,
           sourceUrl: "https://manosveiculoscompra.com/vendasrapidas",
         });
+
+        void enviarEventoOpenAiAds({
+          eventName: "lead_created",
+          eventId: String(body.event_id),
+          phone: String(body.telefone ?? ""),
+          city: String(body.cidade ?? ""),
+          clientIp: req.ip,
+          userAgent: String(req.headers["user-agent"] || ""),
+          oppref: atribuicao.oppref ?? null,
+          value: Math.round((Number(body.valor_desejado) || 0) * (qualificacao.score / 100)),
+          sourceUrl: "https://manosveiculoscompra.com/vendasrapidas",
+        });
       }
 
       res.status(response.ok ? 200 : response.status).json({ ok: response.ok });
@@ -482,6 +508,7 @@ async function startServer() {
     const scores = await diagnosticoScores();
     res.json({
       meta_capi: capiConfigurado() ? "configurado" : "sem META_CAPI_TOKEN",
+      openai_ads_capi: openAiAdsConfigurado() ? "configurado" : "sem OPENAI_ADS_API_KEY",
       // Tabela quebrada e tabela vazia pedem ações opostas — conserto de RLS
       // versus falta de tráfego. Antes as duas apareciam na mesma frase e o
       // diagnóstico mandava procurar defeito onde não havia.
