@@ -20,6 +20,10 @@ conta uma vez só.
 
 - **Front**: Vite + React (SPA do funil). Pixel no `index.html`, eventos em `src/lib/tracking.ts`.
 - **Back**: Express (`server.ts`). CAPI em `server/openaiAds.ts`.
+- **Páginas SSR** do catálogo (`/estoque` e páginas de veículo) são renderizadas
+  por `server/catalog.ts`, fora do `index.html` — então carregam o pixel por
+  conta própria. Sem isso ficariam invisíveis, e são justamente a superfície por
+  onde o tráfego orgânico do ChatGPT chega.
 
 ## Arquivos
 
@@ -30,6 +34,7 @@ conta uma vez só.
 | `src/lib/attribution.ts` | captura e persiste o `oppref` e demais ids de clique |
 | `server/openaiAds.ts` | envio pela Conversions API |
 | `server.ts` | dispara a CAPI nas rotas de lead e recebe o beacon de WhatsApp |
+| `server/catalog.ts` | pixel e eventos nas páginas SSR do catálogo |
 
 ## Eventos configurados
 
@@ -37,9 +42,9 @@ conta uma vez só.
 |---|---|---|---|---|
 | Lead qualificado (funil e venda rápida) | `lead_created` | `customer_action` | ✅ | ✅ |
 | Contato capturado no início do funil | `custom` → `lead_parcial` | `custom` | ✅ | — |
-| Veículo aberto | `contents_viewed` | `contents` | ✅ | — |
+| Veículo aberto (funil e página SSR) | `contents_viewed` | `contents` | ✅ | — |
 | Veículo escolhido no funil | `items_added` | `contents` | ✅ | — |
-| Clique em WhatsApp | `custom` → `whatsapp` | `custom` | ✅ | ✅ |
+| Clique em WhatsApp (funil e catálogo) | `custom` → `whatsapp` | `custom` | ✅ | ✅ |
 | Clique em telefone | `custom` → `telefone` | `custom` | ✅ | ✅ |
 
 Duas decisões que valem registro:
@@ -96,18 +101,28 @@ curl -s -o /dev/null -w "%{http_code}\n" -X POST https://manosveiculoscompra.com
 ```
 Tem que devolver `400`.
 
+## Por que `contents_viewed` não vai pela CAPI
+
+Tentação óbvia — e erraria feio. As páginas SSR são lidas quase só por robô: na
+medição de agosto, **86% dos acessos eram crawler**. Disparar a visualização no
+servidor contaria cada passagem do GPTBot como conversão e envenenaria a
+otimização da campanha.
+
+No pixel isso não acontece: ele só roda em navegador de verdade. Por isso a
+visualização de veículo é client-side de propósito, e só lead e clique de
+contato — que exigem ação humana — vão também pelo servidor.
+
 ## Melhorias futuras
 
-1. **Pixel nas páginas SSR.** `/estoque` e as páginas de veículo são renderizadas
-   por `server/catalog.ts`, que não usa o `index.html` — logo não têm pixel
-   nenhum. É justamente a superfície que os buscadores leem e por onde deve
-   chegar o tráfego orgânico do ChatGPT. Cobrir isso vale mais que qualquer
-   outro item desta lista.
-2. **`contents_viewed` e `items_added` pela CAPI.** Hoje só no pixel; são os
-   eventos que mais sofrem com bloqueador.
-3. **Correspondência por e-mail.** A API aceita `email_sha256`, que casa melhor
-   que `external_id`. O funil não pede e-mail hoje.
-4. **Reenvio em caso de falha.** O envio é fire-and-forget: se a OpenAI responder
-   erro, o evento se perde. Uma fila com retentativa recuperaria.
-5. **`order_created` quando a venda fecha.** Fecharia o ciclo de lead até receita
-   real, mas depende de o CRM avisar o site.
+1. **Correspondência por e-mail.** A API aceita `email_sha256`, que casa melhor
+   que `external_id`. O funil não pede e-mail hoje; incluir um campo opcional
+   aumentaria a taxa de correspondência.
+2. **Fila persistente de reenvio.** Hoje há uma retentativa em memória para
+   falha temporária (5xx, 429, rede). Se o processo reiniciar entre as duas, o
+   evento se perde. Uma fila em disco ou no Supabase resolveria.
+3. **`order_created` quando a venda fecha.** Fecharia o ciclo de lead até receita
+   real e deixaria a campanha otimizar por venda, não por lead. Depende de o CRM
+   avisar o site.
+4. **Consentimento (LGPD).** Hoje o pixel inicializa para todo visitante. Um
+   banner de consentimento com `opt_out` — que a API suporta — deixaria a
+   medição alinhada com a política de privacidade já publicada.

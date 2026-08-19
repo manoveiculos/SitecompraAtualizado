@@ -11,6 +11,13 @@
 // ---------------------------------------------------------------------------
 
 export const SITE_URL = 'https://manosveiculoscompra.com';
+
+// Mesmo pixel do funil. Estas páginas são renderizadas aqui, fora do
+// index.html, então precisam carregar o pixel por conta própria — sem isto
+// todo o tráfego que chega pelo catálogo (que é justamente a superfície lida
+// pelos buscadores e pelo ChatGPT) fica invisível para a medição.
+const OPENAI_ADS_PIXEL_ID =
+  process.env.VITE_OPENAI_ADS_PIXEL_ID || process.env.OPENAI_ADS_PIXEL_ID || '';
 const FEED_URL =
   'https://estoque.altimus.com.br/api/estoquexml?estoque=997c9e91-40d7-4bec-95cb-68e18a2668a3';
 
@@ -352,6 +359,69 @@ footer{border-top:1px solid #1c1c1c;margin-top:40px;padding:24px 20px;color:#7a7
 nav.bc{font-size:13px;margin:8px 0 0}
 `;
 
+/**
+ * Pixel do OpenAI Ads nas páginas do catálogo.
+ *
+ * Três coisas acontecem aqui, e nenhuma existia antes: o pixel inicializa,
+ * a página de veículo reporta `contents_viewed`, e clique em WhatsApp/telefone
+ * vira conversão — inclusive pelo servidor, via o mesmo `/api/ads/conversao`
+ * que o funil usa, com o mesmo `event_id` deduplicando os dois caminhos.
+ *
+ * Sem o id no ambiente, devolve string vazia: nenhuma tag, nenhum erro.
+ */
+function medicaoScript(veiculo?: { id: string; nome: string; preco: number }): string {
+  if (!OPENAI_ADS_PIXEL_ID) return '';
+
+  // JSON dentro de <script> precisa ter o `<` escapado, senão um `</` no nome
+  // do veículo fecharia a tag no meio.
+  const dadosVeiculo = veiculo
+    ? JSON.stringify({ id: veiculo.id, nome: veiculo.nome, preco: Math.round(veiculo.preco) }).replace(/</g, '\u003c')
+    : 'null';
+
+  return `<script>
+(function(w,d,s,u,id){
+  if(!id) return;
+  if(!w.oaiq){var q=function(){q.q.push(arguments)};q.q=[];w.oaiq=q;
+    var j=d.createElement(s);j.async=1;j.src=u;
+    var f=d.getElementsByTagName(s)[0];f.parentNode.insertBefore(j,f);}
+  w.oaiq("init",{pixelId:id,debug:false});
+
+  function novoId(){
+    try{ if(w.crypto&&w.crypto.randomUUID) return w.crypto.randomUUID(); }catch(e){}
+    return "evt_"+Date.now()+"_"+Math.random().toString(36).slice(2,11);
+  }
+
+  var v = ${dadosVeiculo};
+  if(v){
+    w.oaiq("measure","contents_viewed",{type:"contents",amount:v.preco,currency:"BRL",
+      contents:[{id:v.id,name:v.nome,content_type:"vehicle",quantity:1,amount:v.preco}]});
+  }
+
+  // Delegação: os CTAs são links renderizados no servidor, então um listener
+  // no documento cobre todos, inclusive os cards do catálogo.
+  d.addEventListener("click", function(ev){
+    var a = ev.target && ev.target.closest ? ev.target.closest("a") : null;
+    if(!a || !a.href) return;
+    var canal = a.href.indexOf("wa.me") > -1 ? "whatsapp"
+              : a.href.indexOf("tel:") === 0 ? "telefone" : null;
+    if(!canal) return;
+
+    var eid = novoId();
+    w.oaiq("measure","custom",{type:"custom"},{event_id:eid,custom_event_name:canal});
+
+    // sendBeacon sobrevive à navegação para fora; o servidor reenvia pela CAPI.
+    try{
+      var corpo = JSON.stringify({evento:canal,event_id:eid,contexto:"catalogo",
+        source_url:w.location.origin+w.location.pathname});
+      if(navigator.sendBeacon){
+        navigator.sendBeacon("/api/ads/conversao", new Blob([corpo],{type:"application/json"}));
+      }
+    }catch(e){}
+  }, true);
+})(window,document,"script","https://bzrcdn.openai.com/sdk/oaiq.min.js",${JSON.stringify(OPENAI_ADS_PIXEL_ID)});
+</script>`;
+}
+
 function layout(opts: {
   title: string;
   description: string;
@@ -361,6 +431,8 @@ function layout(opts: {
   ogImage?: string;
   /** Sobrescreve a diretiva padrão — usado por páginas que não devem indexar. */
   robots?: string;
+  /** Quando a página é de um veículo, dispara `contents_viewed` com ele. */
+  veiculo?: { id: string; nome: string; preco: number };
 }): string {
   const head = [
     '<meta charset="utf-8">',
@@ -386,6 +458,7 @@ function layout(opts: {
 <html lang="pt-BR">
 <head>
 ${head}
+${medicaoScript(opts.veiculo)}
 </head>
 <body>
 <header>
@@ -601,6 +674,7 @@ export function renderVehicle(v: FeedVehicle): string {
     canonical,
     ogImage: v.images[0] || DEALER.logo,
     jsonLdBlocks: [jsonLd(vehicleSchema(v)), jsonLd(breadcrumb)],
+    veiculo: { id: v.id, nome: v.title, preco: v.price },
     body,
   });
 }

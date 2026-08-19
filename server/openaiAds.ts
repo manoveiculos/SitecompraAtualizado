@@ -130,22 +130,38 @@ export async function enviarEventoOpenAiAds(evento: EventoOpenAiAds): Promise<bo
     }
     if (evento.oppref) item.oppref = evento.oppref;
 
-    const res = await fetch(`${ENDPOINT}?pid=${encodeURIComponent(PIXEL_ID)}`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      // validate_only fica false: com true a OpenAI valida e descarta o evento.
-      body: JSON.stringify({ validate_only: false, events: [item] }),
-    });
+    // validate_only fica false: com true a OpenAI valida e descarta o evento.
+    const corpo = JSON.stringify({ validate_only: false, events: [item] });
 
-    if (!res.ok) {
-      const detalhe = await res.text().catch(() => '');
-      console.warn(`OpenAI Ads CAPI respondeu ${res.status}: ${detalhe.slice(0, 300)}`);
-      return false;
+    // Uma retentativa, só para falha temporária (5xx, 429 ou rede). Erro 4xx é
+    // payload errado: repetir daria o mesmo resultado e só atrasaria a resposta.
+    // A janela de 7 dias do timestamp_ms cobre com folga esta espera.
+    for (let tentativa = 1; tentativa <= 2; tentativa++) {
+      try {
+        const res = await fetch(`${ENDPOINT}?pid=${encodeURIComponent(PIXEL_ID)}`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: corpo,
+        });
+
+        if (res.ok) return true;
+
+        const temporario = res.status >= 500 || res.status === 429;
+        const detalhe = await res.text().catch(() => '');
+        console.warn(
+          `OpenAI Ads CAPI respondeu ${res.status} (tentativa ${tentativa}): ${detalhe.slice(0, 300)}`,
+        );
+        if (!temporario || tentativa === 2) return false;
+      } catch (err) {
+        console.warn(`OpenAI Ads CAPI falhou na rede (tentativa ${tentativa}):`, err);
+        if (tentativa === 2) return false;
+      }
+      await new Promise((r) => setTimeout(r, 1500));
     }
-    return true;
+    return false;
   } catch (err) {
     console.error('OpenAI Ads CAPI falhou:', err);
     return false;
