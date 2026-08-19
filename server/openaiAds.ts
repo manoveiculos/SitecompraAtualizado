@@ -18,7 +18,8 @@
 import { createHash } from 'crypto';
 import { paraE164 } from './telefone';
 
-const PIXEL_ID = process.env.OPENAI_ADS_PIXEL_ID || 'QhX8YkwW1KcmEMR9JPQD8Q';
+// Sem default embutido: um id errado manda conversao para a conta de outro.
+const PIXEL_ID = process.env.OPENAI_ADS_PIXEL_ID || '';
 const API_KEY = process.env.OPENAI_ADS_API_KEY || '';
 const ENDPOINT = 'https://bzr.openai.com/v1/events';
 
@@ -40,9 +41,18 @@ function urlLimpa(url: string): string {
   }
 }
 
+/** Itens do evento, quando ele descreve conteúdo (veículo visto/escolhido). */
+export interface ItemOpenAiAds {
+  id: string;
+  name?: string;
+  content_type?: string;
+  quantity?: number;
+  amount?: number;
+}
+
 export interface EventoOpenAiAds {
   /** Evento padrão da OpenAI; 'custom' exige `customEventName`. */
-  eventName: 'lead_created' | 'custom';
+  eventName: 'lead_created' | 'contents_viewed' | 'items_added' | 'custom';
   /** Mesmo id do pixel — é o que deduplica navegador e servidor. */
   eventId: string;
   customEventName?: string;
@@ -55,10 +65,21 @@ export interface EventoOpenAiAds {
   value?: number;
   currency?: string;
   sourceUrl?: string;
+  contents?: ItemOpenAiAds[];
 }
 
+// Cada evento padrão exige a forma de `data` correspondente — mandar a errada
+// faz o evento ser recusado.
+const FORMA_DE_DADOS: Record<EventoOpenAiAds['eventName'], string> = {
+  lead_created: 'customer_action',
+  contents_viewed: 'contents',
+  items_added: 'contents',
+  custom: 'custom',
+};
+
+/** Precisa dos dois: chave sem pixel (ou o contrario) nao envia nada. */
 export function openAiAdsConfigurado(): boolean {
-  return Boolean(API_KEY);
+  return Boolean(API_KEY && PIXEL_ID);
 }
 
 /**
@@ -66,7 +87,7 @@ export function openAiAdsConfigurado(): boolean {
  * do lead ao consultor.
  */
 export async function enviarEventoOpenAiAds(evento: EventoOpenAiAds): Promise<boolean> {
-  if (!API_KEY) return false;
+  if (!API_KEY || !PIXEL_ID) return false;
 
   try {
     const user: Record<string, unknown> = {};
@@ -85,13 +106,11 @@ export async function enviarEventoOpenAiAds(evento: EventoOpenAiAds): Promise<bo
     if (evento.userAgent) user.user_agent = evento.userAgent;
 
     const data: Record<string, unknown> = {
-      type: evento.eventName === 'custom' ? 'custom' : 'customer_action',
+      type: FORMA_DE_DADOS[evento.eventName],
       amount: Math.round(evento.value ?? 0),
       currency: evento.currency || 'BRL',
     };
-    if (evento.eventName === 'custom' && evento.customEventName) {
-      data.custom_event_name = evento.customEventName;
-    }
+    if (evento.contents?.length) data.contents = evento.contents;
 
     const item: Record<string, unknown> = {
       id: evento.eventId,
@@ -102,6 +121,13 @@ export async function enviarEventoOpenAiAds(evento: EventoOpenAiAds): Promise<bo
       data,
       user,
     };
+    // No CAPI o `custom_event_name` fica no NÍVEL DO EVENTO, irmão de `type` —
+    // é assim que o próprio painel gera o curl. (No pixel é diferente: lá ele
+    // vai no objeto de opções, o 4º argumento do oaiq.) Trocar de lugar não dá
+    // erro: o evento chega como "custom" sem nome e some do relatório.
+    if (evento.eventName === 'custom' && evento.customEventName) {
+      item.custom_event_name = evento.customEventName;
+    }
     if (evento.oppref) item.oppref = evento.oppref;
 
     const res = await fetch(`${ENDPOINT}?pid=${encodeURIComponent(PIXEL_ID)}`, {

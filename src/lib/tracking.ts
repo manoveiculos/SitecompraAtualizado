@@ -72,6 +72,34 @@ function oaiqMeasure(evento: string, dados: Json, opcoes?: Json): void {
   }
 }
 
+/**
+ * Espelha um evento no servidor, para ele reenviar pela Conversions API.
+ *
+ * `sendBeacon` de propósito: clique de WhatsApp navega para fora do site, e um
+ * fetch normal seria cancelado no meio pela troca de página. O beacon é
+ * entregue pelo navegador depois, mesmo com a aba já fechada.
+ *
+ * O mesmo `event_id` vai para o pixel e para cá — é o que impede a conversão de
+ * contar duas vezes.
+ */
+function espelharNoServidor(evento: string, eventId: string, extras: Json = {}): void {
+  try {
+    const corpo = JSON.stringify({ evento, event_id: eventId, atribuicao: getAttribution(), ...extras });
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon('/api/ads/conversao', new Blob([corpo], { type: 'application/json' }));
+      return;
+    }
+    void fetch('/api/ads/conversao', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: corpo,
+      keepalive: true,
+    });
+  } catch (err) {
+    console.error('[tracking] beacon error:', err);
+  }
+}
+
 /** Contexto de origem anexado a todo evento, para segmentar campanha no GA4/GTM. */
 function baseContext(): Json {
   return { canal: getChannel() };
@@ -113,6 +141,12 @@ export function trackViewVehicle(v: { id: string; description: string; price: nu
     value: v.price,
     currency: 'BRL',
   });
+  oaiqMeasure('contents_viewed', {
+    type: 'contents',
+    amount: Math.round(v.price),
+    currency: 'BRL',
+    contents: [{ id: v.id, name: v.description, content_type: 'vehicle', quantity: 1, amount: Math.round(v.price) }],
+  });
 }
 
 /** Visitante selecionou um veículo dentro do funil. */
@@ -130,6 +164,12 @@ export function trackSelectVehicle(v: { id: string; description: string; price: 
     content_name: v.description,
     value: v.price,
     currency: 'BRL',
+  });
+  oaiqMeasure('items_added', {
+    type: 'contents',
+    amount: Math.round(v.price),
+    currency: 'BRL',
+    contents: [{ id: v.id, name: v.description, content_type: 'vehicle', quantity: 1, amount: Math.round(v.price) }],
   });
 }
 
@@ -220,8 +260,24 @@ export function trackPlacaConsultada(ok: boolean): void {
   fbqTrack('trackCustom', 'PlacaConsultada', { sucesso: ok });
 }
 
-/** Clique em WhatsApp ou telefone. */
-export function trackContato(canal: 'whatsapp' | 'telefone', contexto: string): void {
+/**
+ * Clique em WhatsApp ou telefone.
+ *
+ * Para uma revenda isto é conversão de verdade, não sinal secundário: boa parte
+ * do negócio começa e termina no WhatsApp, sem passar pelo formulário. Por isso
+ * vai também para o servidor — é o clique com maior chance de ser perdido por
+ * bloqueador, e é justamente o que a Conversions API recupera.
+ */
+export function trackContato(canal: 'whatsapp' | 'telefone', contexto: string): string {
+  const id = eventId();
   pushDataLayer('contato_direto', { canal_contato: canal, contexto, ...baseContext() });
   fbqTrack('track', 'Contact', { content_name: contexto, source: canal });
+  // No pixel o nome do evento custom vai nas OPÇÕES (4º argumento).
+  oaiqMeasure(
+    'custom',
+    { type: 'custom' },
+    { event_id: id, custom_event_name: canal },
+  );
+  espelharNoServidor(canal, id, { contexto });
+  return id;
 }

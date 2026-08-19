@@ -38,9 +38,24 @@
     </script>
     <!-- End Meta Pixel Code -->
     <!-- OpenAI Ads Pixel (anúncios dentro do ChatGPT).
-         debug:false de propósito — com true o SDK escreve no console de quem
-         está navegando. Ligue temporariamente só para conferir no Pixel Helper. -->
-    <script>!function(w,d,s,u){if(w.oaiq)return;var q=function(){q.q.push(arguments)};q.q=[];w.oaiq=q;var j=d.createElement(s);j.async=1;j.src=u;var f=d.getElementsByTagName(s)[0];f.parentNode.insertBefore(j,f)}(window,document,"script","https://bzrcdn.openai.com/sdk/oaiq.min.js");oaiq("init",{pixelId:"QhX8YkwW1KcmEMR9JPQD8Q",debug:false});</script>
+         O ID vem de VITE_OPENAI_ADS_PIXEL_ID e o Vite o substitui no build. Se
+         a variável não existir, o marcador sobra na string e o `if` abaixo
+         impede o init — melhor não medir do que mandar evento para pixel
+         errado. debug fica false: com true o SDK escreve no console de quem
+         está navegando; ligue só para conferir no Pixel Helper. -->
+    <script>
+      (function (w, d, s, u, id) {
+        if (!id || id.charAt(0) === "%") return;
+        if (!w.oaiq) {
+          var q = function () { q.q.push(arguments) };
+          q.q = []; w.oaiq = q;
+          var j = d.createElement(s); j.async = 1; j.src = u;
+          var f = d.getElementsByTagName(s)[0];
+          f.parentNode.insertBefore(j, f);
+        }
+        w.oaiq("init", { pixelId: id, debug: false });
+      })(window, document, "script", "https://bzrcdn.openai.com/sdk/oaiq.min.js", "%VITE_OPENAI_ADS_PIXEL_ID%");
+    </script>
     <!-- End OpenAI Ads Pixel -->
   </head>
   <body>

@@ -525,6 +525,50 @@ async function startServer() {
   });
 
   // -------------------------------------------------------------------------
+  // Espelho server-side de conversões que acontecem só no navegador.
+  //
+  // Clique de WhatsApp é a conversão mais importante de uma revenda e a mais
+  // frágil de medir: a pessoa sai da página no mesmo instante e o evento é o
+  // primeiro que um bloqueador derruba. O navegador manda um beacon aqui e o
+  // servidor reenvia pela Conversions API, com o MESMO event_id — então quando
+  // os dois chegam, a OpenAI conta uma conversão, não duas.
+  //
+  // Só eventos da lista são aceitos: o endpoint é público, e sem a lista
+  // qualquer um poderia inventar conversão e sujar a otimização da campanha.
+  // -------------------------------------------------------------------------
+  const EVENTOS_ESPELHADOS = new Set(["whatsapp", "telefone"]);
+
+  app.post("/api/ads/conversao", (req, res) => {
+    try {
+      const body = req.body ?? {};
+      const evento = String(body.evento || "");
+      const eventId = String(body.event_id || "");
+
+      if (!EVENTOS_ESPELHADOS.has(evento) || !eventId) {
+        return res.status(400).json({ ok: false });
+      }
+
+      const atribuicao = (body.atribuicao ?? {}) as Record<string, string | undefined>;
+
+      void enviarEventoOpenAiAds({
+        eventName: "custom",
+        customEventName: evento,
+        eventId,
+        clientIp: req.ip,
+        userAgent: String(req.headers["user-agent"] || ""),
+        oppref: atribuicao.oppref ?? null,
+        sourceUrl: typeof body.source_url === "string" ? body.source_url : undefined,
+      });
+
+      // 204: o navegador está saindo da página e não vai ler resposta nenhuma.
+      res.status(204).end();
+    } catch (err) {
+      console.error("espelho de conversao falhou:", err);
+      res.status(204).end();
+    }
+  });
+
+  // -------------------------------------------------------------------------
   // Product feed do OpenAI Ads (snapshot completo em Parquet).
   //
   // É esta URL que se cola em Ads Manager › Feeds › "Conecte seu feed via URL".
