@@ -48,10 +48,27 @@ Três coisas que só dá para conferir com o build novo no ar:
      não tem defeito;
    - `gravando — N registro(s), último em ...` → funcionando.
 
-3. **Pixel do OpenAI Ads** — abrir o site com a extensão *OpenAI Ads Pixel Helper*
-   e completar um lead de teste. O evento `lead_created` tem que aparecer. Se
-   precisar de log no console, ligue `debug:true` no `index.html`
-   temporariamente — em produção ele fica `false`.
+3. **Pixel do OpenAI Ads** — precisa estar nas DUAS superfícies, que carregam o
+   pixel por caminhos diferentes:
+   ```bash
+   curl -s https://manosveiculoscompra.com/ | grep -c oaiq          # funil
+   curl -s https://manosveiculoscompra.com/estoque | grep -c oaiq   # catálogo SSR
+   ```
+   Zero em qualquer uma das duas = variável de pixel faltando naquele caminho.
+   Depois, com a extensão *OpenAI Ads Pixel Helper*: completar um lead deve
+   disparar `lead_created`, abrir uma página de veículo deve disparar
+   `contents_viewed`, e clicar no WhatsApp deve disparar o custom `whatsapp`.
+   Para log no console, ligue `debug:true` temporariamente — em produção fica
+   `false`.
+
+4. **Deduplicação** — em Ads Manager → Conversões → Fluxo de eventos, a mesma
+   conversão deve aparecer **uma vez**, com origem nos dois caminhos. Dobrou = o
+   `event_id` não está casando entre pixel e servidor.
+
+Detalhe do build: as páginas do catálogo (`/estoque`) são renderizadas pelo
+Express e leem o id do pixel do ambiente em tempo de execução; o funil lê no
+build do Vite. Por isso `pm2 reload` sozinho **não** basta quando só a variável
+do front muda — precisa rebuildar, que é o que o `deploy.sh` já faz.
 
 ## Variáveis que o servidor espera
 
@@ -62,6 +79,12 @@ desligados em silêncio:
 |---|---|
 | `PANEL_PASSWORD` | `/leads-manos` responde 503 (falha fechada, de propósito) |
 | `META_CAPI_TOKEN` | envio server-side para a Meta é ignorado; só o pixel do navegador reporta |
+| `OPENAI_ADS_API_KEY` | Conversions API do OpenAI Ads não envia |
+| `OPENAI_ADS_PIXEL_ID` | idem — a CAPI precisa dos dois |
+| `VITE_OPENAI_ADS_PIXEL_ID` | o pixel não inicializa, nem no funil nem nas páginas do catálogo |
+
+As duas variáveis de pixel recebem o **mesmo id**. Estão separadas porque uma é
+lida no build do front e a outra em tempo de execução no servidor.
 
 Depois de alterar o `.env`: `pm2 reload manos --update-env` (sem `--update-env`
 o processo continua com os valores antigos).

@@ -1,13 +1,22 @@
 # Próximos passos — funil de conversão
 
-Branch: `cro/funil-conversao-2026-08` (7 commits)
+> **Situação em 19/08/2026.** Tudo já foi mesclado na `main` e publicado. O que
+> falta é **configuração em sistemas externos** — nenhuma delas quebra o site se
+> ficar faltando, mas cada uma desliga um número em silêncio.
+>
+> Verificado direto na produção nesta data:
+>
+> | Item | Estado |
+> |---|---|
+> | 2. Tabela `lead_scores` | ✅ **feita** — já gravando leads reais |
+> | 5. Senha do painel | ❌ **pendente** — `/leads-manos` responde **503**, nunca abriu |
+> | 6. Meta CAPI | ❌ **pendente** — `sem META_CAPI_TOKEN` |
+> | 8. OpenAI Ads CAPI | ❌ **pendente** — `sem OPENAI_ADS_API_KEY` |
+>
+> Confira a qualquer momento com:
+> `curl -s https://manosveiculoscompra.com/api/health/tracking`
 
-O código está pronto e testado (typecheck, build e rotas). O que falta é
-**configuração em cinco sistemas externos**. Enquanto os itens 2 e 3 não
-estiverem feitos, o site funciona normalmente — mas você não vai ver os números
-novos, e o CRM vai receber cada lead duas vezes.
-
-Ordem sugerida: **1 → 2 → 3 → 4 → 5 → 6 → 7**. Reserve umas 2 horas.
+Ordem sugerida pelo retorno: **5 → 6 → 8 → 3 → 4 → 7**.
 
 ---
 
@@ -40,9 +49,13 @@ Percorra **no celular**, não no desktop — é onde está o tráfego:
 
 ---
 
-## 2. Supabase — criar a tabela `lead_scores`
+## 2. Supabase — criar a tabela `lead_scores` ✅ FEITO
 
-Sem isso o painel `/leads-manos` fica vazio (nada mais quebra).
+A tabela existe, a RLS está correta e já há leads reais gravados (um mesmo
+`lead_id` nos estágios `parcial` e `completo`, que é o comportamento esperado:
+uma pessoa, dois momentos, sem duplicar).
+
+Nada a fazer aqui. O texto abaixo fica como referência de como foi montada.
 
 O SQL está pronto em **[`supabase/lead_scores.sql`](supabase/lead_scores.sql)** —
 abrir o arquivo, copiar tudo, colar no **SQL Editor** do Supabase e dar Run.
@@ -140,7 +153,14 @@ Variáveis do dataLayer que vale criar no GTM: `lead_tipo`, `canal`,
 
 ---
 
-## 5. Senha do painel `/leads-manos` ⚠️ obrigatório
+## 5. Senha do painel `/leads-manos` ⚠️ PENDENTE — e está bloqueando você
+
+Conferido em 19/08/2026: o painel responde **503**. Ou seja, `PANEL_PASSWORD`
+nunca foi definida e **o painel nunca abriu para ninguém** — inclusive para
+você. Os leads estão sendo gravados, mas não há como olhá-los pela interface.
+
+É o item de maior retorno imediato da lista: dois minutos de configuração
+destravam a leitura de tudo que já está sendo medido.
 
 O painel está protegido por Basic Auth, e **falha fechada**: sem senha definida
 ele responde 503 em vez de ficar aberto. Ou seja, ou você configura, ou o painel
@@ -175,7 +195,7 @@ público, sem senha nenhuma.
 
 ---
 
-## 6. Meta — token do Conversions API
+## 6. Meta — token do Conversions API ⚠️ PENDENTE
 
 No Gerenciador de Eventos → pixel `3253946971444443` → Configurações → gerar
 token de acesso. Depois, no servidor:
@@ -194,6 +214,32 @@ mensuração.
 Depois, no Gerenciador de Eventos, o evento `Lead` tem que aparecer como
 **"Navegador e servidor"** com deduplicação — não como dois eventos separados.
 Se aparecer duplicado, o `event_id` não está casando.
+
+---
+
+## 8. OpenAI Ads — pixel e Conversions API ⚠️ PENDENTE
+
+Anúncios dentro do ChatGPT. O código está pronto e publicado; falta a chave.
+
+Em Ads Manager → Conversões → **Criar chave de conversão**. Depois, no `.env` do
+servidor:
+
+```bash
+OPENAI_ADS_API_KEY="a-chave-gerada"
+OPENAI_ADS_PIXEL_ID="QhX8YkwW1KcmEMR9JPQD8Q"
+VITE_OPENAI_ADS_PIXEL_ID="QhX8YkwW1KcmEMR9JPQD8Q"
+```
+
+As duas últimas recebem o mesmo id: uma é lida no build do front, a outra em
+tempo de execução no servidor (as páginas SSR do catálogo carregam o pixel por
+outro caminho). Por isso é preciso **rebuildar**, não só recarregar o pm2 —
+`bash deploy.sh` já faz os dois.
+
+**Conferir:** `/api/health/tracking` deve mostrar `"openai_ads_capi":
+"configurado"`.
+
+Detalhes de eventos, deduplicação e validação estão em
+**[RASTREAMENTO-OPENAI-ADS.md](RASTREAMENTO-OPENAI-ADS.md)**.
 
 ---
 
@@ -220,6 +266,11 @@ partida defensável, não verdade revelada.
 
 ## Pendências conhecidas
 
+- **O funil não está recebendo tráfego.** Levantamento de 15 dias em agosto: o
+  radar registrou 481 leituras de robô e **1 visita humana** vinda de busca.
+  No mesmo período o CRM recebeu 184 leads — todos por WhatsApp, Google e
+  Facebook, nenhum pelo funil. Nada disso é defeito de código: as campanhas não
+  estão apontando para cá. É a pendência de maior impacto da lista.
 - **Largura de 500px no desktop.** Não mexi: alargar a casca mexe na composição
   de todas as telas e eu não teria como avaliar o resultado visual daqui. Veja a
   home nova primeiro e decida.
