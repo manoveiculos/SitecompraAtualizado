@@ -29,7 +29,7 @@ function hash(valor: string): string {
 }
 
 export interface EventoCapi {
-  eventName: 'Lead' | 'ViewContent' | 'AddToCart';
+  eventName: 'Lead' | 'QualifiedLead' | 'ViewContent' | 'AddToCart';
   /** Mesmo id do pixel — sem isto a Meta conta a conversão duas vezes. */
   eventId: string;
   phone?: string;

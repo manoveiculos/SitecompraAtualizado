@@ -50,6 +50,33 @@ function generateOtp(): string {
   return String(Math.floor(100000 + Math.random() * 900000)); // 6 digits
 }
 
+/**
+ * Evento de lead QUALIFICADO para a Meta.
+ *
+ * A otimização "leads de conversão" precisa de um evento que separe lead bom de
+ * lead qualquer — sem ele a campanha só sabe contar formulário preenchido e
+ * aprende a buscar volume. O site já calcula essa distinção em
+ * server/scoring.ts; aqui ela vira sinal para a plataforma.
+ *
+ * Só faixa `quente` (nota >= 70) conta. Mandar morno junto diluiria o sinal até
+ * ele virar sinônimo de `Lead` e a otimização não teria o que aprender.
+ *
+ * `event_id` derivado do id do Lead: nome de evento diferente já basta para a
+ * Meta não deduplicar um contra o outro, e derivar mantém os dois rastreáveis
+ * até a mesma pessoa.
+ */
+function enviarLeadQualificado(
+  qualificacao: { faixa: string; score: number },
+  base: Parameters<typeof enviarEventoCapi>[0],
+): void {
+  if (qualificacao.faixa !== "quente") return;
+  void enviarEventoCapi({
+    ...base,
+    eventName: "QualifiedLead",
+    eventId: `${base.eventId}-qualified`,
+  });
+}
+
 /** Lê um cookie do cabeçalho cru — evita uma dependência só para isto. */
 function lerCookie(req: express.Request, nome: string): string | undefined {
   const cru = req.headers.cookie;
@@ -219,8 +246,8 @@ async function startServer() {
       // não de negócio — otimizar por ele treinaria a campanha a buscar quem
       // apenas deixa telefone.
       if (stage === "completo" && body.event_id) {
-        void enviarEventoCapi({
-          eventName: "Lead",
+        const eventoMeta = {
+          eventName: "Lead" as const,
           eventId: String(body.event_id),
           phone,
           firstName: name,
@@ -233,7 +260,9 @@ async function startServer() {
           value: Math.round((Number(details.valor_veiculo) || 0) * (qualificacao.score / 100)),
           contentIds: details.id_veiculo ? [String(details.id_veiculo)] : undefined,
           contentName: details.nome_veiculo ? String(details.nome_veiculo) : undefined,
-        });
+        };
+        void enviarEventoCapi(eventoMeta);
+        enviarLeadQualificado(qualificacao, eventoMeta);
 
         // Mesmo event_id do pixel oaiq: e o que faz a OpenAI entender que
         // navegador e servidor descrevem a mesma conversao.
@@ -452,8 +481,8 @@ async function startServer() {
       });
 
       if (body.event_id) {
-        void enviarEventoCapi({
-          eventName: "Lead",
+        const eventoMeta = {
+          eventName: "Lead" as const,
           eventId: String(body.event_id),
           phone: String(body.telefone ?? ""),
           firstName: String(body.nome ?? ""),
@@ -464,7 +493,9 @@ async function startServer() {
           value: Math.round((Number(body.valor_desejado) || 0) * (qualificacao.score / 100)),
           contentName: [body.marca, body.modelo].filter(Boolean).join(" ") || undefined,
           sourceUrl: "https://manosveiculoscompra.com/vendasrapidas",
-        });
+        };
+        void enviarEventoCapi(eventoMeta);
+        enviarLeadQualificado(qualificacao, eventoMeta);
 
         void enviarEventoOpenAiAds({
           eventName: "lead_created",
