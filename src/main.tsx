@@ -6,6 +6,7 @@ import BolaoAdminPage from './components/bolao/BolaoAdminPage.tsx';
 import TransparenciaPage from './components/bolao/TransparenciaPage.tsx';
 import RadarPage from './components/bolao/RadarPage.tsx';
 import VendasRapidasPage from './components/vendas/VendasRapidasPage.tsx';
+import ConsignacaoPage from './components/consignacao/ConsignacaoPage.tsx';
 import ErrorBoundary from './components/ErrorBoundary.tsx';
 import { initAttribution } from './lib/attribution.ts';
 import './index.css';
@@ -35,6 +36,10 @@ function Router() {
 
   if (path === '/vendasrapidas') {
     return <VendasRapidasPage />;
+  }
+
+  if (path === '/consignacao' || path === '/consignacao/') {
+    return <ConsignacaoPage />;
   }
 
   return <App />;

@@ -21,7 +21,8 @@ import {
   Zap,
   Building2,
   LayoutGrid,
-  Phone
+  Phone,
+  Sparkles
 } from 'lucide-react';
 import { cn } from './lib/utils';
 import { createLead, registrarLeadParcial, novoLeadId } from './lib/leads';
@@ -766,6 +767,12 @@ export default function App() {
                          que pede contato primeiro e busca FIPE pela placa, em vez
                          do caminho antigo que pedia o preço desejado na 2ª tela. */
                       onClick={() => { trackFunnelStart('Venda'); window.location.href = '/vendasrapidas'; }}
+                    />
+                    <MainOption
+                      icon={<Sparkles className="w-8 h-8 text-amber-400" />}
+                      title="Consignar meu Veículo"
+                      desc="Venda pelo valor máximo com financiamento aprovado"
+                      onClick={() => { trackFunnelStart('Venda'); window.location.href = '/consignacao'; }}
                     />
                     <MainOption
                       icon={<CreditCard className="w-8 h-8" />}
