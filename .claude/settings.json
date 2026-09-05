@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git commit -m ' *)",
+      "Bash(git restore *)",
+      "mcp__supabase__execute_sql",
+      "mcp__supabase__apply_migration",
+      "PowerShell(npm run build 2>&1)",
+      "PowerShell($r = Invoke-WebRequest -Uri \"https://estoque.altimus.com.br/api/estoquexml?estoque=997c9e91-40d7-4bec-95cb-68e18a2668a3\" -UseBasicParsing -TimeoutSec 60; $r.Content.Substring\\(0, [Math]::Min\\(4000, $r.Content.Length\\)\\))",
+      "Bash(NODE_ENV=production PORT=4321 node server.js)",
+      "Bash(curl -s -o /dev/null http://localhost:4321/robots.txt)",
+      "Bash(break)",
+      "Bash(curl -s http://localhost:4321/robots.txt)",
+      "Bash(curl -s http://localhost:4321/sitemap.xml)",
+      "Bash(curl -s http://localhost:4321/estoque)",
+      "Bash(echo \"cards: $\\(curl -s http://localhost:4321/estoque)",
+      "Bash(curl -s http://localhost:4321/estoque/bmw-z4-roadster-sdrive-20i-2-0-16v-2p-aut-preta-2014-2015-3563862)",
+      "Bash(curl -sS --retry 15 --retry-connrefused --retry-delay 1 --max-time 30 \"http://localhost:3000/politica-de-privacidade\")",
+      "Bash(curl -sS --max-time 10 -o /dev/null -w \"politica HTTP %{http_code}\\\\n\" \"http://localhost:3000/politica-de-privacidade\")",
+      "Bash(curl -sS --max-time 15 -o /dev/null -w \"vendasrapidas HTTP %{http_code}\\\\n\" \"http://localhost:3000/vendasrapidas\")"
+    ]
+  }
+}

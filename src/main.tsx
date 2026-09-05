@@ -7,6 +7,8 @@ import TransparenciaPage from './components/bolao/TransparenciaPage.tsx';
 import RadarPage from './components/bolao/RadarPage.tsx';
 import VendasRapidasPage from './components/vendas/VendasRapidasPage.tsx';
 import ConsignacaoPage from './components/consignacao/ConsignacaoPage.tsx';
+import RepassePage from './components/repasse/RepassePage.tsx';
+import RepasseAdminPage from './components/repasse/RepasseAdminPage.tsx';
 import ErrorBoundary from './components/ErrorBoundary.tsx';
 import { initAttribution } from './lib/attribution.ts';
 import './index.css';
@@ -41,6 +43,15 @@ function Router() {
   if (path === '/consignacao' || path === '/consignacao/') {
     return <ConsignacaoPage />;
   }
+
+  if (path === '/repasse-admin' || path === '/repasse-admin/' || path === '/repasse/admin' || path === '/repasse/admin/') {
+    return <RepasseAdminPage />;
+  }
+
+  if (path === '/repasse' || path === '/repasse/' || path === '/repasses' || path === '/veiculos-repasse') {
+    return <RepassePage />;
+  }
+
 
   return <App />;
 }

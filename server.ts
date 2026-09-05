@@ -384,6 +384,23 @@ async function startServer() {
     }
   });
 
+  // -------------------------------------------------------------------------
+  // Veículos de Repasse — formulário de interesse enviado ao n8n
+  // -------------------------------------------------------------------------
+  app.post("/api/repasse/lead", async (req, res) => {
+    try {
+      const response = await fetch("https://n8n.drivvoo.com/webhook/42d8e1c7-83ec-40b2-a646-ec363cf88c2e", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(req.body),
+      });
+      res.status(response.ok ? 200 : response.status).json({ ok: response.ok });
+    } catch (error) {
+      console.error("Repasse lead proxy error:", error);
+      res.status(500).json({ ok: false, error: "Failed to forward repasse lead" });
+    }
+  });
+
   // Placa lookup (apiplacas/wdapi2). Token fica no servidor; nunca no client.
   app.get("/api/placa/:placa", async (req, res) => {
     try {
