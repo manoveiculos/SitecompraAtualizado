@@ -143,6 +143,9 @@ export default function ConsignacaoPage() {
   // FAQ State
   const [openFaq, setOpenFaq] = useState<number | null>(0);
 
+  // Calculator State
+  const [valFipeCalc, setValFipeCalc] = useState<number>(80000);
+
   // Analytics tracking
   useEffect(() => {
     trackFunnelStart('Venda');
@@ -847,6 +850,91 @@ export default function ConsignacaoPage() {
                 </li>
               </ul>
             </div>
+          </div>
+
+        </div>
+      </section>
+
+      {/* CALCULADORA INTERATIVA DE RETORNO FINANCEIRO */}
+      <section className="py-12 sm:py-20 px-4 sm:px-8 max-w-7xl mx-auto w-full relative z-10">
+        <div className="vendas-card-glass p-6 sm:p-10 border border-amber-500/30 bg-gradient-to-br from-amber-950/20 via-[#121216] to-black rounded-3xl space-y-8 shadow-2xl">
+          
+          <div className="space-y-3 text-center max-w-3xl mx-auto">
+            <div className="inline-flex items-center gap-2 px-3 py-1 bg-amber-500/20 border border-amber-500/30 rounded-full text-amber-400 text-xs font-bold uppercase tracking-wider">
+              <DollarSign className="w-4 h-4" />
+              Simulador de Economia e Retorno Financeiro
+            </div>
+            <h2 className="text-2xl sm:text-4xl font-black uppercase italic tracking-tight text-white">
+              Calcule Quanto Você PODE GANHAR A MAIS na <span className="text-amber-400">Consignação</span>
+            </h2>
+            <p className="text-xs sm:text-sm text-white/70">
+              Arraste o valor da Tabela FIPE do seu carro para ver a comparação entre uma venda apressada em repasse comum e a Consignação Manos Veículos.
+            </p>
+          </div>
+
+          <div className="max-w-2xl mx-auto space-y-4 text-center">
+            <div className="flex items-center justify-between font-bold text-xs sm:text-sm text-white/80 uppercase">
+              <span>Valor FIPE Estimado:</span>
+              <span className="text-xl sm:text-2xl font-black text-amber-400">{valFipeCalc.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+            </div>
+
+            <input
+              type="range"
+              min={30000}
+              max={250000}
+              step={5000}
+              value={valFipeCalc}
+              onChange={(e) => setValFipeCalc(Number(e.target.value))}
+              className="w-full h-3 bg-white/10 rounded-lg appearance-none cursor-pointer accent-amber-400"
+            />
+
+            <div className="flex items-center justify-between text-[11px] text-white/40 font-bold">
+              <span>R$ 30.000</span>
+              <span>R$ 140.000</span>
+              <span>R$ 250.000</span>
+            </div>
+          </div>
+
+          {/* Resultado Comparativo Calculado */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
+            
+            <div className="p-5 bg-white/5 border border-white/10 rounded-2xl text-center space-y-1">
+              <span className="text-[11px] font-bold text-white/40 uppercase block">Venda Rápida em Loja Comum (~72% FIPE)</span>
+              <span className="text-xl font-bold text-white/50 line-through">
+                {Math.round(valFipeCalc * 0.72).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              </span>
+              <span className="text-[10px] text-red-400 block pt-1">Perda de até {Math.round(valFipeCalc * 0.28).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+            </div>
+
+            <div className="p-5 bg-gradient-to-br from-amber-500/20 to-black border-2 border-amber-400 rounded-2xl text-center space-y-1 shadow-lg">
+              <span className="text-[11px] font-black text-amber-400 uppercase tracking-wider block">Consignação Manos (~95% FIPE Líquido)</span>
+              <span className="text-2xl sm:text-3xl font-black text-white italic">
+                {Math.round(valFipeCalc * 0.95).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              </span>
+              <span className="text-[10px] text-green-400 font-bold block pt-1">Valor líquido direto no seu bolso</span>
+            </div>
+
+            <div className="p-5 bg-green-500/10 border border-green-500/30 rounded-2xl text-center space-y-1 flex flex-col justify-center">
+              <span className="text-[11px] font-black text-green-400 uppercase tracking-wider block">Ganho Adicional para Você</span>
+              <span className="text-xl sm:text-2xl font-black text-green-400">
+                +{(Math.round(valFipeCalc * 0.95) - Math.round(valFipeCalc * 0.72)).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              </span>
+              <span className="text-[10px] text-white/60 block pt-1">Dinheiro a mais no seu orçamento</span>
+            </div>
+
+          </div>
+
+          <div className="text-center pt-2">
+            <button
+              onClick={() => {
+                const formEl = document.getElementById('hero-consignacao-card');
+                if (formEl) formEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }}
+              className="px-8 py-4 bg-amber-500 hover:bg-amber-400 text-black font-black text-xs sm:text-sm uppercase rounded-2xl shadow-xl shadow-amber-500/20 inline-flex items-center gap-2 active:scale-95 transition-all cursor-pointer"
+            >
+              Simular Consignação para Meu Carro
+              <ArrowRight className="w-4 h-4" />
+            </button>
           </div>
 
         </div>
