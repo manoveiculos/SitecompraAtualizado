@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Lock, RefreshCw, Bot, MousePointerClick, Activity, Search } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
-const ADMIN_PASSWORD = 'manos2026admin';
+const ADMIN_PASSWORD = (import.meta as any).env?.VITE_BOLAO_ADMIN_PASSWORD || (import.meta as any).env?.VITE_ADMIN_PASSWORD || '';
 
 interface AiVisit {
   id: number;

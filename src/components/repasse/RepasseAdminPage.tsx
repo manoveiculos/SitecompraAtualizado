@@ -4,7 +4,8 @@ import {
   Lock, Car, Plus, Edit, Trash2, CheckCircle2, AlertCircle, Loader2,
   Search, RefreshCw, MessageCircle, LogOut, ArrowLeft, Eye, ShieldCheck,
   Tag, Percent, ExternalLink, Filter, Check, X, Upload, Image as ImageIcon,
-  Sparkles, ChevronLeft, ChevronRight, Star, Move
+  Sparkles, ChevronLeft, ChevronRight, Star, Move, Building2, Users, Phone,
+  ShieldAlert, UserCheck, UserX, Handshake, XCircle, Clock, Send, FileText, BadgeDollarSign
 } from 'lucide-react';
 
 import {
@@ -16,12 +17,20 @@ import {
   fetchLeadsRepasse,
   excluirLeadRepasse,
   uploadFotoRepasse,
+  fetchRepassadores,
+  atualizarStatusRepassador,
+  excluirRepassador,
+  fetchTodasPropostasAdmin,
+  responderPropostaAdmin,
+  excluirProposta,
   type VeiculoRepasse,
-  type LeadRepasseRecord
+  type LeadRepasseRecord,
+  type Repassador,
+  type PropostaRepasse
 } from '../../services/repasseService';
 import { gerarObservacoesIA, gerarDescricaoIA } from '../../services/aiService';
 
-const ADMIN_PASSWORD = 'manos2026admin';
+const ADMIN_PASSWORD = (import.meta as any).env?.VITE_REPASSE_ADMIN_PASSWORD || (import.meta as any).env?.VITE_ADMIN_PASSWORD || '';
 const LOGO = 'https://manosveiculos.com.br/wp-content/uploads/2024/02/LogoManos.png';
 const AUTH_KEY = 'manos_repasse_admin_auth_v1';
 
@@ -42,7 +51,7 @@ export default function RepasseAdminPage() {
   const [passwordError, setPasswordError] = useState('');
 
   // Main Admin Tabs
-  const [activeTab, setActiveTab] = useState<'estoque' | 'leads'>('estoque');
+  const [activeTab, setActiveTab] = useState<'estoque' | 'leads' | 'repassadores' | 'propostas'>('estoque');
 
   // Vehicles state
   const [veiculos, setVeiculos] = useState<VeiculoRepasse[]>([]);
@@ -52,6 +61,23 @@ export default function RepasseAdminPage() {
   // Leads state
   const [leads, setLeads] = useState<LeadRepasseRecord[]>([]);
   const [loadingLeads, setLoadingLeads] = useState(false);
+
+  // Repassadores / Lojistas state
+  const [repassadores, setRepassadores] = useState<Repassador[]>([]);
+  const [loadingRepassadores, setLoadingRepassadores] = useState(false);
+  const [searchRepassadores, setSearchRepassadores] = useState('');
+
+  // Propostas de Lojistas State
+  const [propostas, setPropostas] = useState<PropostaRepasse[]>([]);
+  const [loadingPropostas, setLoadingPropostas] = useState(false);
+  const [searchPropostas, setSearchPropostas] = useState('');
+
+  // Reply Modal / Action state
+  const [selectedPropostaAction, setSelectedPropostaAction] = useState<PropostaRepasse | null>(null);
+  const [actionModalType, setActionModalType] = useState<'aceitar' | 'recusar' | 'contraproposta' | null>(null);
+  const [valorContrapropostaInput, setValorContrapropostaInput] = useState('');
+  const [respostaManosInput, setRespostaManosInput] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
 
   // Modal / Form state for Add/Edit Vehicle
   const [showFormModal, setShowFormModal] = useState(false);
@@ -75,6 +101,7 @@ export default function RepasseAdminPage() {
     placa_final: '',
     preco_fipe: 0,
     preco_repasse: 0,
+    preco_lojista: 0,
     fotosList: [] as string[],
     descricao: '',
     observacoes_repasse: '',
@@ -115,6 +142,7 @@ export default function RepasseAdminPage() {
   const loadData = async () => {
     loadVeiculos();
     loadLeads();
+    loadRepassadores();
   };
 
   const loadVeiculos = async () => {
@@ -129,6 +157,13 @@ export default function RepasseAdminPage() {
     const data = await fetchLeadsRepasse();
     setLeads(data);
     setLoadingLeads(false);
+  };
+
+  const loadRepassadores = async () => {
+    setLoadingRepassadores(true);
+    const data = await fetchRepassadores();
+    setRepassadores(data);
+    setLoadingRepassadores(false);
   };
 
   const handleOpenAddModal = () => {
@@ -146,6 +181,7 @@ export default function RepasseAdminPage() {
       placa_final: '',
       preco_fipe: 0,
       preco_repasse: 0,
+      preco_lojista: 0,
       fotosList: [],
       descricao: '',
       observacoes_repasse: '',
@@ -170,6 +206,7 @@ export default function RepasseAdminPage() {
       placa_final: v.placa_final || '',
       preco_fipe: v.preco_fipe,
       preco_repasse: v.preco_repasse,
+      preco_lojista: v.preco_lojista || 0,
       fotosList: Array.isArray(v.fotos) ? [...v.fotos] : [],
       descricao: v.descricao,
       observacoes_repasse: v.observacoes_repasse,
@@ -177,6 +214,25 @@ export default function RepasseAdminPage() {
       status: v.status,
     });
     setShowFormModal(true);
+  };
+
+  const handleToggleRepassadorStatus = async (r: Repassador, newStatus: 'ativo' | 'bloqueado') => {
+    const res = await atualizarStatusRepassador(r.id, newStatus);
+    if (res.ok) {
+      loadRepassadores();
+    } else {
+      alert(`Erro ao atualizar status: ${res.error}`);
+    }
+  };
+
+  const handleDeleteRepassador = async (r: Repassador) => {
+    if (!window.confirm(`Tem certeza que deseja excluir o cadastro do repassador "${r.nome_completo}" (${r.nome_loja})?`)) return;
+    const res = await excluirRepassador(r.id);
+    if (res.ok) {
+      loadRepassadores();
+    } else {
+      alert(`Erro ao excluir repassador: ${res.error}`);
+    }
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -334,6 +390,7 @@ export default function RepasseAdminPage() {
       placa_final: formData.placa_final.trim(),
       preco_fipe: Number(formData.preco_fipe),
       preco_repasse: Number(formData.preco_repasse),
+      preco_lojista: formData.preco_lojista ? Number(formData.preco_lojista) : undefined,
       fotos: fotosArr,
       descricao: formData.descricao.trim(),
       observacoes_repasse: formData.observacoes_repasse.trim(),
@@ -387,6 +444,80 @@ export default function RepasseAdminPage() {
       loadLeads();
     } else {
       alert(`Erro ao excluir lead: ${res.error}`);
+    }
+  };
+
+  const loadPropostas = async () => {
+    setLoadingPropostas(true);
+    const data = await fetchTodasPropostasAdmin();
+    setPropostas(data);
+    setLoadingPropostas(false);
+  };
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadVeiculos();
+      loadLeads();
+      loadRepassadores();
+      loadPropostas();
+    }
+  }, [isAuthenticated]);
+
+  const handleAbrirRespostaModal = (proposta: PropostaRepasse, type: 'aceitar' | 'recusar' | 'contraproposta') => {
+    setSelectedPropostaAction(proposta);
+    setActionModalType(type);
+    setValorContrapropostaInput(String(proposta.valor_proposta));
+    if (type === 'aceitar') {
+      setRespostaManosInput('Sua proposta foi aceita! Vamos dar andamento pelo WhatsApp.');
+    } else if (type === 'recusar') {
+      setRespostaManosInput('Infelizmente não conseguimos chegar neste valor para o veículo no momento.');
+    } else {
+      setRespostaManosInput('Conseguimos fechar neste valor diferenciado para você!');
+    }
+  };
+
+  const handleResponderPropostaSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedPropostaAction || !actionModalType) return;
+
+    setActionLoading(true);
+    let finalStatus: PropostaRepasse['status'] = 'pendente';
+    let valContra: number | undefined = undefined;
+
+    if (actionModalType === 'aceitar') {
+      finalStatus = 'aceita';
+    } else if (actionModalType === 'recusar') {
+      finalStatus = 'recusada';
+    } else if (actionModalType === 'contraproposta') {
+      finalStatus = 'contraproposta';
+      valContra = parseFloat(valorContrapropostaInput.replace(/\D/g, '')) || 0;
+    }
+
+    const res = await responderPropostaAdmin(
+      selectedPropostaAction.id,
+      finalStatus,
+      valContra,
+      respostaManosInput.trim()
+    );
+
+    setActionLoading(false);
+    setActionModalType(null);
+    setSelectedPropostaAction(null);
+
+    if (res.ok) {
+      loadPropostas();
+    } else {
+      alert('Erro ao responder proposta.');
+    }
+  };
+
+  const handleDeleteProposta = async (id: number | string) => {
+    if (!window.confirm('Tem certeza que deseja excluir esta proposta?')) return;
+    const res = await excluirProposta(id);
+    if (res.ok) {
+      loadPropostas();
+    } else {
+      alert(`Erro ao excluir proposta: ${res.error}`);
     }
   };
 
@@ -525,7 +656,36 @@ export default function RepasseAdminPage() {
               }`}
             >
               <MessageCircle className="w-4 h-4 text-emerald-400" />
-              Propostas / Leads ({leads.length})
+              Leads ({leads.length})
+            </button>
+
+            <button
+              onClick={() => setActiveTab('repassadores')}
+              className={`flex-1 sm:flex-none px-5 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                activeTab === 'repassadores'
+                  ? 'bg-manos-red text-white shadow-lg shadow-manos-red/20'
+                  : 'text-white/50 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Building2 className="w-4 h-4 text-amber-400" />
+              Lojistas ({repassadores.length})
+            </button>
+
+            <button
+              onClick={() => setActiveTab('propostas')}
+              className={`flex-1 sm:flex-none px-5 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                activeTab === 'propostas'
+                  ? 'bg-manos-red text-white shadow-lg shadow-manos-red/20'
+                  : 'text-white/50 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Handshake className="w-4 h-4 text-cyan-400" />
+              Propostas Lojistas ({propostas.length})
+              {propostas.filter(p => p.status === 'pendente').length > 0 && (
+                <span className="px-2 py-0.5 bg-amber-500 text-black text-[10px] font-black rounded-full">
+                  {propostas.filter(p => p.status === 'pendente').length}
+                </span>
+              )}
             </button>
           </div>
 
@@ -535,7 +695,7 @@ export default function RepasseAdminPage() {
               className="p-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-white/70 hover:text-white transition-all cursor-pointer"
               title="Atualizar dados"
             >
-              <RefreshCw className={`w-4 h-4 ${(loadingVeiculos || loadingLeads) ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-4 h-4 ${(loadingVeiculos || loadingLeads || loadingRepassadores) ? 'animate-spin' : ''}`} />
             </button>
 
             <button
@@ -783,6 +943,328 @@ export default function RepasseAdminPage() {
           </div>
         )}
 
+        {/* TAB 3: LOJISTAS E REPASSADORES CADASTRADOS */}
+        {activeTab === 'repassadores' && (
+          <div className="space-y-4">
+            
+            {/* Filtro por Nome / CPF / CNPJ / Loja */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="relative max-w-md w-full">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 w-4 h-4" />
+                <input
+                  type="text"
+                  placeholder="Filtrar por nome, loja, CPF/CNPJ ou telefone..."
+                  className="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-11 pr-4 text-xs text-white placeholder-white/40 focus:border-manos-red outline-none"
+                  value={searchRepassadores}
+                  onChange={e => setSearchRepassadores(e.target.value)}
+                />
+              </div>
+              <div className="text-xs text-white/50">
+                Total de Lojistas Cadastrados: <strong className="text-white">{repassadores.length}</strong>
+              </div>
+            </div>
+
+            {loadingRepassadores ? (
+              <div className="text-center py-20 bg-white/[0.02] border border-white/10 rounded-3xl space-y-3">
+                <Loader2 className="w-8 h-8 animate-spin text-amber-500 mx-auto" />
+                <p className="text-xs text-white/50">Carregando cadastros de lojistas e repassadores...</p>
+              </div>
+            ) : repassadores.length === 0 ? (
+              <div className="text-center py-16 bg-white/[0.02] border border-white/10 rounded-3xl space-y-2">
+                <Building2 className="w-10 h-10 text-white/20 mx-auto" />
+                <p className="text-sm font-bold text-white/70">Nenhum lojista ou repassador cadastrado até o momento</p>
+                <p className="text-xs text-white/40">Os lojistas realizam o cadastro diretamente na página pública de repasse.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {repassadores
+                  .filter(r =>
+                    r.nome_completo.toLowerCase().includes(searchRepassadores.toLowerCase()) ||
+                    r.nome_loja.toLowerCase().includes(searchRepassadores.toLowerCase()) ||
+                    r.cpf_cnpj.toLowerCase().includes(searchRepassadores.toLowerCase()) ||
+                    (r.cidade && r.cidade.toLowerCase().includes(searchRepassadores.toLowerCase())) ||
+                    r.telefone.includes(searchRepassadores)
+                  )
+                  .map(r => {
+                    const phoneClean = r.telefone.replace(/\D/g, '');
+                    const waUrl = `https://wa.me/55${phoneClean}?text=${encodeURIComponent(`Olá ${r.nome_completo} (${r.nome_loja})! Sou da equipe Manos Veículos.`)}`;
+
+                    return (
+                      <div
+                        key={r.id}
+                        className="bg-[#121216] border border-white/10 rounded-2xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:border-amber-500/40 transition-all"
+                      >
+                        <div className="space-y-2 max-w-xl">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-base font-black text-white">{r.nome_completo}</span>
+                            <span className="text-xs font-bold text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-md border border-amber-500/20 flex items-center gap-1">
+                              <Building2 className="w-3.5 h-3.5" />
+                              {r.nome_loja}
+                            </span>
+                            {r.cidade && (
+                              <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-md border border-emerald-500/20">
+                                {r.cidade}
+                              </span>
+                            )}
+                            
+                            {r.status === 'ativo' ? (
+                              <span className="text-[10px] font-black uppercase text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30 flex items-center gap-1">
+                                <UserCheck className="w-3 h-3" /> Ativo / Acesso Liberado
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-black uppercase text-red-400 bg-red-500/10 px-2 py-0.5 rounded-full border border-red-500/30 flex items-center gap-1">
+                                <UserX className="w-3 h-3" /> Bloqueado pelo Admin
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-white/60 pt-1">
+                            <div>CPF/CNPJ: <strong className="text-white/90">{r.cpf_cnpj}</strong></div>
+                            <div>Telefone/WhatsApp: <strong className="text-white/90">{r.telefone}</strong></div>
+                            {r.cidade && <div>Cidade/UF: <strong className="text-white/90">{r.cidade}</strong></div>}
+                            {r.created_at && (
+                              <div className="text-[10px] text-white/40 sm:col-span-2">
+                                Cadastrado em: {new Date(r.created_at).toLocaleDateString('pt-BR')} às {new Date(r.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 pt-2 md:pt-0">
+                          <a
+                            href={waUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-4 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs uppercase rounded-xl flex items-center gap-2 shadow-lg shadow-emerald-600/20 active:scale-95 transition-all"
+                          >
+                            <MessageCircle className="w-4 h-4 fill-current" />
+                            WhatsApp
+                          </a>
+
+                          {r.status === 'ativo' ? (
+                            <button
+                              onClick={() => handleToggleRepassadorStatus(r, 'bloqueado')}
+                              className="p-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded-xl text-xs font-bold flex items-center gap-1 transition-all cursor-pointer"
+                              title="Bloquear Acesso do Lojista"
+                            >
+                              <UserX className="w-4 h-4" />
+                              <span className="hidden sm:inline">Bloquear</span>
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleToggleRepassadorStatus(r, 'ativo')}
+                              className="p-3 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-bold flex items-center gap-1 transition-all cursor-pointer"
+                              title="Desbloquear Acesso do Lojista"
+                            >
+                              <UserCheck className="w-4 h-4" />
+                              <span className="hidden sm:inline">Desbloquear</span>
+                            </button>
+                          )}
+
+                          <button
+                            onClick={() => handleDeleteRepassador(r)}
+                            className="p-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl transition-all cursor-pointer"
+                            title="Excluir Lojista"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+
+          </div>
+        )}
+
+        {/* TAB 4: PROPOSTAS E CONTRAPROPOSTAS DE LOJISTAS */}
+        {activeTab === 'propostas' && (
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="relative max-w-md w-full">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 w-4 h-4" />
+                <input
+                  type="text"
+                  placeholder="Filtrar por lojista, loja, veículo, cidade..."
+                  className="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-11 pr-4 text-xs text-white placeholder-white/40 focus:border-manos-red outline-none"
+                  value={searchPropostas}
+                  onChange={e => setSearchPropostas(e.target.value)}
+                />
+              </div>
+
+              <div className="text-xs text-white/50">
+                Total de Propostas Recebidas: <strong className="text-white">{propostas.length}</strong>
+              </div>
+            </div>
+
+            {loadingPropostas ? (
+              <div className="text-center py-20 bg-white/[0.02] border border-white/10 rounded-3xl space-y-3">
+                <Loader2 className="w-8 h-8 animate-spin text-amber-500 mx-auto" />
+                <p className="text-xs text-white/50">Carregando propostas de lojistas...</p>
+              </div>
+            ) : propostas.length === 0 ? (
+              <div className="text-center py-16 bg-white/[0.02] border border-white/10 rounded-3xl space-y-2">
+                <Handshake className="w-10 h-10 text-white/20 mx-auto" />
+                <p className="text-sm font-bold text-white/70">Nenhuma proposta de lojista recebida ainda</p>
+                <p className="text-xs text-white/40">As ofertas enviadas pelos lojistas autenticados aparecerão nesta tela para análise da equipe.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {propostas
+                  .filter(p =>
+                    p.repassador_nome.toLowerCase().includes(searchPropostas.toLowerCase()) ||
+                    p.repassador_loja.toLowerCase().includes(searchPropostas.toLowerCase()) ||
+                    p.veiculo_titulo.toLowerCase().includes(searchPropostas.toLowerCase()) ||
+                    (p.repassador_cidade && p.repassador_cidade.toLowerCase().includes(searchPropostas.toLowerCase())) ||
+                    p.status.toLowerCase().includes(searchPropostas.toLowerCase())
+                  )
+                  .map(p => {
+                    const statusBadge = {
+                      pendente: { bg: 'bg-amber-500/10 border-amber-500/30 text-amber-400', label: '⏳ Oferta Pendente' },
+                      aceita: { bg: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400', label: '✅ Proposta Aceita' },
+                      recusada: { bg: 'bg-red-500/10 border-red-500/30 text-red-400', label: '❌ Proposta Recusada' },
+                      contraproposta: { bg: 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400', label: '🤝 Contraproposta Enviada' }
+                    }[p.status] || { bg: 'bg-white/5 border-white/10 text-white', label: p.status };
+
+                    const phoneClean = p.repassador_telefone.replace(/\D/g, '');
+                    const waText = p.status === 'contraproposta' && p.valor_contraproposta
+                      ? `Olá ${p.repassador_nome} (${p.repassador_loja})! Sobre sua proposta no ${p.veiculo_titulo}: fizemos uma contraproposta no valor de ${formatBRL(p.valor_contraproposta)}.`
+                      : `Olá ${p.repassador_nome} (${p.repassador_loja})! Recebemos sua proposta de ${formatBRL(p.valor_proposta)} para o ${p.veiculo_titulo}.`;
+
+                    const waUrl = `https://wa.me/55${phoneClean}?text=${encodeURIComponent(waText)}`;
+
+                    const descontoDiferenca = p.valor_veiculo - p.valor_proposta;
+                    const pctDescontoProposta = Math.round((descontoDiferenca / p.valor_veiculo) * 100);
+
+                    return (
+                      <div
+                        key={p.id}
+                        className="bg-[#121216] border border-white/10 rounded-2xl p-5 space-y-4 hover:border-amber-500/40 transition-all"
+                      >
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          <div className="space-y-1.5">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-base font-black text-white">{p.repassador_nome}</span>
+                              <span className="text-xs font-bold text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-md border border-amber-500/20 flex items-center gap-1">
+                                <Building2 className="w-3.5 h-3.5" />
+                                {p.repassador_loja}
+                              </span>
+                              {p.repassador_cidade && (
+                                <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
+                                  {p.repassador_cidade}
+                                </span>
+                              )}
+                              <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full border ${statusBadge.bg}`}>
+                                {statusBadge.label}
+                              </span>
+                            </div>
+
+                            <p className="text-xs text-white/60">
+                              Contato: <strong className="text-white">{p.repassador_telefone}</strong>
+                              {p.created_at && (
+                                <span className="ml-3 text-[10px] text-white/40">
+                                  Recebida em: {new Date(p.created_at).toLocaleDateString('pt-BR')} às {new Date(p.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              )}
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <a
+                              href={waUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs uppercase rounded-xl flex items-center gap-1.5 shadow-lg shadow-emerald-600/20 active:scale-95 transition-all"
+                            >
+                              <MessageCircle className="w-4 h-4 fill-current" />
+                              WhatsApp Lojista
+                            </a>
+
+                            <button
+                              onClick={() => handleDeleteProposta(p.id)}
+                              className="p-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl transition-all cursor-pointer"
+                              title="Excluir Proposta"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* DETALHES DA OFERTA VS ANÚNCIO */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-black/40 p-4 rounded-xl border border-white/5">
+                          <div className="space-y-0.5">
+                            <span className="text-[10px] font-bold text-white/40 uppercase block">Veículo Ofertado</span>
+                            <span className="text-sm font-black text-white">{p.veiculo_titulo}</span>
+                            <span className="text-xs text-white/50 block">Preço Anunciado: {formatBRL(p.valor_veiculo)}</span>
+                          </div>
+
+                          <div className="space-y-0.5 border-y md:border-y-0 md:border-x border-white/10 py-2 md:py-0 md:px-3">
+                            <span className="text-[10px] font-bold text-amber-400 uppercase block">Proposta do Lojista</span>
+                            <span className="text-lg font-black text-amber-400">{formatBRL(p.valor_proposta)}</span>
+                            <span className="text-xs font-bold text-amber-300/80 block">
+                              Diferença: -{formatBRL(descontoDiferenca)} ({pctDescontoProposta}% abaixo)
+                            </span>
+                          </div>
+
+                          <div className="space-y-0.5">
+                            <span className="text-[10px] font-bold text-white/40 uppercase block">Status / Resposta Manos</span>
+                            {p.status === 'contraproposta' && p.valor_contraproposta ? (
+                              <div>
+                                <span className="text-xs font-black text-cyan-300 block">Contraproposta: {formatBRL(p.valor_contraproposta)}</span>
+                                {p.resposta_manos && <p className="text-[11px] text-white/70 italic">"{p.resposta_manos}"</p>}
+                              </div>
+                            ) : p.resposta_manos ? (
+                              <p className="text-xs text-white/80 italic">"{p.resposta_manos}"</p>
+                            ) : (
+                              <span className="text-xs text-white/40 italic">Nenhuma resposta registrada ainda.</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {p.mensagem_lojista && (
+                          <div className="text-xs text-white/80 italic bg-white/5 p-3 rounded-xl border border-white/5">
+                            <span className="font-bold text-white/40 uppercase text-[10px] not-italic block mb-0.5">Recado do Lojista:</span>
+                            "{p.mensagem_lojista}"
+                          </div>
+                        )}
+
+                        {/* BARRAS DE AÇÃO PARA RESPONDER A PROPOSTA */}
+                        <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-white/5">
+                          <span className="text-xs font-bold text-white/50 uppercase mr-1">Responder Proposta:</span>
+
+                          <button
+                            onClick={() => handleAbrirRespostaModal(p, 'aceitar')}
+                            className="px-3.5 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            Aceitar Oferta
+                          </button>
+
+                          <button
+                            onClick={() => handleAbrirRespostaModal(p, 'contraproposta')}
+                            className="px-3.5 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                          >
+                            <Handshake className="w-3.5 h-3.5" />
+                            Fazer Contraproposta
+                          </button>
+
+                          <button
+                            onClick={() => handleAbrirRespostaModal(p, 'recusar')}
+                            className="px-3.5 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                          >
+                            <XCircle className="w-3.5 h-3.5" />
+                            Recusar Oferta
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+          </div>
+        )}
+
       </main>
 
 
@@ -923,7 +1405,7 @@ export default function RepasseAdminPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="space-y-1">
                     <label className="font-bold text-emerald-400 uppercase">Preço Tabela FIPE (R$) *</label>
                     <input
@@ -936,7 +1418,7 @@ export default function RepasseAdminPage() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="font-bold text-manos-red uppercase">Preço Valor de Repasse (R$) *</label>
+                    <label className="font-bold text-manos-red uppercase">Preço Público Repasse (R$) *</label>
                     <input
                       type="number"
                       required
@@ -944,6 +1426,19 @@ export default function RepasseAdminPage() {
                       className="w-full p-3 bg-white/5 border border-manos-red/40 rounded-xl text-white outline-none text-sm sm:text-xs"
                       value={formData.preco_repasse || ''}
                       onChange={e => setFormData({ ...formData, preco_repasse: Number(e.target.value) })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-bold text-amber-400 uppercase flex items-center gap-1">
+                      <Building2 className="w-3.5 h-3.5" />
+                      Preço Lojista (Exclusivo R$)
+                    </label>
+                    <input
+                      type="number"
+                      placeholder="37500"
+                      className="w-full p-3 bg-white/5 border border-amber-500/40 rounded-xl text-white outline-none text-sm sm:text-xs"
+                      value={formData.preco_lojista || ''}
+                      onChange={e => setFormData({ ...formData, preco_lojista: Number(e.target.value) })}
                     />
                   </div>
                 </div>
@@ -1152,6 +1647,94 @@ export default function RepasseAdminPage() {
                   {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                   {editingId ? 'Salvar Alterações do Veículo' : 'Cadastrar no Banco de Dados'}
                 </button>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL DE AÇÃO ADMIN PARA PROPOSTAS */}
+      <AnimatePresence>
+        {actionModalType && selectedPropostaAction && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-[#121216] border border-white/15 rounded-3xl p-6 sm:p-8 max-w-md w-full space-y-6 shadow-2xl relative text-left"
+            >
+              <button
+                onClick={() => { setActionModalType(null); setSelectedPropostaAction(null); }}
+                className="absolute top-5 right-5 text-white/50 hover:text-white p-2 rounded-xl bg-white/5 hover:bg-white/10 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="space-y-1">
+                <h3 className="text-xl font-black uppercase text-white">
+                  {actionModalType === 'aceitar' && 'Aceitar Proposta do Lojista'}
+                  {actionModalType === 'recusar' && 'Recusar Proposta do Lojista'}
+                  {actionModalType === 'contraproposta' && 'Enviar Contraproposta ao Lojista'}
+                </h3>
+                <p className="text-xs text-white/60">
+                  Lojista: <strong className="text-white">{selectedPropostaAction.repassador_nome} ({selectedPropostaAction.repassador_loja})</strong>
+                </p>
+                <p className="text-xs text-amber-400 font-bold">
+                  Veículo: {selectedPropostaAction.veiculo_titulo} (Oferta: {formatBRL(selectedPropostaAction.valor_proposta)})
+                </p>
+              </div>
+
+              <form onSubmit={handleResponderPropostaSubmit} className="space-y-4">
+                {actionModalType === 'contraproposta' && (
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold uppercase text-white/80 block">
+                      Valor da Contraproposta (R$) *
+                    </label>
+                    <input
+                      type="number"
+                      step="100"
+                      required
+                      placeholder="Ex.: 38000"
+                      className="w-full bg-white/5 border border-cyan-500/40 rounded-xl py-3 px-4 text-base font-black text-cyan-300 outline-none focus:border-cyan-400"
+                      value={valorContrapropostaInput}
+                      onChange={e => setValorContrapropostaInput(e.target.value)}
+                    />
+                  </div>
+                )}
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold uppercase text-white/80 block">
+                    Mensagem / Recado da Manos (Visível ao Lojista)
+                  </label>
+                  <textarea
+                    rows={3}
+                    className="w-full bg-white/5 border border-white/15 rounded-xl p-3 text-xs text-white outline-none focus:border-manos-red resize-none"
+                    value={respostaManosInput}
+                    onChange={e => setRespostaManosInput(e.target.value)}
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => { setActionModalType(null); setSelectedPropostaAction(null); }}
+                    className="px-4 py-3 bg-white/5 text-white/70 font-bold text-xs uppercase rounded-xl cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={actionLoading}
+                    className={`px-5 py-3 font-black text-xs uppercase rounded-xl shadow-lg flex items-center gap-2 cursor-pointer ${
+                      actionModalType === 'aceitar' ? 'bg-emerald-600 hover:bg-emerald-500 text-white' :
+                      actionModalType === 'contraproposta' ? 'bg-cyan-600 hover:bg-cyan-500 text-white' :
+                      'bg-red-600 hover:bg-red-500 text-white'
+                    }`}
+                  >
+                    {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                    Confirmar Resposta
+                  </button>
+                </div>
               </form>
             </motion.div>
           </div>

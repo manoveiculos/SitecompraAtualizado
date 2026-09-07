@@ -14,6 +14,7 @@ export interface VeiculoRepasse {
   placa_final?: string;
   preco_fipe: number;
   preco_repasse: number;
+  preco_lojista?: number;
   fotos: string[];
   descricao: string;
   observacoes_repasse: string;
@@ -53,6 +54,7 @@ const MOCK_VEICULOS_REPASSE: VeiculoRepasse[] = [
     placa_final: '7',
     preco_fipe: 52400,
     preco_repasse: 39900,
+    preco_lojista: 37500,
     fotos: [
       'https://images.unsplash.com/photo-1541899481282-d53bffe3c35d?auto=format&fit=crop&w=1200&q=80',
       'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&w=1200&q=80'
@@ -76,6 +78,7 @@ const MOCK_VEICULOS_REPASSE: VeiculoRepasse[] = [
     placa_final: '3',
     preco_fipe: 54800,
     preco_repasse: 41500,
+    preco_lojista: 38900,
     fotos: [
       'https://images.unsplash.com/photo-1550355291-bbee04a92027?auto=format&fit=crop&w=1200&q=80',
       'https://images.unsplash.com/photo-1583121274602-3e2820c69888?auto=format&fit=crop&w=1200&q=80'
@@ -99,6 +102,7 @@ const MOCK_VEICULOS_REPASSE: VeiculoRepasse[] = [
     placa_final: '9',
     preco_fipe: 49900,
     preco_repasse: 37800,
+    preco_lojista: 35500,
     fotos: [
       'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=1200&q=80',
       'https://images.unsplash.com/photo-1494976388531-d1058494cdd8?auto=format&fit=crop&w=1200&q=80'
@@ -122,6 +126,7 @@ const MOCK_VEICULOS_REPASSE: VeiculoRepasse[] = [
     placa_final: '5',
     preco_fipe: 46500,
     preco_repasse: 35900,
+    preco_lojista: 33800,
     fotos: [
       'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&w=1200&q=80',
       'https://images.unsplash.com/photo-1542282088-72c9c27ed0cd?auto=format&fit=crop&w=1200&q=80'
@@ -145,6 +150,7 @@ const MOCK_VEICULOS_REPASSE: VeiculoRepasse[] = [
     placa_final: '1',
     preco_fipe: 53200,
     preco_repasse: 39900,
+    preco_lojista: 37200,
     fotos: [
       'https://images.unsplash.com/photo-1519641471654-76ce0107ad1b?auto=format&fit=crop&w=1200&q=80',
       'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&w=1200&q=80'
@@ -168,6 +174,7 @@ const MOCK_VEICULOS_REPASSE: VeiculoRepasse[] = [
     placa_final: '4',
     preco_fipe: 64500,
     preco_repasse: 49900,
+    preco_lojista: 46900,
     fotos: [
       'https://images.unsplash.com/photo-1559416523-140ddc3d238c?auto=format&fit=crop&w=1200&q=80',
       'https://images.unsplash.com/photo-1617814076367-b759c7d7e738?auto=format&fit=crop&w=1200&q=80'
@@ -224,6 +231,7 @@ export async function fetchVeiculosRepasse(): Promise<VeiculoRepasse[]> {
           : [],
         preco_fipe: Number(item.preco_fipe),
         preco_repasse: Number(item.preco_repasse),
+        preco_lojista: item.preco_lojista ? Number(item.preco_lojista) : undefined,
       }));
     }
   } catch (err) {
@@ -533,4 +541,407 @@ export async function excluirLeadRepasse(id: number | string): Promise<{ ok: boo
     return { ok: false, error: err.message || 'Erro ao excluir lead' };
   }
 }
+
+
+// ===========================================================================
+// GESTÃO E AUTENTICAÇÃO DE LOJISTAS E REPASSADORES (ÁREA RESTRITA)
+// ===========================================================================
+
+export interface Repassador {
+  id: number | string;
+  created_at?: string;
+  nome_completo: string;
+  cpf_cnpj: string;
+  nome_loja: string;
+  cidade?: string;
+  telefone: string;
+  status: 'ativo' | 'bloqueado';
+  observacoes?: string;
+}
+
+const LOCAL_REPASSADORES_KEY = 'manos_veiculos_repassadores_v1';
+
+function cleanPhoneDigits(val: string): string {
+  return val.replace(/\D/g, '');
+}
+
+function getLocalRepassadores(): Repassador[] {
+  try {
+    const raw = localStorage.getItem(LOCAL_REPASSADORES_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalRepassadores(list: Repassador[]): void {
+  try {
+    localStorage.setItem(LOCAL_REPASSADORES_KEY, JSON.stringify(list));
+  } catch {
+    /* noop */
+  }
+}
+
+export async function fetchRepassadores(): Promise<Repassador[]> {
+  const localItems = getLocalRepassadores();
+  let supabaseItems: Repassador[] = [];
+
+  try {
+    const { data, error } = await supabase
+      .from('repassadores')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (!error && data && data.length > 0) {
+      supabaseItems = data;
+    }
+  } catch (err) {
+    console.warn('Supabase fetchRepassadores warn:', err);
+  }
+
+  const map = new Map<string, Repassador>();
+  supabaseItems.forEach(item => map.set(cleanPhoneDigits(item.telefone), item));
+  localItems.forEach(item => {
+    const key = cleanPhoneDigits(item.telefone);
+    if (!map.has(key)) map.set(key, item);
+  });
+
+  return Array.from(map.values()).sort((a, b) => {
+    return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+  });
+}
+
+export async function cadastrarRepassador(
+  payload: Omit<Repassador, 'id' | 'created_at' | 'status'> & { status?: 'ativo' | 'bloqueado' }
+): Promise<{ ok: boolean; data?: Repassador; error?: string }> {
+  const telefoneDigits = cleanPhoneDigits(payload.telefone);
+  if (telefoneDigits.length < 10) {
+    return { ok: false, error: 'Número de telefone / WhatsApp inválido.' };
+  }
+
+  const novoRepassador: Repassador = {
+    id: `rep_${Date.now()}`,
+    created_at: new Date().toISOString(),
+    nome_completo: payload.nome_completo.trim(),
+    cpf_cnpj: payload.cpf_cnpj.trim(),
+    nome_loja: payload.nome_loja.trim(),
+    cidade: payload.cidade ? payload.cidade.trim() : '',
+    telefone: telefoneDigits,
+    status: payload.status || 'ativo',
+    observacoes: payload.observacoes || '',
+  };
+
+  // Atualiza cache local
+  const currentLocal = getLocalRepassadores();
+  const existingIdx = currentLocal.findIndex(r => cleanPhoneDigits(r.telefone) === telefoneDigits);
+  if (existingIdx !== -1) {
+    currentLocal[existingIdx] = novoRepassador;
+  } else {
+    currentLocal.unshift(novoRepassador);
+  }
+  saveLocalRepassadores(currentLocal);
+
+  try {
+    const { data, error } = await supabase
+      .from('repassadores')
+      .insert([{
+        nome_completo: novoRepassador.nome_completo,
+        cpf_cnpj: novoRepassador.cpf_cnpj,
+        nome_loja: novoRepassador.nome_loja,
+        cidade: novoRepassador.cidade,
+        telefone: novoRepassador.telefone,
+        status: novoRepassador.status,
+        observacoes: novoRepassador.observacoes
+      }])
+      .select();
+
+    if (error) {
+      if (error.code === '23505') {
+        return { ok: false, error: 'Este número de telefone já possui cadastro.' };
+      }
+      console.warn('Inserção Supabase repassador aviso (salvo localmente):', error.message);
+      return { ok: true, data: novoRepassador };
+    }
+
+    const created = data?.[0];
+    if (created) {
+      return { ok: true, data: created };
+    }
+    return { ok: true, data: novoRepassador };
+  } catch (err: any) {
+    return { ok: true, data: novoRepassador };
+  }
+}
+
+export async function verificarAcessoRepassador(telefoneInput: string): Promise<{ ok: boolean; status?: 'ativo' | 'bloqueado' | 'nao_encontrado'; repassador?: Repassador; error?: string }> {
+  const digits = cleanPhoneDigits(telefoneInput);
+  if (digits.length < 10) {
+    return { ok: false, error: 'Telefone inválido' };
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('repassadores')
+      .select('*')
+      .eq('telefone', digits)
+      .limit(1);
+
+    if (!error && data && data.length > 0) {
+      const found = data[0] as Repassador;
+      return { ok: true, status: found.status, repassador: found };
+    }
+  } catch (err) {
+    console.warn('Verificar repassador Supabase err:', err);
+  }
+
+  const localList = getLocalRepassadores();
+  const localFound = localList.find(r => cleanPhoneDigits(r.telefone) === digits);
+  if (localFound) {
+    return { ok: true, status: localFound.status, repassador: localFound };
+  }
+
+  return { ok: true, status: 'nao_encontrado' };
+}
+
+export async function atualizarStatusRepassador(
+  id: number | string,
+  status: 'ativo' | 'bloqueado'
+): Promise<{ ok: boolean; error?: string }> {
+  const localList = getLocalRepassadores();
+  const idx = localList.findIndex(r => String(r.id) === String(id));
+  if (idx !== -1) {
+    localList[idx].status = status;
+    saveLocalRepassadores(localList);
+  }
+
+  try {
+    const { error } = await supabase
+      .from('repassadores')
+      .update({ status })
+      .eq('id', id);
+
+    if (error) {
+      console.warn('Atualização status repassador aviso:', error.message);
+    }
+    return { ok: true };
+  } catch (err: any) {
+    return { ok: true };
+  }
+}
+
+export async function excluirRepassador(id: number | string): Promise<{ ok: boolean; error?: string }> {
+  const localList = getLocalRepassadores().filter(r => String(r.id) !== String(id));
+  saveLocalRepassadores(localList);
+
+  try {
+    const { error } = await supabase
+      .from('repassadores')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.warn('Exclusão repassador aviso:', error.message);
+    }
+    return { ok: true };
+  } catch (err: any) {
+    return { ok: true };
+  }
+}
+
+// -------------------------------------------------------------
+// GERENCIAMENTO DE PROPOSTAS E CONTRAPROPOSTAS DE LOJISTAS
+// -------------------------------------------------------------
+
+export interface PropostaRepasse {
+  id: number | string;
+  created_at?: string;
+  updated_at?: string;
+  repassador_id?: number | string;
+  repassador_nome: string;
+  repassador_telefone: string;
+  repassador_loja: string;
+  repassador_cidade?: string;
+  veiculo_id?: number | string;
+  veiculo_titulo: string;
+  valor_veiculo: number;
+  valor_proposta: number;
+  mensagem_lojista?: string;
+  status: 'pendente' | 'aceita' | 'recusada' | 'contraproposta';
+  valor_contraproposta?: number;
+  resposta_manos?: string;
+}
+
+const LOCAL_PROPOSTAS_KEY = 'manos_propostas_repasse_v1';
+
+function getLocalPropostas(): PropostaRepasse[] {
+  try {
+    const raw = localStorage.getItem(LOCAL_PROPOSTAS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalPropostas(propostas: PropostaRepasse[]): void {
+  try {
+    localStorage.setItem(LOCAL_PROPOSTAS_KEY, JSON.stringify(propostas));
+  } catch (e) {
+    console.error('Erro localStorage propostas:', e);
+  }
+}
+
+export async function cadastrarPropostaLojista(
+  payload: Omit<PropostaRepasse, 'id' | 'created_at' | 'updated_at' | 'status'>
+): Promise<{ ok: boolean; data?: PropostaRepasse; error?: string }> {
+  const newProposta: PropostaRepasse = {
+    ...payload,
+    id: Date.now(),
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    status: 'pendente',
+  };
+
+  const currentList = getLocalPropostas();
+  currentList.unshift(newProposta);
+  saveLocalPropostas(currentList);
+
+  try {
+    const { data, error } = await supabase
+      .from('propostas_repasse')
+      .insert({
+        repassador_id: payload.repassador_id || null,
+        repassador_nome: payload.repassador_nome,
+        repassador_telefone: payload.repassador_telefone,
+        repassador_loja: payload.repassador_loja,
+        repassador_cidade: payload.repassador_cidade || null,
+        veiculo_id: payload.veiculo_id || null,
+        veiculo_titulo: payload.veiculo_titulo,
+        valor_veiculo: payload.valor_veiculo,
+        valor_proposta: payload.valor_proposta,
+        mensagem_lojista: payload.mensagem_lojista || null,
+        status: 'pendente',
+      })
+      .select('*')
+      .single();
+
+    if (!error && data) {
+      const updatedList = getLocalPropostas().map(p => p.id === newProposta.id ? (data as PropostaRepasse) : p);
+      saveLocalPropostas(updatedList);
+      return { ok: true, data: data as PropostaRepasse };
+    }
+  } catch (err: any) {
+    console.warn('Erro ao salvar proposta no Supabase, usando local:', err);
+  }
+
+  return { ok: true, data: newProposta };
+}
+
+export async function fetchPropostasPorTelefone(telefone: string): Promise<PropostaRepasse[]> {
+  const digits = cleanPhoneDigits(telefone);
+
+  try {
+    const { data, error } = await supabase
+      .from('propostas_repasse')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (!error && data) {
+      const filtered = (data as PropostaRepasse[]).filter(
+        p => cleanPhoneDigits(p.repassador_telefone) === digits
+      );
+      const local = getLocalPropostas().filter(p => cleanPhoneDigits(p.repassador_telefone) === digits);
+      const mergedMap = new Map<string, PropostaRepasse>();
+      filtered.forEach(p => mergedMap.set(String(p.id), p));
+      local.forEach(p => mergedMap.set(String(p.id), p));
+      return Array.from(mergedMap.values()).sort(
+        (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+      );
+    }
+  } catch (err) {
+    console.warn('Erro fetchPropostasPorTelefone Supabase:', err);
+  }
+
+  return getLocalPropostas().filter(p => cleanPhoneDigits(p.repassador_telefone) === digits);
+}
+
+export async function fetchTodasPropostasAdmin(): Promise<PropostaRepasse[]> {
+  try {
+    const { data, error } = await supabase
+      .from('propostas_repasse')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (!error && data) {
+      const local = getLocalPropostas();
+      const mergedMap = new Map<string, PropostaRepasse>();
+      (data as PropostaRepasse[]).forEach(p => mergedMap.set(String(p.id), p));
+      local.forEach(p => mergedMap.set(String(p.id), p));
+      return Array.from(mergedMap.values()).sort(
+        (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+      );
+    }
+  } catch (err) {
+    console.warn('Erro fetchTodasPropostasAdmin Supabase:', err);
+  }
+
+  return getLocalPropostas();
+}
+
+export async function responderPropostaAdmin(
+  id: number | string,
+  status: PropostaRepasse['status'],
+  valorContraproposta?: number,
+  respostaManos?: string
+): Promise<{ ok: boolean; error?: string }> {
+  const localList = getLocalPropostas();
+  const idx = localList.findIndex(p => String(p.id) === String(id));
+  if (idx !== -1) {
+    localList[idx].status = status;
+    if (valorContraproposta !== undefined) localList[idx].valor_contraproposta = valorContraproposta;
+    if (respostaManos !== undefined) localList[idx].resposta_manos = respostaManos;
+    localList[idx].updated_at = new Date().toISOString();
+    saveLocalPropostas(localList);
+  }
+
+  try {
+    const updateObj: any = {
+      status,
+      updated_at: new Date().toISOString()
+    };
+    if (valorContraproposta !== undefined) updateObj.valor_contraproposta = valorContraproposta;
+    if (respostaManos !== undefined) updateObj.resposta_manos = respostaManos;
+
+    const { error } = await supabase
+      .from('propostas_repasse')
+      .update(updateObj)
+      .eq('id', id);
+
+    if (error) {
+      console.warn('Responder proposta Supabase aviso:', error.message);
+    }
+    return { ok: true };
+  } catch (err: any) {
+    return { ok: true };
+  }
+}
+
+export async function excluirProposta(id: number | string): Promise<{ ok: boolean; error?: string }> {
+  const localList = getLocalPropostas().filter(p => String(p.id) !== String(id));
+  saveLocalPropostas(localList);
+
+  try {
+    const { error } = await supabase
+      .from('propostas_repasse')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.warn('Excluir proposta Supabase aviso:', error.message);
+    }
+    return { ok: true };
+  } catch (err: any) {
+    return { ok: true };
+  }
+}
+
 

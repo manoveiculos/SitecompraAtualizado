@@ -8,7 +8,7 @@ import scotlandFlag from './scotland-flag.png';
 import haitiCrest from './haiti-crest.png';
 import moroccoFlag from './morocco-flag.png';
 
-const ADMIN_PASSWORD = 'manos2026admin';
+const ADMIN_PASSWORD = (import.meta as any).env?.VITE_BOLAO_ADMIN_PASSWORD || (import.meta as any).env?.VITE_ADMIN_PASSWORD || '';
 
 export default function BolaoAdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);

@@ -26,12 +26,16 @@ create table if not exists public.veiculos_repasse (
   placa_final         text,
   preco_fipe          numeric(12, 2) not null,
   preco_repasse       numeric(12, 2) not null,
+  preco_lojista       numeric(12, 2),
   fotos               jsonb not null default '[]'::jsonb,
   descricao           text not null,
   observacoes_repasse text not null,
   destaque            boolean not null default false,
   status              text not null default 'disponivel' check (status in ('disponivel', 'reservado', 'vendido'))
 );
+
+-- Garantir que a coluna preco_lojista exista se a tabela já tiver sido criada anteriormente
+alter table public.veiculos_repasse add column if not exists preco_lojista numeric(12, 2);
 
 -- Índices de busca performática
 create index if not exists veiculos_repasse_status_idx on public.veiculos_repasse (status);
@@ -57,6 +61,44 @@ create policy "veiculos_repasse update anon"
 drop policy if exists "veiculos_repasse delete anon" on public.veiculos_repasse;
 create policy "veiculos_repasse delete anon"
   on public.veiculos_repasse for delete to anon, authenticated using (true);
+
+
+-- 1B. TABELA DE LOJISTAS E REPASSADORES CADASTRADOS (ÁREA RESTRITA)
+create table if not exists public.repassadores (
+  id            bigserial primary key,
+  created_at    timestamptz not null default now(),
+  nome_completo text not null,
+  cpf_cnpj      text not null,
+  nome_loja     text not null,
+  cidade        text,
+  telefone      text not null unique,
+  status        text not null default 'ativo' check (status in ('ativo', 'bloqueado')),
+  observacoes   text
+);
+
+alter table public.repassadores add column if not exists cidade text;
+
+create index if not exists repassadores_telefone_idx on public.repassadores (telefone);
+create index if not exists repassadores_status_idx on public.repassadores (status);
+
+alter table public.repassadores enable row level security;
+
+drop policy if exists "repassadores select anon" on public.repassadores;
+create policy "repassadores select anon"
+  on public.repassadores for select to anon, authenticated using (true);
+
+drop policy if exists "repassadores insert anon" on public.repassadores;
+create policy "repassadores insert anon"
+  on public.repassadores for insert to anon, authenticated with check (true);
+
+drop policy if exists "repassadores update anon" on public.repassadores;
+create policy "repassadores update anon"
+  on public.repassadores for update to anon, authenticated using (true) with check (true);
+
+drop policy if exists "repassadores delete anon" on public.repassadores;
+create policy "repassadores delete anon"
+  on public.repassadores for delete to anon, authenticated using (true);
+
 
 
 -- 2. TABELA DE LEADS / PROPOSTAS DE REPASSE
@@ -87,6 +129,48 @@ create policy "leads_repasse select anon"
 drop policy if exists "leads_repasse delete anon" on public.leads_repasse;
 create policy "leads_repasse delete anon"
   on public.leads_repasse for delete to anon, authenticated using (true);
+
+
+-- 2B. TABELA DE PROPOSTAS E CONTRAPROPOSTAS DE REPASSADORES
+create table if not exists public.propostas_repasse (
+  id                    bigserial primary key,
+  created_at            timestamptz not null default now(),
+  updated_at            timestamptz not null default now(),
+  repassador_id         bigint references public.repassadores(id) on delete set null,
+  repassador_nome       text not null,
+  repassador_telefone   text not null,
+  repassador_loja       text not null,
+  repassador_cidade     text,
+  veiculo_id            bigint references public.veiculos_repasse(id) on delete set null,
+  veiculo_titulo        text not null,
+  valor_veiculo         numeric(12, 2) not null,
+  valor_proposta        numeric(12, 2) not null,
+  mensagem_lojista      text,
+  status                text not null default 'pendente' check (status in ('pendente', 'aceita', 'recusada', 'contraproposta')),
+  valor_contraproposta  numeric(12, 2),
+  resposta_manos        text
+);
+
+create index if not exists propostas_repasse_telefone_idx on public.propostas_repasse (repassador_telefone);
+create index if not exists propostas_repasse_status_idx on public.propostas_repasse (status);
+
+alter table public.propostas_repasse enable row level security;
+
+drop policy if exists "propostas_repasse insert anon" on public.propostas_repasse;
+create policy "propostas_repasse insert anon"
+  on public.propostas_repasse for insert to anon, authenticated with check (true);
+
+drop policy if exists "propostas_repasse select anon" on public.propostas_repasse;
+create policy "propostas_repasse select anon"
+  on public.propostas_repasse for select to anon, authenticated using (true);
+
+drop policy if exists "propostas_repasse update anon" on public.propostas_repasse;
+create policy "propostas_repasse update anon"
+  on public.propostas_repasse for update to anon, authenticated using (true) with check (true);
+
+drop policy if exists "propostas_repasse delete anon" on public.propostas_repasse;
+create policy "propostas_repasse delete anon"
+  on public.propostas_repasse for delete to anon, authenticated using (true);
 
 
 -- 3. BUCKET DE ARMAZENAMENTO DE FOTOS DO COMPUTADOR NO SUPABASE STORAGE

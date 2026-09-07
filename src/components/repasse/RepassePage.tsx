@@ -4,13 +4,20 @@ import {
   Car, Search, Tag, AlertCircle, CheckCircle2, ShieldCheck, Info,
   ChevronRight, Phone, MessageCircle, ArrowRight, Loader2, RefreshCw,
   Sparkles, Filter, Percent, Banknote, X, ChevronLeft, Building2, HelpCircle,
-  Plus, Check, ExternalLink, ShieldAlert
+  Plus, Check, ExternalLink, ShieldAlert, Lock, Unlock, UserCheck, UserPlus,
+  KeyRound, Users, Send, FileText, BadgeDollarSign, Clock, XCircle, Handshake
 } from 'lucide-react';
 import {
   fetchVeiculosRepasse,
   enviarLeadRepasse,
   cadastrarVeiculoRepasse,
-  type VeiculoRepasse
+  cadastrarRepassador,
+  verificarAcessoRepassador,
+  cadastrarPropostaLojista,
+  fetchPropostasPorTelefone,
+  type VeiculoRepasse,
+  type Repassador,
+  type PropostaRepasse
 } from '../../services/repasseService';
 import { novoLeadId } from '../../lib/leads';
 import { trackFunnelStart, trackFunnelStep, trackLead } from '../../lib/tracking';
@@ -20,6 +27,24 @@ const WHATSAPP_NUM = '554733001352';
 
 function formatBRL(val: number): string {
   return val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+function formatCpfCnpj(val: string): string {
+  let r = val.replace(/\D/g, '');
+  if (r.length > 14) r = r.substring(0, 14);
+  if (r.length > 11) {
+    return r.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2}).*/, '$1.$2.$3/$4-$5');
+  }
+  if (r.length > 9) {
+    return r.replace(/^(\d{3})(\d{3})(\d{3})(\d{1,2}).*/, '$1.$2.$3-$4');
+  }
+  if (r.length > 6) {
+    return r.replace(/^(\d{3})(\d{3})(\d{0,3}).*/, '$1.$2.$3');
+  }
+  if (r.length > 3) {
+    return r.replace(/^(\d{3})(\d{0,3}).*/, '$1.$2');
+  }
+  return r;
 }
 
 function formatPhone(val: string): string {
@@ -81,10 +106,206 @@ export default function RepassePage() {
   const [showGuiaModal, setShowGuiaModal] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
 
+  // Sessão de Lojista / Repassador Autenticado
+  const LOJISTA_SESSION_KEY = 'manos_repasse_lojista_session_v1';
+  const [activeLojista, setActiveLojista] = useState<Repassador | null>(() => {
+    try {
+      const raw = localStorage.getItem(LOJISTA_SESSION_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const [showLojistaModal, setShowLojistaModal] = useState(false);
+  const [lojistaTab, setLojistaTab] = useState<'login' | 'cadastro'>('login');
+
+  // Form Lojista Login State
+  const [loginTelefone, setLoginTelefone] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginError, setLoginError] = useState('');
+
+  // Form Lojista Cadastro State
+  const [cadNome, setCadNome] = useState('');
+  const [cadCpfCnpj, setCadCpfCnpj] = useState('');
+  const [cadLoja, setCadLoja] = useState('');
+  const [cadCidade, setCadCidade] = useState('');
+  const [cadTelefone, setCadTelefone] = useState('');
+  const [cadLoading, setCadLoading] = useState(false);
+  const [cadError, setCadError] = useState('');
+
+  // Propostas de Lojistas State
+  const [propostasLojista, setPropostasLojista] = useState<PropostaRepasse[]>([]);
+  const [showMinhasPropostasModal, setShowMinhasPropostasModal] = useState(false);
+  const [showPropostaModal, setShowPropostaModal] = useState(false);
+  const [selectedVeiculoProposta, setSelectedVeiculoProposta] = useState<VeiculoRepasse | null>(null);
+  const [valorPropostaInput, setValorPropostaInput] = useState('');
+  const [mensagemPropostaInput, setMensagemPropostaInput] = useState('');
+  const [propostaLoading, setPropostaLoading] = useState(false);
+  const [propostaSuccess, setPropostaSuccess] = useState(false);
+  const [propostaError, setPropostaError] = useState('');
+
+  const loadPropostasLojista = async (tel?: string) => {
+    const phoneToUse = tel || activeLojista?.telefone;
+    if (!phoneToUse) return;
+    const list = await fetchPropostasPorTelefone(phoneToUse);
+    setPropostasLojista(list);
+  };
+
   useEffect(() => {
     trackFunnelStart('Compra');
     loadVeiculos();
+    if (activeLojista) {
+      setNome(activeLojista.nome_completo);
+      setTelefone(formatPhone(activeLojista.telefone));
+      if (activeLojista.cidade) setCidade(activeLojista.cidade);
+      loadPropostasLojista(activeLojista.telefone);
+    }
   }, []);
+
+  const handleLojistaLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError('');
+    const rawTel = loginTelefone.replace(/\D/g, '');
+    if (rawTel.length < 10) {
+      setLoginError('Por favor, informe um WhatsApp válido com DDD.');
+      return;
+    }
+
+    setLoginLoading(true);
+    const res = await verificarAcessoRepassador(rawTel);
+    setLoginLoading(false);
+
+    if (res.ok && res.status === 'ativo' && res.repassador) {
+      setActiveLojista(res.repassador);
+      try {
+        localStorage.setItem(LOJISTA_SESSION_KEY, JSON.stringify(res.repassador));
+      } catch {}
+      setShowLojistaModal(false);
+      setNome(res.repassador.nome_completo);
+      setTelefone(formatPhone(res.repassador.telefone));
+      if (res.repassador.cidade) setCidade(res.repassador.cidade);
+    } else if (res.status === 'bloqueado') {
+      setLoginError('Acesso suspenso pelo administrador. Entre em contato conosco pelo WhatsApp.');
+    } else {
+      setLoginError('Telefone não encontrado no cadastro de repassadores. Faça seu cadastro rápido abaixo!');
+      setCadTelefone(loginTelefone);
+      setLojistaTab('cadastro');
+    }
+  };
+
+  const handleLojistaCadastroSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCadError('');
+
+    if (cadNome.trim().length < 3) {
+      setCadError('Por favor, informe seu nome completo.');
+      return;
+    }
+    const cleanDoc = cadCpfCnpj.replace(/\D/g, '');
+    if (cleanDoc.length < 11) {
+      setCadError('Por favor, informe um CPF ou CNPJ válido.');
+      return;
+    }
+    if (cadLoja.trim().length < 2) {
+      setCadError('Por favor, informe o nome da loja ou grupo de repasse.');
+      return;
+    }
+    if (cadCidade.trim().length < 2) {
+      setCadError('Por favor, informe sua cidade e UF.');
+      return;
+    }
+    const cleanTel = cadTelefone.replace(/\D/g, '');
+    if (cleanTel.length < 10) {
+      setCadError('Por favor, informe um WhatsApp válido com DDD.');
+      return;
+    }
+
+    setCadLoading(true);
+
+    const res = await cadastrarRepassador({
+      nome_completo: cadNome.trim(),
+      cpf_cnpj: cadCpfCnpj.trim(),
+      nome_loja: cadLoja.trim(),
+      cidade: cadCidade.trim(),
+      telefone: cleanTel,
+    });
+
+    setCadLoading(false);
+
+    if (res.ok && res.data) {
+      setActiveLojista(res.data);
+      try {
+        localStorage.setItem(LOJISTA_SESSION_KEY, JSON.stringify(res.data));
+      } catch {}
+      setShowLojistaModal(false);
+      setNome(res.data.nome_completo);
+      setTelefone(formatPhone(res.data.telefone));
+      if (res.data.cidade) setCidade(res.data.cidade);
+      loadPropostasLojista(res.data.telefone);
+    } else {
+      setCadError(res.error || 'Erro ao realizar cadastro.');
+    }
+  };
+
+  const handleLogoutLojista = () => {
+    setActiveLojista(null);
+    setPropostasLojista([]);
+    try {
+      localStorage.removeItem(LOJISTA_SESSION_KEY);
+    } catch {}
+  };
+
+  const handleAbrirModalProposta = (veiculo: VeiculoRepasse) => {
+    if (!activeLojista) {
+      setShowLojistaModal(true);
+      return;
+    }
+    setSelectedVeiculoProposta(veiculo);
+    const defaultPrice = veiculo.preco_lojista || veiculo.preco_repasse;
+    setValorPropostaInput(String(defaultPrice));
+    setMensagemPropostaInput('');
+    setPropostaError('');
+    setPropostaSuccess(false);
+    setShowPropostaModal(true);
+  };
+
+  const handleEnviarPropostaSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeLojista || !selectedVeiculoProposta) return;
+
+    setPropostaError('');
+    const rawVal = parseFloat(valorPropostaInput.replace(/\D/g, '')) || 0;
+    if (!rawVal || rawVal <= 0) {
+      setPropostaError('Por favor, informe um valor de proposta válido.');
+      return;
+    }
+
+    setPropostaLoading(true);
+    const basePrice = selectedVeiculoProposta.preco_lojista || selectedVeiculoProposta.preco_repasse;
+
+    const res = await cadastrarPropostaLojista({
+      repassador_id: activeLojista.id,
+      repassador_nome: activeLojista.nome_completo,
+      repassador_telefone: activeLojista.telefone,
+      repassador_loja: activeLojista.nome_loja,
+      repassador_cidade: activeLojista.cidade,
+      veiculo_id: selectedVeiculoProposta.id,
+      veiculo_titulo: selectedVeiculoProposta.titulo,
+      valor_veiculo: basePrice,
+      valor_proposta: rawVal,
+      mensagem_lojista: mensagemPropostaInput.trim(),
+    });
+
+    setPropostaLoading(false);
+
+    if (res.ok) {
+      setPropostaSuccess(true);
+      loadPropostasLojista();
+    } else {
+      setPropostaError('Não foi possível registrar sua proposta. Tente novamente.');
+    }
+  };
 
   const loadVeiculos = async () => {
     setLoading(true);
@@ -149,6 +370,14 @@ export default function RepassePage() {
       vehicleName: selectedVeiculo.titulo,
     });
 
+    const msgLojista = activeLojista
+      ? `[PROPOSTA DE LOJISTA CREDENCIADO: ${activeLojista.nome_loja} (CPF/CNPJ: ${activeLojista.cpf_cnpj})] ${proposta.trim()}`
+      : proposta.trim();
+
+    const effectivePrice = (activeLojista && selectedVeiculo.preco_lojista)
+      ? selectedVeiculo.preco_lojista
+      : selectedVeiculo.preco_repasse;
+
     const res = await enviarLeadRepasse({
       lead_id: leadId,
       nome: nome.trim(),
@@ -157,8 +386,8 @@ export default function RepassePage() {
       veiculo_id: selectedVeiculo.id,
       veiculo_titulo: selectedVeiculo.titulo,
       preco_fipe: selectedVeiculo.preco_fipe,
-      preco_repasse: selectedVeiculo.preco_repasse,
-      proposta_mensagem: proposta.trim(),
+      preco_repasse: effectivePrice,
+      proposta_mensagem: msgLojista,
       aceitou_termos: aceitouTermos,
       event_id: eventId,
     });
@@ -173,9 +402,13 @@ export default function RepassePage() {
   };
 
   const openWhatsAppDirect = (v?: VeiculoRepasse) => {
+    const lojistaPrefix = activeLojista ? `Olá! Sou da loja ${activeLojista.nome_loja} (Repassador Credenciado). ` : `Olá! `;
+    const priceText = (v && activeLojista && v.preco_lojista)
+      ? `Preço Lojista: ${formatBRL(v.preco_lojista)}`
+      : v ? `Preço Repasse: ${formatBRL(v.preco_repasse)}` : '';
     const txt = v
-      ? `Olá! Tenho interesse no veículo de repasse ${v.titulo} (FIPE: ${formatBRL(v.preco_fipe)} por ${formatBRL(v.preco_repasse)}). Gostaria de mais informações.`
-      : `Olá! Vim pela página de Veículos de Repasse da Manos e gostaria de ver os carros disponíveis.`;
+      ? `${lojistaPrefix}Tenho interesse no veículo de repasse ${v.titulo} (FIPE: ${formatBRL(v.preco_fipe)}${priceText ? ` | ${priceText}` : ''}). Gostaria de mais informações.`
+      : `${lojistaPrefix}Vim pela página de Veículos de Repasse da Manos e gostaria de ver o estoque disponível.`;
     window.open(`https://wa.me/${WHATSAPP_NUM}?text=${encodeURIComponent(txt)}`, '_blank');
   };
 
@@ -203,6 +436,42 @@ export default function RepassePage() {
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-3">
+            {activeLojista ? (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    loadPropostasLojista();
+                    setShowMinhasPropostasModal(true);
+                  }}
+                  className="px-3 sm:px-4 py-2 bg-gradient-to-r from-amber-500/20 via-amber-500/10 to-amber-600/20 border border-amber-500/50 text-amber-300 font-bold text-xs sm:text-sm rounded-xl flex items-center gap-1.5 shadow-lg shadow-amber-500/10 active:scale-95 transition-all cursor-pointer relative"
+                >
+                  <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400" />
+                  <span>Minhas Propostas</span>
+                  {propostasLojista.length > 0 && (
+                    <span className="ml-1 px-1.5 py-0.2 bg-amber-500 text-black text-[10px] font-black rounded-full">
+                      {propostasLojista.length}
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  onClick={() => setShowLojistaModal(true)}
+                  className="hidden md:flex px-3 sm:px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/15 text-white/90 font-bold text-xs rounded-xl items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <Building2 className="w-3.5 h-3.5 text-amber-400" />
+                  <strong className="text-white">{activeLojista.nome_loja}</strong>
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => { setShowLojistaModal(true); setLojistaTab('login'); }}
+                className="px-3 sm:px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/40 text-amber-400 font-bold text-xs sm:text-sm rounded-xl flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <span>Área do Lojista</span>
+              </button>
+            )}
+
             <button
               onClick={() => setShowGuiaModal(true)}
               className="px-2.5 sm:px-3.5 py-2 bg-white/5 hover:bg-white/10 border border-white/15 text-white/90 rounded-xl text-[11px] sm:text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
@@ -244,6 +513,105 @@ export default function RepassePage() {
             Adquira veículos direto do estoque de repasse da Manos Veículos.
             <strong className="text-white font-bold"> Transparência total para clientes leigos e revendedores:</strong> carros vendidos no estado em que se encontram, com preços imbativeis comparados à Tabela FIPE.
           </p>
+
+          {/* BANNER MODO LOJISTA OU CTA DESBLOQUEAR */}
+          {activeLojista ? (
+            <div className="space-y-4">
+              <div className="p-4 bg-gradient-to-r from-amber-950/40 via-amber-900/30 to-black border border-amber-500/50 rounded-2xl sm:rounded-3xl flex flex-col sm:flex-row items-center justify-between gap-3 text-left shadow-2xl">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 sm:p-3 bg-amber-500/20 border border-amber-500/40 rounded-xl sm:rounded-2xl text-amber-400 flex-shrink-0">
+                    <Building2 className="w-5 h-5 sm:w-6 sm:h-6" />
+                  </div>
+                  <div className="space-y-0.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs sm:text-sm font-black uppercase text-amber-400 tracking-wider">
+                        🔓 Modo Lojista / Repassador Ativo
+                      </span>
+                      <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 text-[10px] font-bold uppercase rounded-md border border-emerald-500/30">
+                        Preços de Atacado Liberados
+                      </span>
+                    </div>
+                    <p className="text-[11px] sm:text-xs text-white/80">
+                      Sua loja <strong className="text-white">{activeLojista.nome_loja}</strong> ({activeLojista.nome_completo}) está conectada. Exibindo margens exclusivas de repasse.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
+                  <button
+                    onClick={() => {
+                      loadPropostasLojista();
+                      setShowMinhasPropostasModal(true);
+                    }}
+                    className="w-full sm:w-auto px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black text-xs font-black uppercase rounded-xl transition-all cursor-pointer whitespace-nowrap flex items-center justify-center gap-1.5"
+                  >
+                    <FileText className="w-4 h-4" />
+                    Minhas Propostas ({propostasLojista.length})
+                  </button>
+                  <button
+                    onClick={handleLogoutLojista}
+                    className="w-full sm:w-auto px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white/80 hover:text-white text-xs font-bold rounded-xl transition-all cursor-pointer whitespace-nowrap"
+                  >
+                    Sair da Conta
+                  </button>
+                </div>
+              </div>
+
+              {/* CARD COMUNIDADE VIP WHATSAPP (EXCLUSIVO PARA LOJISTAS LOGADOS) */}
+              <div className="p-4 sm:p-6 bg-gradient-to-r from-emerald-950/50 via-black to-emerald-900/40 border border-emerald-500/40 rounded-2xl sm:rounded-3xl flex flex-col sm:flex-row items-center justify-between gap-4 text-left shadow-2xl relative overflow-hidden">
+                <div className="flex items-center gap-3.5">
+                  <div className="p-3 bg-emerald-500/20 border border-emerald-500/30 rounded-2xl text-emerald-400 flex-shrink-0">
+                    <Users className="w-6 h-6 sm:w-7 sm:h-7" />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs sm:text-sm font-black uppercase text-emerald-400 tracking-wider flex items-center gap-1.5">
+                        <Sparkles className="w-4 h-4 text-amber-400" />
+                        Comunidade Exclusiva no WhatsApp
+                      </span>
+                      <span className="px-2 py-0.5 bg-amber-500/20 text-amber-300 text-[10px] font-black uppercase rounded-md border border-amber-500/30">
+                        Lojistas VIP
+                      </span>
+                    </div>
+                    <p className="text-xs text-white/80 leading-relaxed">
+                      Fique atento a <strong className="text-white">todas as oportunidades em primeira mão!</strong> Receba avisos de novos veículos de repasse antes de entrarem no site.
+                    </p>
+                  </div>
+                </div>
+
+                <a
+                  href="https://chat.whatsapp.com/Cy0yyao3XDiBeHcNxiz5WT"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full sm:w-auto px-6 py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-xl shadow-emerald-600/30 active:scale-95 transition-all flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer"
+                >
+                  <Users className="w-4 h-4" />
+                  Entrar na Comunidade WhatsApp
+                </a>
+              </div>
+            </div>
+          ) : (
+            <div className="p-4 sm:p-5 bg-gradient-to-r from-amber-500/10 via-black to-zinc-900/80 border border-amber-500/40 rounded-2xl sm:rounded-3xl flex flex-col sm:flex-row items-center justify-between gap-3 text-left shadow-xl">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 sm:p-3 bg-amber-500/20 rounded-xl sm:rounded-2xl text-amber-400 flex-shrink-0">
+                  <Lock className="w-5 h-5 sm:w-6 sm:h-6" />
+                </div>
+                <div className="space-y-0.5">
+                  <h3 className="text-xs sm:text-sm font-black text-amber-400 uppercase tracking-wider">
+                    É Lojista ou Repassador de Carros?
+                  </h3>
+                  <p className="text-[11px] sm:text-xs text-white/70">
+                    Temos preços diferenciados de atacado exclusivos para revendedores. Cadastre seu WhatsApp para liberar.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => { setShowLojistaModal(true); setLojistaTab('login'); }}
+                className="w-full sm:w-auto px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-black font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition-all cursor-pointer whitespace-nowrap"
+              >
+                Liberar Preços de Lojista
+              </button>
+            </div>
+          )}
 
           {/* Card de Esclarecimento para Clientes Leigos */}
           <div className="p-4 sm:p-6 bg-gradient-to-br from-amber-950/20 via-black to-zinc-900/60 border border-amber-500/30 rounded-2xl sm:rounded-3xl text-left shadow-2xl relative overflow-hidden space-y-3 sm:space-y-4">
@@ -430,27 +798,62 @@ export default function RepassePage() {
                       </p>
                     </div>
 
-                    {/* CAIXA COMPARATIVA DE PREÇOS (FIPE VS REPASSE) */}
+                    {/* CAIXA COMPARATIVA DE PREÇOS (FIPE VS REPASSE VS LOJISTA) */}
                     <div className="space-y-3 pt-2">
-                      <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-2">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-white/40 uppercase font-bold">Tabela FIPE:</span>
-                          <span className="text-white/50 font-bold line-through">{formatBRL(v.preco_fipe)}</span>
-                        </div>
+                      {activeLojista && v.preco_lojista ? (
+                        <div className="bg-gradient-to-br from-amber-950/40 via-black to-amber-900/30 border border-amber-500/50 rounded-2xl p-4 space-y-2">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-white/40 uppercase font-bold">Tabela FIPE: {formatBRL(v.preco_fipe)}</span>
+                            <span className="text-white/40 uppercase font-bold">Público: <span className="line-through">{formatBRL(v.preco_repasse)}</span></span>
+                          </div>
 
-                        <div className="flex items-baseline justify-between border-t border-white/10 pt-2">
-                          <div className="space-y-0.5">
-                            <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400 block">Preço de Repasse</span>
-                            <span className="text-xl sm:text-2xl font-black text-white italic tracking-tight">{formatBRL(v.preco_repasse)}</span>
-                          </div>
-                          <div className="text-right">
-                            <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20 block">
-                              Economia de
-                            </span>
-                            <span className="text-xs font-black text-emerald-400">{formatBRL(economia)}</span>
+                          <div className="flex items-baseline justify-between border-t border-amber-500/30 pt-2">
+                            <div className="space-y-0.5">
+                              <span className="text-[10px] font-black uppercase tracking-widest text-amber-400 block flex items-center gap-1">
+                                <Building2 className="w-3 h-3 text-amber-400" />
+                                Preço Lojista (Atacado)
+                              </span>
+                              <span className="text-xl sm:text-2xl font-black text-amber-400 italic tracking-tight">{formatBRL(v.preco_lojista)}</span>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-[10px] font-bold text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-md border border-amber-500/30 block">
+                                Margem Lojista
+                              </span>
+                              <span className="text-xs font-black text-amber-300">{formatBRL(v.preco_fipe - v.preco_lojista)}</span>
+                            </div>
                           </div>
                         </div>
-                      </div>
+                      ) : (
+                        <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-2">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-white/40 uppercase font-bold">Tabela FIPE:</span>
+                            <span className="text-white/50 font-bold line-through">{formatBRL(v.preco_fipe)}</span>
+                          </div>
+
+                          <div className="flex items-baseline justify-between border-t border-white/10 pt-2">
+                            <div className="space-y-0.5">
+                              <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400 block">Preço de Repasse</span>
+                              <span className="text-xl sm:text-2xl font-black text-white italic tracking-tight">{formatBRL(v.preco_repasse)}</span>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20 block">
+                                Economia de
+                              </span>
+                              <span className="text-xs font-black text-emerald-400">{formatBRL(economia)}</span>
+                            </div>
+                          </div>
+
+                          {v.preco_lojista && (
+                            <div
+                              onClick={(e) => { e.stopPropagation(); setShowLojistaModal(true); setLojistaTab('login'); }}
+                              className="pt-2 border-t border-white/5 flex items-center justify-between text-[11px] text-amber-400 font-bold hover:underline cursor-pointer"
+                            >
+                              <span className="flex items-center gap-1"><Lock className="w-3 h-3" /> Preço p/ Lojista disponível</span>
+                              <span>Liberar &rarr;</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       {/* Botões de Ação */}
                       <div className="grid grid-cols-2 gap-2 pt-1">
@@ -460,13 +863,24 @@ export default function RepassePage() {
                         >
                           Ver Fotos
                         </button>
-                        <button
-                          onClick={() => handleOpenDetail(v)}
-                          className="py-3 px-3 bg-manos-red hover:bg-red-600 text-white font-black text-xs uppercase rounded-xl shadow-lg shadow-manos-red/20 active:scale-95 transition-all flex items-center justify-center gap-1"
-                        >
-                          Tenho Interesse
-                          <ChevronRight className="w-3.5 h-3.5" />
-                        </button>
+
+                        {activeLojista ? (
+                          <button
+                            onClick={() => handleAbrirModalProposta(v)}
+                            className="py-3 px-3 bg-amber-500 hover:bg-amber-400 text-black font-black text-xs uppercase rounded-xl shadow-lg shadow-amber-500/20 active:scale-95 transition-all flex items-center justify-center gap-1 cursor-pointer"
+                          >
+                            <Handshake className="w-4 h-4" />
+                            Enviar Oferta
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleOpenDetail(v)}
+                            className="py-3 px-3 bg-manos-red hover:bg-red-600 text-white font-black text-xs uppercase rounded-xl shadow-lg shadow-manos-red/20 active:scale-95 transition-all flex items-center justify-center gap-1"
+                          >
+                            Tenho Interesse
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -712,22 +1126,47 @@ export default function RepassePage() {
               </div>
 
               {/* Comparativo de Preços */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 bg-gradient-to-r from-white/5 to-white/[0.02] border border-white/10 rounded-2xl text-center">
-                <div>
-                  <span className="text-[10px] font-bold uppercase text-white/40 block">Tabela FIPE</span>
-                  <span className="text-base sm:text-lg font-bold text-white/50 line-through">{formatBRL(selectedVeiculo.preco_fipe)}</span>
+              {activeLojista && selectedVeiculo.preco_lojista ? (
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 p-4 bg-gradient-to-br from-amber-950/40 via-black to-amber-900/30 border border-amber-500/50 rounded-2xl text-center shadow-xl">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase text-white/40 block">Tabela FIPE</span>
+                    <span className="text-sm font-bold text-white/50 line-through">{formatBRL(selectedVeiculo.preco_fipe)}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold uppercase text-white/40 block">Preço Público</span>
+                    <span className="text-sm font-bold text-white/70 line-through">{formatBRL(selectedVeiculo.preco_repasse)}</span>
+                  </div>
+                  <div className="border-y sm:border-y-0 sm:border-x border-amber-500/30 py-2 sm:py-0">
+                    <span className="text-[10px] font-black uppercase text-amber-400 block flex items-center justify-center gap-1">
+                      <Building2 className="w-3.5 h-3.5" /> Preço Lojista (Atacado)
+                    </span>
+                    <span className="text-xl sm:text-2xl font-black text-amber-400 italic">{formatBRL(selectedVeiculo.preco_lojista)}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold uppercase text-amber-300 block">Margem Atacado</span>
+                    <span className="text-base sm:text-lg font-black text-amber-300">
+                      {formatBRL(selectedVeiculo.preco_fipe - selectedVeiculo.preco_lojista)}
+                    </span>
+                  </div>
                 </div>
-                <div className="border-y sm:border-y-0 sm:border-x border-white/10 py-2 sm:py-0">
-                  <span className="text-[10px] font-black uppercase text-emerald-400 block">Preço de Repasse</span>
-                  <span className="text-xl sm:text-2xl font-black text-white italic">{formatBRL(selectedVeiculo.preco_repasse)}</span>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 bg-gradient-to-r from-white/5 to-white/[0.02] border border-white/10 rounded-2xl text-center">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase text-white/40 block">Tabela FIPE</span>
+                    <span className="text-base sm:text-lg font-bold text-white/50 line-through">{formatBRL(selectedVeiculo.preco_fipe)}</span>
+                  </div>
+                  <div className="border-y sm:border-y-0 sm:border-x border-white/10 py-2 sm:py-0">
+                    <span className="text-[10px] font-black uppercase text-emerald-400 block">Preço de Repasse</span>
+                    <span className="text-xl sm:text-2xl font-black text-white italic">{formatBRL(selectedVeiculo.preco_repasse)}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold uppercase text-emerald-400 block">Economia Real</span>
+                    <span className="text-base sm:text-lg font-black text-emerald-400">
+                      {formatBRL(selectedVeiculo.preco_fipe - selectedVeiculo.preco_repasse)}
+                    </span>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-[10px] font-bold uppercase text-emerald-400 block">Economia Real</span>
-                  <span className="text-base sm:text-lg font-black text-emerald-400">
-                    {formatBRL(selectedVeiculo.preco_fipe - selectedVeiculo.preco_repasse)}
-                  </span>
-                </div>
-              </div>
+              )}
 
               {/* Ficha Técnica & Observações do Repasse */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -875,6 +1314,500 @@ export default function RepassePage() {
                       </button>
                     </div>
                   </form>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL DE ACESSO E CADASTRO DA ÁREA DO LOJISTA */}
+      <AnimatePresence>
+        {showLojistaModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/85 backdrop-blur-md overflow-y-auto">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-[#121216] border border-amber-500/30 rounded-3xl max-w-lg w-full p-6 sm:p-8 space-y-6 relative shadow-2xl my-8 text-left"
+            >
+              <button
+                onClick={() => setShowLojistaModal(false)}
+                className="absolute top-5 right-5 p-2 text-white/50 hover:text-white bg-white/5 hover:bg-white/10 rounded-full transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-amber-500/20 border border-amber-500/40 rounded-2xl text-amber-400">
+                  <Building2 className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black uppercase italic text-white tracking-tight">
+                    Área do <span className="text-amber-400">Lojista / Repassador</span>
+                  </h3>
+                  <p className="text-xs text-white/60">Acesso exclusivo para revendedores com preços de atacado</p>
+                </div>
+              </div>
+
+              {activeLojista ? (
+                <div className="space-y-4">
+                  <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black uppercase text-amber-400">Sua Loja Conectada</span>
+                      <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">Status: Ativo</span>
+                    </div>
+                    <p className="text-sm font-black text-white">{activeLojista.nome_loja}</p>
+                    <p className="text-xs text-white/70">{activeLojista.nome_completo} • {activeLojista.cidade || 'Lojista Credenciado'}</p>
+                    <p className="text-xs text-white/50">WhatsApp: {activeLojista.telefone}</p>
+                  </div>
+
+                  <a
+                    href="https://chat.whatsapp.com/Cy0yyao3XDiBeHcNxiz5WT"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-emerald-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <Users className="w-4 h-4" />
+                    Entrar na Comunidade VIP do WhatsApp
+                  </a>
+
+                  <button
+                    onClick={() => {
+                      setShowLojistaModal(false);
+                      setShowMinhasPropostasModal(true);
+                    }}
+                    className="w-full py-3 bg-white/10 hover:bg-white/15 text-white font-bold text-xs uppercase rounded-xl flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <FileText className="w-4 h-4 text-amber-400" />
+                    Ver Minhas Propostas ({propostasLojista.length})
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      handleLogoutLojista();
+                      setShowLojistaModal(false);
+                    }}
+                    className="w-full py-2 text-xs text-red-400 hover:text-red-300 font-bold uppercase cursor-pointer text-center block pt-2"
+                  >
+                    Sair da Conta Lojista
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {/* Tabs do Modal */}
+                  <div className="flex items-center gap-2 p-1 bg-white/5 border border-white/10 rounded-xl">
+                    <button
+                      onClick={() => setLojistaTab('login')}
+                      className={`flex-1 py-2.5 rounded-lg text-xs font-bold uppercase transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                        lojistaTab === 'login' ? 'bg-amber-500 text-black shadow-md' : 'text-white/60 hover:text-white'
+                      }`}
+                    >
+                      <Lock className="w-3.5 h-3.5" />
+                      Já Tenho Cadastro
+                    </button>
+                    <button
+                      onClick={() => setLojistaTab('cadastro')}
+                      className={`flex-1 py-2.5 rounded-lg text-xs font-bold uppercase transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                        lojistaTab === 'cadastro' ? 'bg-amber-500 text-black shadow-md' : 'text-white/60 hover:text-white'
+                      }`}
+                    >
+                      <UserPlus className="w-3.5 h-3.5" />
+                      Cadastrar Minha Loja
+                    </button>
+                  </div>
+
+              {lojistaTab === 'login' ? (
+                <form onSubmit={handleLojistaLoginSubmit} className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold uppercase text-white/80 block">
+                      Número do WhatsApp Cadastrado *
+                    </label>
+                    <input
+                      type="tel"
+                      required
+                      autoFocus
+                      placeholder="(00) 00000-0000"
+                      className="w-full bg-white/5 border border-white/15 rounded-xl px-4 py-3 text-sm text-white focus:border-amber-400 outline-none"
+                      value={loginTelefone}
+                      onChange={e => setLoginTelefone(formatPhone(e.target.value))}
+                    />
+                    <p className="text-[11px] text-white/50">
+                      Digite o mesmo número de WhatsApp utilizado no seu cadastro para liberar os preços de lojista.
+                    </p>
+                  </div>
+
+                  {loginError && (
+                    <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-400 flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                      <span>{loginError}</span>
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={loginLoading}
+                    className="w-full py-3.5 bg-amber-500 hover:bg-amber-400 text-black font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-amber-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    {loginLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Unlock className="w-4 h-4" />}
+                    Validar Telefone e Entrar
+                  </button>
+                </form>
+              ) : (
+                <form onSubmit={handleLojistaCadastroSubmit} className="space-y-3">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold uppercase text-white/80 block">Nome Completo *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Seu nome"
+                      className="w-full bg-white/5 border border-white/15 rounded-xl px-3 py-2.5 text-xs text-white focus:border-amber-400 outline-none"
+                      value={cadNome}
+                      onChange={e => setCadNome(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold uppercase text-white/80 block">CPF ou CNPJ *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="00.000.000/0001-00"
+                        className="w-full bg-white/5 border border-white/15 rounded-xl px-3 py-2.5 text-xs text-white focus:border-amber-400 outline-none"
+                        value={cadCpfCnpj}
+                        onChange={e => setCadCpfCnpj(formatCpfCnpj(e.target.value))}
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold uppercase text-white/80 block">WhatsApp / Telefone *</label>
+                      <input
+                        type="tel"
+                        required
+                        placeholder="(00) 00000-0000"
+                        className="w-full bg-white/5 border border-white/15 rounded-xl px-3 py-2.5 text-xs text-white focus:border-amber-400 outline-none"
+                        value={cadTelefone}
+                        onChange={e => setCadTelefone(formatPhone(e.target.value))}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold uppercase text-white/80 block">Nome da Loja / Grupo *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Ex.: Auto Loja Sul"
+                        className="w-full bg-white/5 border border-white/15 rounded-xl px-3 py-2.5 text-xs text-white focus:border-amber-400 outline-none"
+                        value={cadLoja}
+                        onChange={e => setCadLoja(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold uppercase text-white/80 block">Sua Cidade / UF *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Ex.: Criciúma / SC"
+                        className="w-full bg-white/5 border border-white/15 rounded-xl px-3 py-2.5 text-xs text-white focus:border-amber-400 outline-none"
+                        value={cadCidade}
+                        onChange={e => setCadCidade(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  {cadError && (
+                    <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-400 flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                      <span>{cadError}</span>
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={cadLoading}
+                    className="w-full py-3.5 bg-amber-500 hover:bg-amber-400 text-black font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-amber-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
+                  >
+                    {cadLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserCheck className="w-4 h-4" />}
+                    Cadastrar e Liberar Preços de Atacado
+                  </button>
+                </form>
+              )}
+            </>
+          )}
+        </motion.div>
+      </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL DE ENVIAR PROPOSTA DE LOJISTA */}
+      <AnimatePresence>
+        {showPropostaModal && selectedVeiculoProposta && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-[#121216] border border-amber-500/40 rounded-3xl p-6 sm:p-8 max-w-lg w-full space-y-6 shadow-2xl relative"
+            >
+              <button
+                onClick={() => setShowPropostaModal(false)}
+                className="absolute top-5 right-5 text-white/50 hover:text-white p-2 rounded-xl bg-white/5 hover:bg-white/10"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 px-3 py-1 bg-amber-500/10 border border-amber-500/30 rounded-full w-fit">
+                  <Handshake className="w-4 h-4 text-amber-400" />
+                  <span className="text-xs font-black text-amber-400 uppercase">Oferta Exclusiva Lojista</span>
+                </div>
+                <h2 className="text-xl sm:text-2xl font-black text-white uppercase italic">
+                  Enviar Proposta / Oferta
+                </h2>
+                <p className="text-xs text-white/60">
+                  {selectedVeiculoProposta.titulo} • Preço Anunciado: <strong className="text-amber-400">{formatBRL(selectedVeiculoProposta.preco_lojista || selectedVeiculoProposta.preco_repasse)}</strong>
+                </p>
+              </div>
+
+              {propostaSuccess ? (
+                <div className="p-6 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl text-center space-y-4">
+                  <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto" />
+                  <div className="space-y-1">
+                    <h3 className="text-lg font-bold text-white">Proposta Registrada com Sucesso!</h3>
+                    <p className="text-xs text-white/70">
+                      Sua oferta foi enviada diretamente para a equipe da Manos Veículos. Você pode acompanhar a resposta na sua aba de <strong>Minhas Propostas</strong>.
+                    </p>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2 pt-2">
+                    <button
+                      onClick={() => {
+                        setShowPropostaModal(false);
+                        setShowMinhasPropostasModal(true);
+                      }}
+                      className="flex-1 py-3 bg-amber-500 hover:bg-amber-400 text-black font-black text-xs uppercase rounded-xl cursor-pointer"
+                    >
+                      Ver Minhas Propostas
+                    </button>
+                    <button
+                      onClick={() => setShowPropostaModal(false)}
+                      className="py-3 px-4 bg-white/10 text-white font-bold text-xs uppercase rounded-xl cursor-pointer"
+                    >
+                      Fechar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <form onSubmit={handleEnviarPropostaSubmit} className="space-y-4">
+                  <div className="p-4 bg-white/5 border border-white/10 rounded-2xl space-y-1 text-xs">
+                    <div className="text-white/50 uppercase font-bold text-[10px]">Lojista Autenticado:</div>
+                    <div className="font-bold text-white flex items-center justify-between">
+                      <span>{activeLojista?.nome_completo} ({activeLojista?.nome_loja})</span>
+                      <span className="text-amber-400 text-[10px] bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">{activeLojista?.cidade || 'Lojista'}</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold uppercase text-white/80 block">
+                      Sua Oferta em R$ *
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-amber-400 font-black text-sm">R$</span>
+                      <input
+                        type="number"
+                        step="100"
+                        required
+                        placeholder="Ex.: 37500"
+                        className="w-full bg-white/5 border border-amber-500/40 rounded-xl py-3.5 pl-12 pr-4 text-base font-black text-amber-400 outline-none focus:border-amber-400"
+                        value={valorPropostaInput}
+                        onChange={e => setValorPropostaInput(e.target.value)}
+                      />
+                    </div>
+                    <p className="text-[10px] text-white/40">Informe o valor em reais que deseja pagar pelo veículo.</p>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold uppercase text-white/80 block">
+                      Observações / Condições (Opcional)
+                    </label>
+                    <textarea
+                      rows={3}
+                      placeholder="Ex.: Pagamento no PIX / Retiro ainda hoje na loja / Aceita troco na troca?"
+                      className="w-full bg-white/5 border border-white/15 rounded-xl p-3 text-xs text-white outline-none focus:border-amber-400 resize-none"
+                      value={mensagemPropostaInput}
+                      onChange={e => setMensagemPropostaInput(e.target.value)}
+                    />
+                  </div>
+
+                  {propostaError && (
+                    <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-400 flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                      <span>{propostaError}</span>
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={propostaLoading}
+                    className="w-full py-4 bg-amber-500 hover:bg-amber-400 text-black font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-amber-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    {propostaLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                    Enviar Proposta para Equipe Manos
+                  </button>
+                </form>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL MINHAS PROPOSTAS DO LOJISTA */}
+      <AnimatePresence>
+        {showMinhasPropostasModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="bg-[#121216] border border-white/15 rounded-3xl p-6 sm:p-8 max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl relative"
+            >
+              <div className="flex items-center justify-between border-b border-white/10 pb-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-10 h-10 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center justify-center">
+                    <FileText className="w-5 h-5 text-amber-400" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg sm:text-xl font-black text-white uppercase italic">
+                      Minhas Propostas & Contrapropostas
+                    </h2>
+                    <p className="text-xs text-white/50">
+                      {activeLojista?.nome_loja} • {activeLojista?.nome_completo}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setShowMinhasPropostasModal(false)}
+                  className="text-white/50 hover:text-white p-2 rounded-xl bg-white/5 hover:bg-white/10 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="overflow-y-auto py-4 space-y-4 flex-grow pr-1">
+                {propostasLojista.length === 0 ? (
+                  <div className="text-center py-12 space-y-3">
+                    <Clock className="w-10 h-10 text-white/20 mx-auto" />
+                    <p className="text-sm font-bold text-white/70">Nenhuma proposta registrada até o momento.</p>
+                    <p className="text-xs text-white/40">Navegue pelos veículos de repasse e envie suas ofertas para nossa equipe!</p>
+                  </div>
+                ) : (
+                  propostasLojista.map(p => {
+                    const statusConfig = {
+                      pendente: {
+                        bg: 'bg-amber-500/10 border-amber-500/30 text-amber-400',
+                        icon: <Clock className="w-3.5 h-3.5" />,
+                        label: 'Aguardando Análise',
+                        desc: 'Sua proposta está sendo avaliada pela equipe da Manos Veículos.'
+                      },
+                      aceita: {
+                        bg: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400',
+                        icon: <CheckCircle2 className="w-3.5 h-3.5" />,
+                        label: 'Proposta Aceita!',
+                        desc: 'Sua proposta foi ACEITA! Entre em contato via WhatsApp para fechar a negociação.'
+                      },
+                      recusada: {
+                        bg: 'bg-red-500/10 border-red-500/30 text-red-400',
+                        icon: <XCircle className="w-3.5 h-3.5" />,
+                        label: 'Proposta Recusada',
+                        desc: 'A proposta não foi aceita no momento.'
+                      },
+                      contraproposta: {
+                        bg: 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400',
+                        icon: <Handshake className="w-3.5 h-3.5" />,
+                        label: 'Contraproposta da Manos!',
+                        desc: 'A equipe Manos fez uma contraproposta para fechar negócio!'
+                      }
+                    }[p.status] || {
+                      bg: 'bg-white/5 border-white/10 text-white',
+                      icon: <Info className="w-3.5 h-3.5" />,
+                      label: p.status,
+                      desc: ''
+                    };
+
+                    const waMessage = p.status === 'contraproposta' && p.valor_contraproposta
+                      ? `Olá! Recebi a contraproposta de R$ ${p.valor_contraproposta.toLocaleString('pt-BR')} no veículo ${p.veiculo_titulo}. Gostaria de fechar!`
+                      : `Olá! Sou da ${p.repassador_loja}. Gostaria de tratar da minha proposta de R$ ${p.valor_proposta.toLocaleString('pt-BR')} no ${p.veiculo_titulo}.`;
+
+                    const waUrl = `https://wa.me/${WHATSAPP_NUM}?text=${encodeURIComponent(waMessage)}`;
+
+                    return (
+                      <div
+                        key={p.id}
+                        className="bg-white/[0.03] border border-white/10 rounded-2xl p-4 sm:p-5 space-y-3 hover:border-white/20 transition-all"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div className="space-y-0.5">
+                            <h4 className="text-sm font-black text-white">{p.veiculo_titulo}</h4>
+                            <div className="text-[11px] text-white/50">
+                              Anunciado por: <strong className="text-white/80">{formatBRL(p.valor_veiculo)}</strong>
+                            </div>
+                          </div>
+
+                          <div className={`px-2.5 py-1 rounded-full text-xs font-black uppercase border flex items-center gap-1.5 ${statusConfig.bg}`}>
+                            {statusConfig.icon}
+                            {statusConfig.label}
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-black/40 p-3 rounded-xl border border-white/5 text-xs">
+                          <div>
+                            <span className="text-[10px] text-white/40 uppercase font-bold block">Sua Oferta Enviada:</span>
+                            <span className="text-base font-black text-amber-400">{formatBRL(p.valor_proposta)}</span>
+                            {p.mensagem_lojista && (
+                              <p className="text-[11px] text-white/70 italic mt-1 font-sans">"{p.mensagem_lojista}"</p>
+                            )}
+                          </div>
+
+                          {p.status === 'contraproposta' && p.valor_contraproposta ? (
+                            <div className="bg-cyan-500/10 border border-cyan-500/30 p-2.5 rounded-lg space-y-1">
+                              <span className="text-[10px] font-black uppercase text-cyan-400 block flex items-center gap-1">
+                                <Handshake className="w-3.5 h-3.5" /> Contraproposta da Manos
+                              </span>
+                              <span className="text-lg font-black text-cyan-300 block">{formatBRL(p.valor_contraproposta)}</span>
+                              {p.resposta_manos && (
+                                <p className="text-[11px] text-white/80 italic">"{p.resposta_manos}"</p>
+                              )}
+                            </div>
+                          ) : p.resposta_manos ? (
+                            <div>
+                              <span className="text-[10px] text-white/40 uppercase font-bold block">Resposta da Manos:</span>
+                              <p className="text-xs text-white/80 italic">"{p.resposta_manos}"</p>
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                          <span className="text-[10px] text-white/40">
+                            Enviada em {new Date(p.created_at || Date.now()).toLocaleDateString('pt-BR')} às {new Date(p.created_at || Date.now()).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+
+                          <a
+                            href={waUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs uppercase rounded-xl flex items-center gap-1.5 transition-all"
+                          >
+                            <MessageCircle className="w-3.5 h-3.5 fill-current" />
+                            Falar com Manos no WhatsApp
+                          </a>
+                        </div>
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </motion.div>
