@@ -37,6 +37,7 @@ import {
 } from './lib/tracking';
 import { fetchStock, type Vehicle } from './services/stockService';
 import { lojaAberta, promessaDeRetorno, statusConsultores } from './lib/horario';
+import { generateAutoDealerSchema } from './lib/seoSchemas';
 
 type LeadType = 'Compra' | 'Venda' | 'Financiamento';
 
@@ -121,6 +122,13 @@ export default function App() {
   // voltar — jogava a pessoa de volta no passo 1, com todas as respostas
   // perdidas. A sessão é descartada assim que o lead é finalizado.
   useEffect(() => {
+    try {
+      const script = document.createElement('script');
+      script.type = 'application/ld+json';
+      script.text = JSON.stringify(generateAutoDealerSchema());
+      document.head.appendChild(script);
+    } catch {}
+
     const salva = sessaoSalva();
     if (!salva) return;
     // Um deep link novo (?id=) manda mais que a sessão antiga.
@@ -438,7 +446,7 @@ export default function App() {
   });
 
   return (
-    <div className="app-viewport lg:max-w-none lg:h-auto lg:min-h-screen lg:bg-black/40 lg:flex lg:items-center lg:justify-center lg:p-12">
+    <div className="app-viewport lg:max-w-none lg:h-auto lg:min-h-screen lg:bg-[#EDEAE4] lg:flex lg:items-center lg:justify-center lg:p-12">
       <div className="glow-bg" />
 
       {/* WhatsApp Floating Button */}
@@ -453,49 +461,148 @@ export default function App() {
           </svg>
         </div>
         <div className="absolute right-full mr-4 bottom-1/2 translate-y-1/2">
-          <div className="bg-white text-manos-dark text-[10px] font-black uppercase tracking-widest py-2 px-4 rounded-xl shadow-2xl whitespace-nowrap hidden sm:block">
+          <div className="bg-manos-accent text-manos-dark text-[10px] font-extrabold uppercase tracking-widest py-2 px-4 rounded-xl shadow-2xl whitespace-nowrap hidden sm:block">
             Precisa de ajuda imediata?
           </div>
         </div>
       </button>
 
-      <div className="app-viewport lg:h-[800px] lg:rounded-[32px] lg:shadow-2xl lg:border lg:border-white/5 lg:relative">
-        {/* Header - Fixed & Minimalist */}
-        <header className="p-4 flex flex-col items-center gap-3 z-20 backdrop-blur-md bg-manos-dark/50 lg:rounded-t-[32px]">
+      <div className="app-viewport">
+        {/* Desktop Side Showcase Panel (Visible on lg screens >= 1024px) */}
+        <aside className="hidden lg:flex flex-col bg-[#3B2016] text-[#FDF3E7] p-8 overflow-hidden relative justify-between border-r border-[#EEDFCF]/10">
+          {/* Cover Image Background */}
+          <div className="absolute inset-0 z-0">
+            <img 
+              src="/capa-manos.jpg" 
+              alt="Fachada Manos Veículos" 
+              className="w-full h-full object-cover opacity-20 scale-105 filter blur-[1px]"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#3B2016] via-[#3B2016]/90 to-[#3B2016]/65" />
+          </div>
+
+          <div className="relative z-10 space-y-6">
+            <div className="flex items-center gap-3">
+              <img 
+                src="https://manosveiculos.com.br/wp-content/uploads/2024/02/LogoManos.png" 
+                alt="Manos Veículos" 
+                className="h-10 w-auto object-contain"
+              />
+              <span className="text-[10px] font-extrabold uppercase tracking-widest px-2.5 py-1 bg-manos-red text-manos-accent rounded-full">
+                Alto Vale do Itajaí
+              </span>
+            </div>
+
+            <div className="space-y-3 pt-2">
+              <div className="inline-flex items-center gap-2 px-3 py-1 bg-[#FDF3E7]/10 border border-[#FDF3E7]/20 rounded-full text-xs font-bold text-[#E8C6AC]">
+                <Building2 className="w-3.5 h-3.5 text-[#E0B68F]" />
+                <span>Sua Revenda de Confiança em Rio do Sul</span>
+              </div>
+              <h2 className="font-serif text-3xl font-extrabold text-white leading-tight tracking-tight">
+                Compre, Venda ou Financie seu Veículo com Segurança
+              </h2>
+              <p className="text-sm text-[#E8C6AC]/90 font-medium leading-relaxed">
+                Atendimento personalizado, veículos 100% revisados com garantia e aprovação facilitada.
+              </p>
+            </div>
+
+            {/* Featured Cover Card Photo */}
+            <div className="relative rounded-2xl overflow-hidden border border-[#FDF3E7]/20 shadow-xl group">
+              <img 
+                src="/capa-manos.jpg" 
+                alt="Fachada Manos Veículos" 
+                className="w-full h-44 object-cover group-hover:scale-105 transition-all duration-700"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#3B2016] via-transparent to-transparent" />
+              <div className="absolute bottom-3 left-4 right-4 flex items-center justify-between text-xs font-bold">
+                <span className="text-white drop-shadow-md">Nossa Loja Física em Rio do Sul/SC</span>
+                <span className="text-xs font-extrabold text-[#FDF3E7] bg-manos-red/90 px-2.5 py-0.5 rounded-full">Garantia Manos</span>
+              </div>
+            </div>
+
+            {/* Trust Pillars */}
+            <div className="space-y-3 pt-1">
+              <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-white/5 border border-white/10">
+                <div className="w-10 h-10 rounded-xl bg-yellow-500/20 text-yellow-400 flex items-center justify-center font-bold text-sm flex-shrink-0">
+                  ★ 4.9
+                </div>
+                <div>
+                  <p className="text-xs font-extrabold text-white">Excelente no Google</p>
+                  <p className="text-[11px] text-[#E8C6AC]/70">Liderança em reputação no Alto Vale</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-white/5 border border-white/10">
+                <div className="w-10 h-10 rounded-xl bg-green-500/20 text-green-400 flex items-center justify-center flex-shrink-0">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-xs font-extrabold text-white">100% Procedência & Vistoria</p>
+                  <p className="text-[11px] text-[#E8C6AC]/70">Sem leilão, sem sinistro — nota fiscal e garantia</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Footer Store Status */}
+          <div className="relative z-10 pt-4 border-t border-[#FDF3E7]/10 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className={cn("w-2.5 h-2.5 rounded-full animate-pulse", lojaAberta() ? "bg-green-400" : "bg-yellow-400")} />
+                <span className="text-xs font-bold text-white">
+                  {lojaAberta() ? 'Loja Aberta Agora' : 'Atendimento Digital Ativo'}
+                </span>
+              </div>
+              <span className="text-[11px] text-[#E8C6AC]/60 font-semibold">{statusConsultores()}</span>
+            </div>
+
+            <button
+              onClick={() => handleWhatsAppClick('Desktop Banner')}
+              className="w-full py-3.5 bg-manos-red hover:bg-[#8F3725] text-white font-extrabold text-xs uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg"
+            >
+              <Phone className="w-4 h-4" />
+              Chamar no WhatsApp (47) 3300-1352
+            </button>
+          </div>
+        </aside>
+
+        {/* Main Step App Area */}
+        <div className="flex flex-col h-full min-h-0 relative overflow-hidden bg-manos-cream">
+          {/* Header - Fixed & Minimalist */}
+          <header className="p-4 flex flex-col items-center gap-3 z-20 bg-[#3B2016]">
           <img 
             src="https://manosveiculos.com.br/wp-content/uploads/2024/02/LogoManos.png" 
             alt="Manos Veículos" 
-            className="h-8 w-auto object-contain"
+            className="h-9 w-auto object-contain"
           />
           
           {!isSuccess && quiz.step > 1 && (
             <div className="w-full space-y-2">
               <div className="flex justify-between items-center px-1">
-                 <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">
+                 <span className="text-[10px] font-extrabold text-[#E8C6AC]/60 uppercase tracking-widest">
                     {quiz.fase === 'contato' ? 'Seus dados' :
                      quiz.step <= 2 ? 'Início' :
                      quiz.step < maxSteps ? 'Preferências' : 'Finalizando'}
                  </span>
                  <button
                    onClick={navigateBack}
-                   className="flex items-center gap-1 text-[10px] font-black text-manos-red uppercase tracking-widest hover:brightness-125 active:scale-95 transition-all"
+                   className="flex items-center gap-1 text-[10px] font-extrabold text-[#FDF3E7] uppercase tracking-widest hover:brightness-125 active:scale-95 transition-all"
                  >
                    <ChevronLeft className="w-3 h-3" />
                    Voltar
                  </button>
-                 <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">
+                 <span className="text-[10px] font-extrabold text-[#E8C6AC]/60 uppercase tracking-widest">
                     {quiz.fase === 'contato' ? 'Leva 20 segundos' : `Passo ${quiz.step} de ${maxSteps}`}
                  </span>
               </div>
               <div className="w-full flex items-center gap-3">
-               <div className="flex-grow h-1 bg-white/10 rounded-full overflow-hidden">
+               <div className="flex-grow h-1 bg-[#E8C6AC]/20 rounded-full overflow-hidden">
                   <motion.div 
                     initial={{ width: 0 }}
                     animate={{ width: `${progressValue}%` }}
-                    className="h-full bg-manos-red"
+                    className="h-full bg-[#FDF3E7]"
                   />
                </div>
-               <span className="text-[10px] font-black text-manos-red tracking-widest">{Math.round(progressValue)}%</span>
+               <span className="text-[10px] font-extrabold text-[#FDF3E7] tracking-widest">{Math.round(progressValue)}%</span>
               </div>
             </div>
           )}
@@ -516,39 +623,38 @@ export default function App() {
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
                   transition={{ type: 'spring', delay: 0.2 }}
-                  className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center mx-auto shadow-[0_0_50px_rgba(34,197,94,0.3)]"
+                  className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center mx-auto shadow-[0_0_50px_rgba(34,197,94,0.2)]"
                 >
                   <CheckCircle2 className="w-10 h-10 text-white" />
                 </motion.div>
-                <div className="absolute inset-0 bg-green-500 blur-3xl opacity-10 -z-10" />
               </div>
 
               <div className="space-y-4 px-4">
-                <h2 className="text-3xl font-black tracking-tighter leading-none italic uppercase text-white">Solicitação Recebida!</h2>
+                <h2 className="text-3xl font-extrabold tracking-tight leading-none font-serif text-[#3B2016]">Solicitação Recebida!</h2>
                 <div className="space-y-4">
-                  <p className="text-white/80 text-base leading-relaxed">
+                  <p className="text-[#56524A] text-base leading-relaxed">
                     Obrigado pela confiança, <span className="text-manos-red font-bold">{quiz.data.name}</span>! Seus dados foram encaminhados com sucesso para nossa consultoria especializada.
                   </p>
-                  <p className="text-white/60 text-sm leading-relaxed border-l-2 border-manos-red/30 pl-4 py-1 italic">
+                  <p className="text-[#7D6250] text-sm leading-relaxed border-l-2 border-manos-red/30 pl-4 py-1 italic">
                     Fique atento ao seu WhatsApp. Em instantes, um de nossos consultores entrará em contato para dar continuidade ao seu atendimento de forma personalizada.
                   </p>
                 </div>
               </div>
 
               <div className="px-4 space-y-4">
-                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/20 text-center">Enquanto isso, explore:</p>
+                <p className="text-[10px] font-extrabold uppercase tracking-[0.3em] text-[#A88A70] text-center">Enquanto isso, explore:</p>
                 <a
                   href="/estoque"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full bg-white/5 border border-white/10 p-6 rounded-2xl flex items-center gap-4 group hover:bg-white/10 transition-all text-left shadow-xl shadow-black/20"
+                  className="w-full bg-white border border-manos-sand p-6 rounded-2xl flex items-center gap-4 group hover:bg-manos-warm/50 transition-all text-left shadow-lg"
                 >
-                  <div className="w-12 h-12 bg-manos-red rounded-full flex items-center justify-center group-hover:scale-110 transition-transform shadow-lg shadow-manos-red/20 flex-shrink-0">
-                    <ExternalLink className="w-6 h-6 text-white" />
+                  <div className="w-12 h-12 bg-manos-red rounded-full flex items-center justify-center group-hover:scale-110 transition-transform shadow-lg shadow-manos-red/15 flex-shrink-0">
+                    <ExternalLink className="w-6 h-6 text-manos-accent" />
                   </div>
                   <div>
-                    <p className="text-sm font-black uppercase tracking-tighter italic text-white">Navegar pelo Estoque</p>
-                    <p className="text-[10px] text-white/40 uppercase font-bold tracking-widest">manosveiculos.com.br</p>
+                    <p className="text-sm font-extrabold uppercase tracking-tight text-[#3B2016]">Navegar pelo Estoque</p>
+                    <p className="text-[10px] text-[#A88A70] uppercase font-bold tracking-widest">manosveiculos.com.br</p>
                   </div>
                 </a>
               </div>
@@ -556,7 +662,7 @@ export default function App() {
               <div className="pt-4">
                 <button
                   onClick={() => window.location.reload()}
-                  className="text-[10px] font-black uppercase tracking-widest text-white/10 hover:text-white/30 transition-colors"
+                  className="text-[10px] font-extrabold uppercase tracking-widest text-[#A88A70]/40 hover:text-[#A88A70] transition-colors"
                 >
                   Finalizar Sessão
                 </button>
@@ -579,7 +685,7 @@ export default function App() {
             >
               {quiz.selectedVehicle && (
                 <div className="card-glass p-4 flex items-center gap-4">
-                  <div className="w-20 h-16 rounded-xl overflow-hidden bg-white/5 flex-shrink-0">
+                  <div className="w-20 h-16 rounded-xl overflow-hidden bg-manos-warm flex-shrink-0">
                     <img
                       src={quiz.selectedVehicle.image}
                       alt={quiz.selectedVehicle.description}
@@ -588,11 +694,11 @@ export default function App() {
                     />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-[9px] font-black uppercase tracking-widest text-green-500">Carro selecionado</p>
-                    <h4 className="font-black text-sm tracking-tighter leading-tight uppercase italic line-clamp-2">
+                    <p className="text-[9px] font-extrabold uppercase tracking-widest text-green-600">Carro selecionado</p>
+                    <h4 className="font-extrabold text-sm tracking-tight leading-tight font-serif text-[#3B2016] line-clamp-2">
                       {quiz.selectedVehicle.description}
                     </h4>
-                    <p className="text-manos-red font-black text-base tracking-tighter italic">
+                    <p className="text-manos-red font-extrabold text-base tracking-tight">
                       {quiz.selectedVehicle.priceFormatted}
                     </p>
                   </div>
@@ -601,26 +707,26 @@ export default function App() {
 
               <div className="text-center space-y-3">
                 <div className="inline-flex items-center gap-2 px-3 py-1 bg-green-500/10 border border-green-500/20 rounded-full">
-                  <Zap className="w-3 h-3 text-green-500 fill-current" />
-                  <span className="text-[10px] font-black text-green-500 uppercase tracking-widest">
+                  <Zap className="w-3 h-3 text-green-600 fill-current" />
+                  <span className="text-[10px] font-extrabold text-green-600 uppercase tracking-widest">
                     {promessaDeRetorno()}
                   </span>
                 </div>
-                <h2 className="text-3xl font-black tracking-tighter italic uppercase leading-[0.9]">
+                <h2 className="text-3xl font-extrabold tracking-tight font-serif leading-[0.95] text-[#3B2016]">
                   {quiz.type === 'Financiamento' ? (
                     <>Para onde enviamos <br /><span className="text-manos-red">sua simulação?</span></>
                   ) : (
                     <>Para onde enviamos <br /><span className="text-manos-red">sua proposta?</span></>
                   )}
                 </h2>
-                <p className="text-xs text-white/40 uppercase font-bold tracking-widest">
+                <p className="text-xs text-[#A88A70] uppercase font-bold tracking-widest">
                   Um consultor fala com você pelo WhatsApp
                 </p>
               </div>
 
               <form onSubmit={handleContatoSubmit} className="space-y-5">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-white/20 ml-4">Como devemos te chamar?</label>
+                  <label className="text-[10px] font-extrabold uppercase tracking-widest text-[#A88A70] ml-4">Como devemos te chamar?</label>
                   <input
                     type="text"
                     required
@@ -633,7 +739,7 @@ export default function App() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-white/20 ml-4">Seu WhatsApp de contato</label>
+                  <label className="text-[10px] font-extrabold uppercase tracking-widest text-[#A88A70] ml-4">Seu WhatsApp de contato</label>
                   <div className="relative">
                     <input
                       type="tel"
@@ -642,7 +748,7 @@ export default function App() {
                       autoComplete="tel"
                       className={cn(
                         "w-full py-5 px-6 pr-12 transition-all",
-                        quiz.data.phone && (isPhoneValid ? "border-green-500/50" : "border-manos-red/50")
+                        quiz.data.phone && (isPhoneValid ? "border-green-500/50" : "border-red-400/50")
                       )}
                       placeholder="(47) 99999-9999"
                       value={quiz.data.phone || ''}
@@ -653,7 +759,7 @@ export default function App() {
                         {isPhoneValid ? (
                           <CheckCircle2 className="w-6 h-6 text-green-500" />
                         ) : (
-                          <AlertCircle className="w-6 h-6 text-manos-red" />
+                          <AlertCircle className="w-6 h-6 text-red-400" />
                         )}
                       </div>
                     )}
@@ -665,7 +771,7 @@ export default function App() {
                 <button
                   type="submit"
                   disabled={!isFormValid || salvandoContato}
-                  className="w-full py-6 bg-manos-red text-white font-black text-lg uppercase rounded-2xl shadow-[0_20px_50px_rgba(237,28,36,0.3)] active:scale-95 transition-all disabled:opacity-30 disabled:scale-100"
+                  className="w-full py-6 bg-manos-red text-manos-accent font-extrabold text-lg uppercase rounded-2xl shadow-[0_12px_36px_rgba(122,46,30,0.25)] active:scale-95 transition-all disabled:opacity-30 disabled:scale-100"
                 >
                   {salvandoContato ? 'Enviando...' : 'Continuar'}
                 </button>
@@ -674,11 +780,11 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => handleWhatsAppClick('Atendimento direto')}
-                    className="text-[10px] font-black text-white/30 uppercase tracking-widest hover:text-white/60 transition-colors"
+                    className="text-[10px] font-extrabold text-[#A88A70] uppercase tracking-widest hover:text-[#7D6250] transition-colors"
                   >
                     Falar no WhatsApp
                   </button>
-                  <span className="w-px h-4 bg-white/10" />
+                  <span className="w-px h-4 bg-manos-sand" />
                   <PhoneLink label="Ligar agora" />
                 </div>
               </form>
@@ -693,45 +799,83 @@ export default function App() {
               className="space-y-8"
             >
               {quiz.step === 1 && (
-                <div className="space-y-8">
-                  <div className="space-y-4 text-center">
-                    <h1 className="text-4xl font-black tracking-tighter leading-[0.9] italic uppercase">
-                      Troque de carro <br />
-                      <span className="text-manos-red">com quem você confia</span>
-                    </h1>
-                    <div className="flex items-center justify-center gap-2">
-                       <span className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                       <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">{statusConsultores()}</span>
+                <div className="space-y-6">
+                  {/* Hero — foto + headline */}
+                  <div className="relative -mx-5 sm:-mx-6 -mt-4 overflow-hidden rounded-b-3xl">
+                    <img
+                      src="/capa-manos.jpg"
+                      alt="Fachada Manos Veículos"
+                      className="w-full h-[268px] sm:h-[300px] object-cover"
+                    />
+                    <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(46,20,12,0.15) 0%, rgba(46,20,12,0.82) 78%)' }} />
+                    <div className="absolute left-5 right-5 bottom-5 sm:left-6 sm:right-6 sm:bottom-6">
+                      <div className="inline-flex items-center h-7 px-3 rounded-lg bg-manos-accent text-manos-red text-[12px] font-extrabold tracking-[0.08em]">SEMINOVOS REVISADOS</div>
+                      <h1 className="mt-3 font-serif text-[33px] leading-[1.12] font-bold tracking-tight text-white text-balance">
+                        A revenda do Alto Vale, de gente que você conhece.
+                      </h1>
                     </div>
                   </div>
-                  
-                  {/* Carros logo de cara. A home antes era um menu de três
-                      botões: quem vinha de um anúncio de veículo precisava dar
-                      dois toques antes de ver o primeiro carro. */}
-                  <div className="space-y-4">
+
+                  {/* CTA banner */}
+                  <div className="p-5 bg-manos-red rounded-2xl">
+                    <p className="text-base leading-relaxed text-[#F6DCC8] mb-4">Compra, venda, troca e financiamento em Rio do Sul. Chama no WhatsApp que a conversa começa na hora.</p>
+                    <div className="grid grid-cols-[1.4fr_1fr] gap-3">
+                      <button
+                        onClick={() => handleWhatsAppClick('Atendimento Prioritário')}
+                        className="h-[54px] bg-manos-accent text-manos-red font-extrabold text-base rounded-xl"
+                      >
+                        Chamar no WhatsApp
+                      </button>
+                      <PhoneLink label="Ligar" className="h-[54px] border-[1.5px] border-[rgba(253,243,231,0.45)] text-manos-accent font-bold text-base rounded-xl justify-center" />
+                    </div>
+                  </div>
+
+                  {/* Busca */}
+                  <div className="space-y-3">
                     <div className="relative">
-                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30 w-5 h-5" />
+                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#A88A70] w-5 h-5" />
                       <input
                         type="text"
-                        className="w-full bg-[#1A1A1A] border border-white/5 rounded-2xl p-4 pl-12 focus:ring-2 focus:ring-manos-red/30 outline-none text-base transition-all"
-                        placeholder="Buscar por marca ou modelo..."
+                        className="w-full bg-white border border-[#E3D3C2] rounded-[14px] p-4 pl-12 focus:ring-2 focus:ring-manos-red/20 outline-none text-base transition-all"
+                        placeholder="Buscar por modelo, marca ou ano"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         onKeyDown={(e) => { if (e.key === 'Enter') irParaEstoque(); }}
                       />
                     </div>
-
                     <div className="grid grid-cols-2 gap-3">
+                      <button onClick={() => { setPriceFilter('50k'); irParaFaixaDePreco(); }} className="h-[46px] bg-manos-warm text-manos-red text-[15px] font-bold rounded-xl">
+                        Até R$ 50 mil
+                      </button>
+                      <button onClick={() => { setPriceFilter('100k'); irParaFaixaDePreco(); }} className="h-[46px] bg-manos-warm text-manos-red text-[15px] font-bold rounded-xl">
+                        R$ 50–100 mil
+                      </button>
+                      <button onClick={() => irParaEstoque()} className="h-[46px] bg-manos-warm text-manos-red text-[15px] font-bold rounded-xl">
+                        SUVs
+                      </button>
+                      <button onClick={() => irParaFaixaDePreco()} className="h-[46px] bg-manos-warm text-manos-red text-[15px] font-bold rounded-xl">
+                        Motos
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Escolhidos da semana */}
+                  <div className="space-y-3">
+                    <div>
+                      <h3 className="font-serif text-[23px] font-bold text-[#3B2016]">Escolhidos da semana</h3>
+                      <p className="mt-1 text-[15px] text-[#7D6250]">Os três que mais saem daqui.</p>
+                    </div>
+                    <div className="grid gap-3">
                       {isLoadingStock
-                        ? Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
-                        : resultadosBusca.slice(0, 4).map(v => (
+                        ? Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} />)
+                        : resultadosBusca.slice(0, 3).map(v => (
                             <VehicleCardMini key={v.id} vehicle={v} onClick={() => escolherDaHome(v)} />
                           ))}
                     </div>
 
                     {!isLoadingStock && resultadosBusca.length === 0 && searchQuery && (
-                      <p className="text-center text-xs text-white/40 py-2">
-                        Não temos <span className="text-white font-bold">{searchQuery}</span> no pátio agora —
+                      <p className="text-center text-xs text-[#A88A70] py-2">
+                        Não temos <span className="text-[#3B2016] font-bold">{searchQuery}</span> no pátio agora —
                         <button onClick={irParaEstoque} className="min-h-0 text-manos-red font-bold underline underline-offset-2 ml-1">
                           ver o que temos
                         </button>
@@ -740,36 +884,33 @@ export default function App() {
 
                     <button
                       onClick={irParaEstoque}
-                      className="w-full py-4 bg-white/5 border border-white/10 rounded-2xl text-white/70 font-black text-xs uppercase tracking-widest hover:bg-white/10 active:scale-[0.98] transition-all"
+                      className="w-full h-[52px] border-[1.5px] border-manos-red text-manos-red font-bold text-base rounded-[13px] hover:bg-manos-red/5 active:scale-[0.98] transition-all"
                     >
-                      {stock.length > 0 ? `Ver todos os ${stock.length} carros` : 'Ver estoque completo'}
-                    </button>
-
-                    <button
-                      onClick={irParaFaixaDePreco}
-                      className="w-full text-[10px] font-black text-white/30 uppercase tracking-widest hover:text-white/60 transition-colors"
-                    >
-                      Não sei qual carro — buscar por faixa de preço &rarr;
+                      {stock.length > 0 ? `Ver todo o estoque` : 'Ver estoque completo'}
                     </button>
                   </div>
 
-                  <div className="pt-2 space-y-3">
-                    <div className="flex items-center gap-3">
-                      <div className="flex-grow h-px bg-white/5" />
-                      <span className="text-[9px] font-black text-white/20 uppercase tracking-[0.3em]">Ou</span>
-                      <div className="flex-grow h-px bg-white/5" />
+                  {/* Compramos seu carro — numbered steps */}
+                  <div className="p-6 bg-manos-warm rounded-2xl">
+                    <h3 className="font-serif text-[24px] leading-[1.2] font-bold text-[#3B2016]">Compramos o seu carro</h3>
+                    <p className="mt-2 text-[15px] leading-relaxed text-[#6B4E3D]">Avaliação sem compromisso, na loja ou por foto no WhatsApp. Se preferir, entra na troca por um do nosso pátio.</p>
+                    <div className="grid gap-2 mt-4">
+                      <div className="flex gap-3 items-baseline text-[15px] text-[#3B2016]"><span className="font-extrabold text-manos-red">1</span><span>Manda marca, ano e km</span></div>
+                      <div className="flex gap-3 items-baseline text-[15px] text-[#3B2016]"><span className="font-extrabold text-manos-red">2</span><span>A gente avalia e responde no mesmo dia</span></div>
+                      <div className="flex gap-3 items-baseline text-[15px] text-[#3B2016]"><span className="font-extrabold text-manos-red">3</span><span>Fecha na loja, com documentação resolvida</span></div>
                     </div>
-                    <MainOption
-                      icon={<Handshake className="w-8 h-8" />}
-                      title="Avaliar meu Carro agora"
-                      desc="Pagamento à vista no PIX"
-                      /* Unifica os dois funis de venda: leva para o /vendasrapidas,
-                         que pede contato primeiro e busca FIPE pela placa, em vez
-                         do caminho antigo que pedia o preço desejado na 2ª tela. */
+                    <button
                       onClick={() => { trackFunnelStart('Venda'); window.location.href = '/vendasrapidas'; }}
-                    />
+                      className="w-full h-[54px] mt-5 bg-manos-red text-manos-accent font-extrabold text-base rounded-[13px] active:scale-95 transition-all"
+                    >
+                      Quero uma avaliação
+                    </button>
+                  </div>
+
+                  {/* Outros serviços */}
+                  <div className="space-y-3">
                     <MainOption
-                      icon={<Sparkles className="w-8 h-8 text-amber-400" />}
+                      icon={<Sparkles className="w-8 h-8 text-amber-600" />}
                       title="Consignar meu Veículo"
                       desc="Venda pelo valor máximo com financiamento aprovado"
                       onClick={() => { trackFunnelStart('Venda'); window.location.href = '/consignacao'; }}
@@ -782,58 +923,86 @@ export default function App() {
                     />
                   </div>
 
-                  <div className="flex justify-center gap-6 py-2">
-                    <div className="flex flex-col items-center gap-1 opacity-60">
-                      <div className="flex text-yellow-500">
-                        {[...Array(4)].map((_, i) => <Star key={i} className="w-3 h-3 fill-current" />)}
-                        <StarHalf className="w-3 h-3 fill-current" />
+                  {/* Trust signals — checklist */}
+                  <div className="space-y-4 py-2">
+                    {[
+                      { title: 'Loja física na Dom Pedro II', desc: 'Canoas, Rio do Sul/SC. Pode passar pra ver e dirigir.' },
+                      { title: 'Estoque revisado e atualizado', desc: 'Cada veículo passa pela oficina antes de anunciar.' },
+                      { title: 'Financiamento com os bancos', desc: 'Simulação de entrada e parcela pelo WhatsApp.' },
+                      { title: 'Atendemos no seu horário', desc: 'Com hora marcada, abrimos qualquer dia da semana, inclusive fora do expediente.' },
+                    ].map((item) => (
+                      <div key={item.title} className="flex gap-3 items-start">
+                        <span className="flex-none w-[30px] h-[30px] rounded-full bg-manos-warm text-manos-red flex items-center justify-center text-[15px] font-extrabold">✓</span>
+                        <div>
+                          <div className="text-[15px] font-extrabold text-[#3B2016]">{item.title}</div>
+                          <div className="mt-1 text-[14px] leading-[1.45] text-[#7D6250]">{item.desc}</div>
+                        </div>
                       </div>
-                      <p className="text-[9px] font-black uppercase tracking-widest text-white">4,8 ★ • 154 no Google</p>
+                    ))}
+                  </div>
+
+                  {/* Social proof */}
+                  <div className="p-6 bg-gradient-to-br from-[#2E1810] via-[#3B2016] to-[#2E1810] rounded-2xl border border-[#E0B68F]/30 shadow-xl space-y-4">
+                    <div>
+                      <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-[#E0B68F]/20 text-[#E0B68F] border border-[#E0B68F]/30 uppercase tracking-wider mb-2">
+                        Reputação Pública
+                      </span>
+                      <h3 className="font-serif text-[23px] leading-[1.2] font-bold text-white">Quem já comprou aqui conta</h3>
+                      <p className="mt-1 text-[14px] leading-relaxed text-[#F6DCC8]">Nossa reputação é pública e confirmada. Pode conferir antes de vir.</p>
                     </div>
-                    <div className="w-px h-6 bg-white/10" />
-                    <div className="flex flex-col items-center gap-1 opacity-60">
-                      <ShieldCheck className="w-4 h-4 text-green-500" />
-                      <p className="text-[9px] font-black uppercase tracking-widest text-white">Compra Segura</p>
+                    <div className="grid gap-3 mt-4">
+                      <a href="https://share.google/gVOMunGbpS3ZbjKoa" target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 p-4 rounded-xl bg-white border border-[#EEDFCF] hover:border-[#7A2E1E] transition-all shadow-md group">
+                        <span className="flex-none w-11 h-11 rounded-full bg-white border border-[#EEDFCF] flex items-center justify-center shadow-xs">
+                          <svg width="22" height="22" viewBox="0 0 48 48" aria-hidden="true"><path fill="#4285F4" d="M45.1 24.5c0-1.6-.1-3.2-.4-4.7H24v9h11.8c-.5 2.7-2 5-4.4 6.6v5.5h7.1c4.2-3.8 6.6-9.5 6.6-16.4z"></path><path fill="#34A853" d="M24 46c5.9 0 10.9-2 14.5-5.3l-7.1-5.5c-2 1.3-4.5 2.1-7.4 2.1-5.7 0-10.5-3.8-12.2-9H4.5v5.7C8.1 41.3 15.4 46 24 46z"></path><path fill="#FBBC05" d="M11.8 28.3c-.4-1.3-.7-2.7-.7-4.3s.2-2.9.7-4.3v-5.7H4.5C2.9 17.2 2 20.5 2 24s.9 6.8 2.5 10l7.3-5.7z"></path><path fill="#EA4335" d="M24 10.7c3.2 0 6.1 1.1 8.4 3.3l6.3-6.3C34.9 4.1 29.9 2 24 2 15.4 2 8.1 6.7 4.5 13.7l7.3 5.7c1.7-5.2 6.5-8.7 12.2-8.7z"></path></svg>
+                        </span>
+                        <span className="flex-1 min-w-0">
+                          <span className="block text-[15px] font-extrabold text-[#3B2016] flex items-center gap-1.5">
+                            Google Avaliações <span className="text-amber-400 text-xs">★★★★★</span>
+                          </span>
+                          <span className="block mt-0.5 text-[13px] text-[#7D6250]">Nota máxima de clientes de Rio do Sul</span>
+                        </span>
+                        <span className="text-[#7A2E1E] text-lg font-bold group-hover:translate-x-1 transition-transform">›</span>
+                      </a>
+                      <a href="https://www.reclameaqui.com.br/empresa/raccar-comercio-de-veiculos-novos-e-usados-ltda/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 p-4 rounded-xl bg-white border border-[#EEDFCF] hover:border-[#7A2E1E] transition-all shadow-md group">
+                        <span className="flex-none w-11 h-11 rounded-full bg-[#007535] text-white flex items-center justify-center text-[15px] font-extrabold tracking-wide shadow-xs">RA</span>
+                        <span className="flex-1 min-w-0">
+                          <span className="block text-[15px] font-extrabold text-[#3B2016]">Reclame AQUI: Verificada</span>
+                          <span className="block mt-0.5 text-[13px] text-emerald-700 font-bold">100% de satisfação e zero pendências</span>
+                        </span>
+                        <span className="text-[#7A2E1E] text-lg font-bold group-hover:translate-x-1 transition-transform">›</span>
+                      </a>
+                      <a href="https://www.instagram.com/manoveiculoss/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 p-4 rounded-xl bg-white border border-[#EEDFCF] hover:border-[#7A2E1E] transition-all shadow-md group">
+                        <span className="flex-none w-11 h-11 rounded-full flex items-center justify-center shadow-xs" style={{ background: 'linear-gradient(45deg, #F9CE34 0%, #EE2A7B 50%, #6228D7 100%)' }}>
+                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"></rect><circle cx="12" cy="12" r="4"></circle><circle cx="17.2" cy="6.8" r="1.1" fill="#FFFFFF" stroke="none"></circle></svg>
+                        </span>
+                        <span className="flex-1 min-w-0">
+                          <span className="block text-[15px] font-extrabold text-[#3B2016]">@manoveiculoss</span>
+                          <span className="block mt-0.5 text-[13px] text-[#7D6250]">Novidades diárias e entregas no Instagram</span>
+                        </span>
+                        <span className="text-[#7A2E1E] text-lg font-bold group-hover:translate-x-1 transition-transform">›</span>
+                      </a>
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-center gap-4 px-4">
-                    <button
-                      onClick={() => handleWhatsAppClick('Atendimento Prioritário')}
-                      className="text-[10px] font-black text-white/30 uppercase tracking-[0.2em] hover:text-white/60 transition-colors"
-                    >
-                      Falar com especialista
-                    </button>
-                    <span className="w-px h-4 bg-white/10" />
-                    <PhoneLink label="(47) 3300-1352" />
-                  </div>
-                  
-                  <div className="mt-8 pt-8 border-t border-white/5 flex flex-col items-center gap-4">
-                    <div className="flex items-center gap-2">
-                       <MapPin className="w-3 h-3 text-manos-red" />
-                       <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/20">Visite nossas unidades</p>
+                  {/* Footer */}
+                  <div className="p-6 bg-[#2E1810] rounded-2xl text-[#F6DCC8]">
+                    <img src="https://manosveiculos.com.br/wp-content/uploads/2024/02/LogoManos.png" alt="Manos Veículos" className="h-[34px] w-auto" />
+                    <div className="mt-3 text-[14px] leading-[1.65]">
+                      R. Dom Pedro II, 374 — Canoas<br />Rio do Sul/SC, 89164-138<br />(47) 3300-1352<br />Seg a Sex 8h–19h · Sáb 8h–13h
                     </div>
-                    <div className="flex gap-4">
-                       <a 
-                         href="https://www.google.com/maps/dir//Manos+Veiculos,+R.+Dom+Pedro+II,+374+-+Canoas,+Rio+do+Sul+-+SC,+89164-138/@-27.1189403,-48.6088232,15z/data=!4m8!4m7!1m0!1m5!1m1!1s0x94dfb857181b55b3:0x6b728157d42c68f6!2m2!1d-49.6539853!2d-27.2207243?entry=ttu&g_ep=EgoyMDI2MDQyNy4wIKXMDSoASAFQAw%3D%3D"
-                         target="_blank"
-                         rel="noopener noreferrer"
-                         className="text-center group transition-colors hover:bg-white/5 p-2 rounded-xl"
-                       >
-                          <p className="text-[11px] font-bold text-white/60 group-hover:text-manos-red transition-colors">Rio do Sul</p>
-                          <div className="flex items-center justify-center gap-1">
-                             <Building2 className="w-2 h-2 text-white/20" />
-                             <p className="text-[9px] text-white/30 uppercase tracking-widest font-black">Matriz</p>
-                          </div>
-                       </a>
-                       <div className="w-px h-8 bg-white/5 self-center" />
-                       <div className="text-center p-2">
-                          <p className="text-[11px] font-bold text-white/60">Itapema SC</p>
-                          <div className="flex items-center justify-center gap-1">
-                             <LayoutGrid className="w-2 h-2 text-white/20" />
-                             <p className="text-[9px] text-white/30 uppercase tracking-widest font-black italic">Expansão</p>
-                          </div>
-                       </div>
+                    <a
+                      href="https://www.google.com/maps/dir//Manos+Veiculos,+R.+Dom+Pedro+II,+374+-+Canoas,+Rio+do+Sul+-+SC,+89164-138/@-27.1189403,-48.6088232,15z/data=!4m8!4m7!1m0!1m5!1m1!1s0x94dfb857181b55b3:0x6b728157d42c68f6!2m2!1d-49.6539853!2d-27.2207243?entry=ttu"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 h-12 mt-4 px-5 rounded-xl bg-manos-accent text-manos-red text-[15px] font-extrabold"
+                    >
+                      <MapPin className="w-4 h-4" />
+                      Como chegar
+                    </a>
+                    <div className="flex gap-2 mt-4">
+                      <a href="https://www.instagram.com/manoveiculoss/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center h-10 px-4 rounded-xl border border-[rgba(246,220,200,0.35)] text-[#F6DCC8] text-[14px] font-bold">Instagram</a>
+                      <a href="https://share.google/gVOMunGbpS3ZbjKoa" target="_blank" rel="noopener noreferrer" className="inline-flex items-center h-10 px-4 rounded-xl border border-[rgba(246,220,200,0.35)] text-[#F6DCC8] text-[14px] font-bold">Google</a>
+                      <a href="https://www.reclameaqui.com.br/empresa/raccar-comercio-de-veiculos-novos-e-usados-ltda/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center h-10 px-4 rounded-xl border border-[rgba(246,220,200,0.35)] text-[#F6DCC8] text-[14px] font-bold">Reclame AQUI</a>
                     </div>
                   </div>
                 </div>
@@ -845,7 +1014,7 @@ export default function App() {
                   acabara de responder ao tocar em ver carros. */}
               {quiz.step === 2 && quiz.type === 'Financiamento' && (
                 <div className="space-y-6">
-                  <h2 className="text-3xl font-black tracking-tighter italic uppercase text-center">
+                  <h2 className="text-3xl font-extrabold tracking-tight font-serif text-center text-[#3B2016]">
                     Já escolheu o carro?
                   </h2>
                   <div className="grid gap-4">
@@ -861,7 +1030,7 @@ export default function App() {
                     />
                   </div>
                   <div className="pt-4 text-center">
-                    <p className="text-[10px] text-white/20 uppercase tracking-widest font-black">Ou</p>
+                    <p className="text-[10px] text-[#A88A70] uppercase tracking-widest font-extrabold">Ou</p>
                     <button
                       onClick={() => handleWhatsAppClick('Dúvidas sobre financiamento')}
                       className="mt-2 text-xs font-bold text-manos-red uppercase tracking-wider underline underline-offset-4"
@@ -877,12 +1046,12 @@ export default function App() {
                   {((quiz.type === 'Compra' && quiz.data.has_interest === 'Sim') || 
                     (quiz.type === 'Financiamento' && quiz.data.has_car === 'Sim, do estoque')) ? (
                     <div className="space-y-6">
-                      <h2 className="text-3xl font-black tracking-tighter italic uppercase text-center">Qual modelo?</h2>
+                      <h2 className="text-3xl font-extrabold tracking-tight font-serif text-center text-[#3B2016]">Qual modelo?</h2>
                       <div className="relative">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30 w-5 h-5" />
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#A88A70] w-5 h-5" />
                         <input 
                           type="text"
-                          className="w-full bg-[#1A1A1A] border border-white/5 rounded-2xl p-5 pl-12 focus:ring-2 focus:ring-manos-red/30 outline-none text-lg transition-all"
+                          className="w-full bg-white border border-[#E3D3C2] rounded-2xl p-5 pl-12 focus:ring-2 focus:ring-manos-red/20 outline-none text-lg transition-all"
                           placeholder="Ex: BMW, Hilux..."
                           value={searchQuery}
                           autoFocus
@@ -928,7 +1097,7 @@ export default function App() {
                     <div className="space-y-6">
                       {quiz.type === 'Compra' ? (
                         <>
-                          <h2 className="text-3xl font-black tracking-tighter italic uppercase text-center">Quanto você pretende investir no seu novo carro?</h2>
+                          <h2 className="text-3xl font-extrabold tracking-tight font-serif text-center text-[#3B2016]">Quanto você pretende investir no seu novo carro?</h2>
                           <div className="grid gap-3">
                             <OptionButton label="Até R$ 50 mil" active={priceFilter === '50k'} onClick={() => { setPriceFilter('50k'); nextStep(); }} />
                             <OptionButton label="De R$ 50 mil a 100 mil" active={priceFilter === '100k'} onClick={() => { setPriceFilter('100k'); nextStep(); }} />
@@ -937,7 +1106,7 @@ export default function App() {
                         </>
                       ) : (
                         <>
-                          <h2 className="text-3xl font-black tracking-tighter italic uppercase text-center">Qual valor de entrada você tem em mente?</h2>
+                          <h2 className="text-3xl font-extrabold tracking-tight font-serif text-center text-[#3B2016]">Qual valor de entrada você tem em mente?</h2>
                           <div className="grid gap-3">
                             {['Vou tentar sem entrada', 'Até R$ 10 mil', 'Mais de R$ 20 mil'].map(v => <StepOption key={v} label={v} active={quiz.data.down_payment === v} onClick={() => { handleDataChange('down_payment', v); nextStep(); }} />)}
                           </div>
@@ -950,8 +1119,8 @@ export default function App() {
 
               {quiz.step === 4 && quiz.type === 'Compra' && (
                 <div className="space-y-6">
-                  <h2 className="text-3xl font-black tracking-tighter italic uppercase">Sugestões:</h2>
-                  <div className="grid gap-4 pb-12">
+                  <h2 className="text-3xl font-extrabold tracking-tight font-serif text-[#3B2016]">Sugestões de Veículos:</h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pb-12">
                     {isLoadingStock ? (
                       Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} />)
                     ) : (
@@ -983,7 +1152,7 @@ export default function App() {
               {quiz.step === 5 && quiz.type === 'Compra' && (
                 <div className="space-y-6 text-center">
                   <h2 className="text-3xl font-black tracking-tighter italic uppercase">Você possui troca?</h2>
-                  <p className="text-xs text-white/30 uppercase font-bold tracking-widest -mt-4">Aceitamos seu usado com a melhor avaliação</p>
+                  <p className="text-xs text-[#A88A70] uppercase font-bold tracking-widest -mt-4">Aceitamos seu usado com a melhor avaliação</p>
                   <div className="grid gap-4">
                     <QuizButton 
                       key="sim"
@@ -1003,12 +1172,12 @@ export default function App() {
 
               {quiz.step === 6 && quiz.type === 'Compra' && (
                 <div className="space-y-6">
-                   <h2 className="text-3xl font-black tracking-tighter italic uppercase text-center">Seu veículo na troca:</h2>
+                   <h2 className="text-3xl font-extrabold tracking-tight font-serif text-center text-[#3B2016]">Seu veículo na troca:</h2>
                    <div className="space-y-4">
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-white/20 ml-4">Modelo e Ano</label>
+                        <label className="text-[10px] font-extrabold uppercase tracking-widest text-[#A88A70] ml-4">Modelo e Ano</label>
                         <textarea 
-                          className="w-full bg-[#1A1A1A] border border-white/5 rounded-2xl p-6 h-32 outline-none focus:border-manos-red/40" 
+                          className="w-full bg-white border border-[#E3D3C2] rounded-2xl p-6 h-32 outline-none focus:border-manos-red/40" 
                           placeholder="Ex: Onix 2020..." 
                           value={quiz.data.troca_detalhes || ''} 
                           onChange={(e) => handleDataChange('troca_detalhes', e.target.value)} 
@@ -1017,7 +1186,7 @@ export default function App() {
                       <button 
                         onClick={nextStep} 
                         disabled={!quiz.data.troca_detalhes}
-                        className="w-full py-5 bg-manos-red text-white font-black uppercase rounded-2xl disabled:opacity-30 active:scale-95 transition-all"
+                        className="w-full py-5 bg-manos-red text-manos-accent font-extrabold uppercase rounded-2xl disabled:opacity-30 active:scale-95 transition-all"
                       >
                         Continuar
                       </button>
@@ -1027,7 +1196,7 @@ export default function App() {
 
               {quiz.step === 7 && quiz.type === 'Compra' && (
                 <div className="space-y-6">
-                   <h2 className="text-3xl font-black tracking-tighter italic uppercase text-center">Precisa financiar?</h2>
+                   <h2 className="text-3xl font-extrabold tracking-tight font-serif text-center text-[#3B2016]">Precisa financiar?</h2>
                     <div className="grid gap-4">
                       <QuizButton 
                         icon={<CreditCard className="w-6 h-6" />}
@@ -1049,7 +1218,7 @@ export default function App() {
                    <div className="space-y-4">
                       <input 
                         type="text" 
-                        className="w-full bg-[#1A1A1A] border border-white/5 rounded-2xl p-6 outline-none focus:border-manos-red/40 text-lg"
+                        className="w-full bg-white border border-[#E3D3C2] rounded-2xl p-6 outline-none focus:border-manos-red/40 text-lg"
                         placeholder="Ex: Rio do Sul / SC"
                         value={quiz.data.cidade || ''}
                         onChange={(e) => handleDataChange('cidade', e.target.value)}
@@ -1058,7 +1227,7 @@ export default function App() {
                       <button 
                         onClick={nextStep} 
                         disabled={!quiz.data.cidade}
-                        className="w-full py-5 bg-manos-red text-white font-black uppercase rounded-2xl disabled:opacity-30 active:scale-95 transition-all"
+                        className="w-full py-5 bg-manos-red text-manos-accent font-extrabold uppercase rounded-2xl disabled:opacity-30 active:scale-95 transition-all"
                       >
                         Continuar
                       </button>
@@ -1070,7 +1239,7 @@ export default function App() {
               {(quiz.step === 4 && quiz.type === 'Financiamento') && (
                 <div className="space-y-8">
                   <div className="text-center space-y-2">
-                    <h2 className="text-3xl font-black tracking-tighter italic uppercase">
+                    <h2 className="text-3xl font-extrabold tracking-tight font-serif text-[#3B2016]">
                       {quiz.data.has_car === 'Sim, do estoque' ? "Quanto você gostaria de dar de entrada?" : "Quanto você gostaria de pagar por mês?"}
                     </h2>
                   </div>
@@ -1088,7 +1257,7 @@ export default function App() {
               {(quiz.step === 5 && quiz.type === 'Financiamento' && quiz.data.has_car === 'Sim, do estoque') && (
                 <div className="space-y-8">
                   <div className="text-center space-y-2">
-                    <h2 className="text-3xl font-black tracking-tighter italic uppercase">
+                    <h2 className="text-3xl font-extrabold tracking-tight font-serif text-[#3B2016]">
                       Quanto você gostaria de pagar por mês?
                     </h2>
                   </div>
@@ -1104,16 +1273,16 @@ export default function App() {
                 <div className="space-y-8 pb-12">
                   <div className="text-center space-y-4">
                     <div className="inline-flex items-center gap-2 px-3 py-1 bg-green-500/10 border border-green-500/20 rounded-full">
-                       <Zap className="w-3 h-3 text-green-500 fill-current" />
-                       <span className="text-[10px] font-black text-green-500 uppercase tracking-widest">
+                       <Zap className="w-3 h-3 text-green-600 fill-current" />
+                       <span className="text-[10px] font-extrabold text-green-600 uppercase tracking-widest">
                           {promessaDeRetorno()}
                        </span>
                     </div>
-                    <h2 className="text-4xl font-black tracking-tighter italic uppercase leading-[0.8]">
+                    <h2 className="text-4xl font-extrabold tracking-tight font-serif leading-[0.9] text-[#3B2016]">
                       Tudo pronto! <br />
                       <span className="text-manos-red">Receba sua oferta</span>
                     </h2>
-                    <p className="text-xs text-white/40 uppercase font-bold tracking-widest">
+                    <p className="text-xs text-[#A88A70] uppercase font-bold tracking-widest">
                       {contatoSalvo ? 'Confirme e enviamos para o consultor' : 'Onde enviamos as informações?'}
                     </p>
                   </div>
@@ -1123,23 +1292,23 @@ export default function App() {
                          campos aqui só criaria atrito na última tela. */
                       <div className="card-glass p-5 space-y-3">
                         {quiz.selectedVehicle && (
-                          <div className="flex items-center justify-between gap-3 pb-3 border-b border-white/5">
-                            <span className="text-[10px] font-black uppercase tracking-widest text-white/20">Veículo</span>
-                            <span className="text-xs font-bold text-white text-right line-clamp-1">{quiz.selectedVehicle.description}</span>
+                          <div className="flex items-center justify-between gap-3 pb-3 border-b border-manos-sand">
+                            <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#A88A70]">Veículo</span>
+                            <span className="text-xs font-bold text-[#3B2016] text-right line-clamp-1">{quiz.selectedVehicle.description}</span>
                           </div>
                         )}
                         <div className="flex items-center justify-between gap-3">
-                          <span className="text-[10px] font-black uppercase tracking-widest text-white/20">Nome</span>
-                          <span className="text-xs font-bold text-white">{quiz.data.name}</span>
+                          <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#A88A70]">Nome</span>
+                          <span className="text-xs font-bold text-[#3B2016]">{quiz.data.name}</span>
                         </div>
                         <div className="flex items-center justify-between gap-3">
-                          <span className="text-[10px] font-black uppercase tracking-widest text-white/20">WhatsApp</span>
-                          <span className="text-xs font-bold text-white">{quiz.data.phone}</span>
+                          <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#A88A70]">WhatsApp</span>
+                          <span className="text-xs font-bold text-[#3B2016]">{quiz.data.phone}</span>
                         </div>
                         <button
                           type="button"
                           onClick={() => setQuiz(prev => ({ ...prev, fase: 'contato' }))}
-                          className="text-[10px] font-black uppercase tracking-widest text-manos-red hover:brightness-125 transition-all"
+                          className="text-[10px] font-extrabold uppercase tracking-widest text-manos-red hover:brightness-125 transition-all"
                         >
                           Corrigir meus dados
                         </button>
@@ -1147,16 +1316,16 @@ export default function App() {
                     ) : (
                       <>
                         <div className="space-y-2">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-white/20 ml-4">Como devemos te chamar?</label>
+                            <label className="text-[10px] font-extrabold uppercase tracking-widest text-[#A88A70] ml-4">Como devemos te chamar?</label>
                           <input type="text" required autoComplete="name" className="w-full py-5 px-6" placeholder="Nome completo" value={quiz.data.name || ''} onChange={(e) => handleDataChange('name', e.target.value)} />
                         </div>
                         <div className="space-y-2">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-white/20 ml-4">Seu WhatsApp de contato</label>
+                            <label className="text-[10px] font-extrabold uppercase tracking-widest text-[#A88A70] ml-4">Seu WhatsApp de contato</label>
                           <div className="relative">
                             <input type="tel" required inputMode="numeric" autoComplete="tel"
                               className={cn(
                                 "w-full py-5 px-6 pr-12 transition-all",
-                                quiz.data.phone && (isPhoneValid ? "border-green-500/50" : "border-manos-red/50")
+                                quiz.data.phone && (isPhoneValid ? "border-green-500/50" : "border-red-400/50")
                               )}
                               placeholder="(47) 99999-9999"
                               value={quiz.data.phone || ''}
@@ -1170,7 +1339,7 @@ export default function App() {
                                 {isPhoneValid ? (
                                   <CheckCircle2 className="w-6 h-6 text-green-500 animate-in zoom-in" />
                                 ) : (
-                                  <AlertCircle className="w-6 h-6 text-manos-red animate-in fade-in" />
+                                  <AlertCircle className="w-6 h-6 text-red-400 animate-in fade-in" />
                                 )}
                               </div>
                             )}
@@ -1202,12 +1371,12 @@ export default function App() {
                     <button 
                       type="submit"
                       disabled={isSubmitting || !isFormValid}
-                      className="w-full py-6 bg-manos-red text-white font-black text-xl uppercase rounded-2xl shadow-[0_20px_50px_rgba(237,28,36,0.3)] hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-30 disabled:scale-100"
+                      className="w-full py-6 bg-manos-red text-manos-accent font-extrabold text-xl uppercase rounded-2xl shadow-[0_12px_36px_rgba(122,46,30,0.25)] hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-30 disabled:scale-100"
                     >
                       {isSubmitting ? 'Gerando sua oferta...' : 'Receber Proposta Agora'}
                     </button>
                     
-                    <p className="text-center text-[9px] text-white/20 uppercase tracking-[0.3em] font-black">
+                    <p className="text-center text-[9px] text-[#A88A70] uppercase tracking-[0.3em] font-extrabold">
                       Seguro &bull; Rápido &bull; Confidencial
                     </p>
                   </form>
@@ -1225,24 +1394,21 @@ export default function App() {
             <div className="flex gap-4">
               <button 
                 onClick={navigateBack} 
-                className="w-16 h-16 flex items-center justify-center bg-white/5 border border-white/5 rounded-2xl text-white/20 active:scale-95 transition-all"
+                className="w-16 h-16 flex items-center justify-center bg-manos-warm border border-manos-sand rounded-2xl text-[#A88A70] active:scale-95 transition-all"
               >
                 <ChevronLeft className="w-8 h-8" />
               </button>
-              {/* Usa a mesma condição do formulário. Antes o rodapé habilitava o
-                  Finalizar do Financiamento no passo 5 enquanto o formulário só
-                  aparecia no 6: botão morto numa tela, rodapé morto na outra. */}
               {isContactStep ? (
                 <button
                   onClick={() => handleSubmit()}
                   disabled={isSubmitting || !isFormValid}
-                  className="flex-grow bg-manos-red text-white font-black text-lg uppercase rounded-2xl shadow-2xl shadow-manos-red/20 active:scale-95 transition-all disabled:opacity-30"
+                  className="flex-grow bg-manos-red text-manos-accent font-extrabold text-lg uppercase rounded-2xl shadow-lg shadow-manos-red/15 active:scale-95 transition-all disabled:opacity-30"
                 >
                   {isSubmitting ? 'Finalizando...' : 'Finalizar'}
                 </button>
               ) : (
                 <div className="flex-grow flex items-center justify-center">
-                  <span className="text-white/10 font-black italic uppercase text-lg tracking-tighter">Manos Veículos</span>
+                  <span className="text-manos-sand font-extrabold uppercase text-lg tracking-tight">Manos Veículos</span>
                 </div>
               )}
             </div>
@@ -1251,10 +1417,10 @@ export default function App() {
               <div className="flex items-center justify-center gap-3">
                 <div className="flex -space-x-2">
                   {Array.from({ length: lojaEstaAberta ? 5 : 1 }).map((_, i) => (
-                    <div key={i} className="w-6 h-6 rounded-full border-2 border-manos-dark bg-white/10 flex items-center justify-center text-[8px] font-black text-white/40">M</div>
+                    <div key={i} className="w-6 h-6 rounded-full border-2 border-manos-cream bg-manos-warm flex items-center justify-center text-[8px] font-extrabold text-manos-red">M</div>
                   ))}
                 </div>
-                <span className="text-[10px] font-black tracking-widest uppercase text-white/20 italic">
+                <span className="text-[10px] font-extrabold tracking-widest uppercase text-[#A88A70]">
                   {lojaEstaAberta ? '5 consultores online no momento' : 'Seg a Sex 8h–19h • Sáb 8h–13h'}
                 </span>
               </div>
@@ -1262,6 +1428,7 @@ export default function App() {
           )}
         </div>
       )}
+        </div>
       </div>
     </div>
   );
@@ -1277,7 +1444,7 @@ function PhoneLink({ label, className }: { label: string; className?: string }) 
       href="tel:+554733001352"
       onClick={() => trackContato('telefone', label)}
       className={cn(
-        'min-h-0 inline-flex items-center gap-1.5 text-[10px] font-black text-white/30 uppercase tracking-widest hover:text-white/60 transition-colors no-underline',
+        'min-h-0 inline-flex items-center gap-1.5 text-[10px] font-extrabold text-[#A88A70] uppercase tracking-widest hover:text-[#7D6250] transition-colors no-underline',
         className,
       )}
     >
@@ -1295,15 +1462,15 @@ function PhoneLink({ label, className }: { label: string; className?: string }) 
 function PrivacyNotice() {
   return (
     <div className="px-2">
-      <div className="flex items-start gap-3 p-4 bg-white/5 rounded-2xl border border-white/5">
+      <div className="flex items-start gap-3 p-4 bg-manos-warm/50 rounded-2xl border border-manos-sand">
         <Shield className="w-5 h-5 text-manos-red flex-shrink-0" />
-        <p className="text-[10px] text-white/40 leading-relaxed font-medium uppercase tracking-wide">
+        <p className="text-[10px] text-[#7D6250] leading-relaxed font-medium uppercase tracking-wide">
           Ao continuar, você concorda com nossa{' '}
           <a
             href="/politica-de-privacidade"
             target="_blank"
             rel="noopener noreferrer"
-            className="min-h-0 inline text-white/70 underline underline-offset-2 hover:text-white transition-colors"
+            className="min-h-0 inline text-[#3B2016] underline underline-offset-2 hover:text-manos-red transition-colors"
           >
             Política de Privacidade (LGPD)
           </a>{' '}
@@ -1336,31 +1503,31 @@ function EmptyStock({
 }) {
   return (
     <div className="card-glass p-6 space-y-5 text-center">
-      <div className="w-14 h-14 bg-manos-red/10 border border-manos-red/20 rounded-2xl flex items-center justify-center mx-auto">
+      <div className="w-14 h-14 bg-manos-warm border border-manos-sand rounded-2xl flex items-center justify-center mx-auto">
         <Search className="w-7 h-7 text-manos-red" />
       </div>
       <div className="space-y-2">
-        <h3 className="font-black text-lg tracking-tighter uppercase italic leading-tight text-balance">{titulo}</h3>
-        <p className="text-xs text-white/50 leading-relaxed">{descricao}</p>
+        <h3 className="font-extrabold text-lg tracking-tight font-serif leading-tight text-balance text-[#3B2016]">{titulo}</h3>
+        <p className="text-xs text-[#7D6250] leading-relaxed">{descricao}</p>
       </div>
       <div className="space-y-3">
         <button
           onClick={onAvisar}
-          className="w-full py-4 bg-manos-red text-white font-black text-sm uppercase rounded-2xl shadow-lg shadow-manos-red/20 active:scale-95 transition-all"
+          className="w-full py-4 bg-manos-red text-manos-accent font-extrabold text-sm uppercase rounded-2xl shadow-lg shadow-manos-red/15 active:scale-95 transition-all"
         >
           Quero ser avisado quando chegar
         </button>
         {rotuloSecundario && onSecundario && (
           <button
             onClick={onSecundario}
-            className="w-full py-4 bg-white/5 border border-white/10 text-white/70 font-bold text-xs uppercase tracking-wider rounded-2xl hover:bg-white/10 active:scale-95 transition-all"
+            className="w-full py-4 bg-manos-warm border border-manos-sand text-[#3B2016] font-bold text-xs uppercase tracking-wider rounded-2xl hover:bg-manos-warm/80 active:scale-95 transition-all"
           >
             {rotuloSecundario}
           </button>
         )}
         <button
           onClick={onFalar}
-          className="text-[10px] font-black text-white/30 uppercase tracking-widest hover:text-white/60 transition-colors"
+          className="text-[10px] font-extrabold text-[#A88A70] uppercase tracking-widest hover:text-[#7D6250] transition-colors"
         >
           Ou falar com um consultor agora &rarr;
         </button>
@@ -1376,22 +1543,21 @@ function QuizButton({ icon, label, onClick }: { icon: React.ReactNode, label: st
       onClick={onClick}
       className="card-glass p-5 text-left flex items-center gap-4 group hover:border-manos-red/30 transition-all"
     >
-      <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center group-hover:bg-manos-red/10 transition-all">
+      <div className="w-10 h-10 bg-manos-warm rounded-xl flex items-center justify-center text-manos-red group-hover:bg-manos-red/10 transition-all">
         {icon}
       </div>
-      <span className="font-black text-sm uppercase italic tracking-tighter">{label}</span>
+      <span className="font-extrabold text-sm text-[#3B2016]">{label}</span>
     </motion.button>
   );
 }
 
-function VehicleCard({ vehicle, onClick }: { vehicle: Vehicle, onClick: () => void, key?: any }) {
+function VehicleCard({ vehicle }: { vehicle: Vehicle; onClick?: () => void; key?: any }) {
   return (
-    <motion.button
-      whileTap={{ scale: 0.98 }}
-      onClick={onClick}
-      className="card-glass p-4 text-left group relative overflow-hidden transition-all hover:border-manos-red/30"
+    <a
+      href={`/estoque/${vehicle.id}`}
+      className="card-glass p-4 text-left group relative overflow-hidden transition-all hover:border-manos-red/30 block no-underline"
     >
-      <div className="aspect-[4/3] w-full rounded-2xl overflow-hidden bg-white/5 mb-4 relative">
+      <div className="aspect-[4/3] w-full rounded-2xl overflow-hidden bg-manos-warm mb-4 relative">
         <img 
           src={vehicle.image} 
           alt={vehicle.description} 
@@ -1401,33 +1567,32 @@ function VehicleCard({ vehicle, onClick }: { vehicle: Vehicle, onClick: () => vo
         />
       </div>
       <div className="space-y-2">
-        <h4 className="font-black text-sm tracking-tighter leading-tight uppercase italic line-clamp-1">
+        <h4 className="font-serif font-bold text-[16px] tracking-tight leading-tight text-[#3B2016] line-clamp-1">
           {vehicle.description}
         </h4>
         <div className="flex items-center justify-between">
-          <div className="flex gap-3 text-white/30 text-[9px] font-black uppercase tracking-widest">
+          <div className="flex gap-3 text-[#7D6250] text-[13px] font-semibold">
             <span>{vehicle.year}</span>
-            <span>•</span>
+            <span>·</span>
             <span>{vehicle.km}</span>
           </div>
-          <p className="text-manos-red font-black text-lg tracking-tighter italic">
+          <p className="text-manos-red font-extrabold text-lg tracking-tight">
             {vehicle.priceFormatted}
           </p>
         </div>
       </div>
-    </motion.button>
+    </a>
   );
 }
 
-/** Versão compacta para a grade de 2 colunas da home. */
-function VehicleCardMini({ vehicle, onClick }: { vehicle: Vehicle, onClick: () => void, key?: any }) {
+/** Versão compacta para lista de veículos da home (1b: layout horizontal com thumbnail). */
+function VehicleCardMini({ vehicle }: { vehicle: Vehicle; onClick?: () => void; key?: any }) {
   return (
-    <motion.button
-      whileTap={{ scale: 0.97 }}
-      onClick={onClick}
-      className="card-glass p-2.5 text-left group overflow-hidden transition-all hover:border-manos-red/30 flex flex-col gap-2"
+    <a
+      href={`/estoque/${vehicle.id}`}
+      className="card-glass p-3 text-left group overflow-hidden transition-all hover:border-manos-red/30 flex gap-4 no-underline"
     >
-      <div className="aspect-[4/3] w-full rounded-xl overflow-hidden bg-white/5">
+      <div className="flex-none w-[104px] h-[96px] rounded-xl overflow-hidden bg-manos-warm">
         <img
           src={vehicle.image}
           alt={vehicle.description}
@@ -1436,34 +1601,35 @@ function VehicleCardMini({ vehicle, onClick }: { vehicle: Vehicle, onClick: () =
           referrerPolicy="no-referrer"
         />
       </div>
-      <div className="space-y-1">
-        <h4 className="font-black text-[11px] tracking-tighter leading-tight uppercase italic line-clamp-2">
+      <div className="flex-1 min-w-0 space-y-1">
+        <h4 className="font-extrabold text-[16px] tracking-tight leading-tight text-[#3B2016] line-clamp-2">
           {vehicle.description}
         </h4>
-        <div className="flex items-center gap-1.5 text-white/30 text-[8px] font-black uppercase tracking-widest">
-          <span>{vehicle.year}</span>
-          <span>•</span>
-          <span className="truncate">{vehicle.km}</span>
+        <div className="text-[13px] text-[#7D6250]">
+          {vehicle.year} · {vehicle.km}
         </div>
-        <p className="text-manos-red font-black text-sm tracking-tighter italic">
-          {vehicle.priceFormatted}
-        </p>
+        <div className="flex items-baseline justify-between">
+          <p className="text-manos-red font-extrabold text-[20px] tracking-tight">
+            {vehicle.priceFormatted}
+          </p>
+          <span className="text-[14px] font-bold text-manos-red" style={{ borderBottom: '1.5px solid #E0B68F' }}>Ver</span>
+        </div>
       </div>
-    </motion.button>
+    </a>
   );
 }
 
 function SkeletonCard() {
   return (
-    <div className="card-glass p-3 flex flex-col w-full animate-pulse border border-white/5">
-      <div className="aspect-video w-full rounded-xl bg-white/5 mb-3" />
+    <div className="card-glass p-3 flex flex-col w-full animate-pulse border border-manos-sand">
+      <div className="aspect-video w-full rounded-xl bg-manos-warm mb-3" />
       <div className="space-y-2">
-        <div className="h-4 w-3/4 bg-white/5 rounded" />
+        <div className="h-4 w-3/4 bg-manos-warm rounded" />
         <div className="flex justify-between">
-          <div className="h-2 w-1/4 bg-white/5 rounded" />
-          <div className="h-2 w-1/4 bg-white/5 rounded" />
+          <div className="h-2 w-1/4 bg-manos-warm rounded" />
+          <div className="h-2 w-1/4 bg-manos-warm rounded" />
         </div>
-        <div className="h-6 w-1/2 bg-white/5 rounded mt-2" />
+        <div className="h-6 w-1/2 bg-manos-warm rounded mt-2" />
       </div>
     </div>
   );
@@ -1477,14 +1643,14 @@ function MainOption({ icon, title, desc, onClick }: { icon: React.ReactNode, tit
       className="card-glass p-6 text-left hover:border-manos-red/30 transition-all group relative overflow-hidden"
     >
       <div className="flex items-center gap-5">
-        <div className="w-14 h-14 bg-white/5 rounded-2xl flex items-center justify-center text-manos-red group-hover:bg-manos-red group-hover:text-white transition-all shadow-lg">
+        <div className="w-14 h-14 bg-manos-warm rounded-2xl flex items-center justify-center text-manos-red group-hover:bg-manos-red group-hover:text-manos-accent transition-all shadow-sm">
           {icon}
         </div>
         <div>
-          <h3 className="font-black text-lg tracking-tight uppercase italic">{title}</h3>
-          <p className="text-white/30 text-xs font-bold leading-tight uppercase tracking-wider">{desc}</p>
+          <h3 className="font-extrabold text-lg tracking-tight text-[#3B2016]">{title}</h3>
+          <p className="text-[#7D6250] text-xs font-bold leading-tight">{desc}</p>
         </div>
-        <ChevronRight className="ml-auto w-5 h-5 text-white/10 group-hover:text-manos-red group-hover:translate-x-1 transition-all" />
+        <ChevronRight className="ml-auto w-5 h-5 text-manos-sand group-hover:text-manos-red group-hover:translate-x-1 transition-all" />
       </div>
     </motion.button>
   );
@@ -1495,10 +1661,10 @@ function OptionButton({ label, active, onClick }: { label: string, active: boole
     <button
       onClick={onClick}
       className={cn(
-        "w-full py-5 rounded-2xl font-black uppercase text-sm italic tracking-tighter transition-all border",
+        "w-full py-5 rounded-2xl font-extrabold text-sm transition-all border",
         active 
-          ? "bg-manos-red text-white border-manos-red shadow-lg shadow-manos-red/20" 
-          : "bg-white/5 text-white/50 border-white/5 hover:border-white/20"
+          ? "bg-manos-red text-manos-accent border-manos-red shadow-lg shadow-manos-red/15" 
+          : "bg-manos-warm text-[#3B2016] border-manos-sand hover:border-manos-red/30"
       )}
     >
       {label}
@@ -1511,10 +1677,10 @@ function StepOption({ label, active, onClick }: { label: string, active: boolean
     <button
       onClick={onClick}
       className={cn(
-        "w-full py-5 rounded-2xl font-black uppercase text-sm italic tracking-tighter transition-all border",
+        "w-full py-5 rounded-2xl font-extrabold text-sm transition-all border",
         active 
-          ? "bg-manos-red text-white border-manos-red shadow-lg shadow-manos-red/20" 
-          : "bg-white/5 text-white/50 border-white/5 hover:border-white/20"
+          ? "bg-manos-red text-manos-accent border-manos-red shadow-lg shadow-manos-red/15" 
+          : "bg-manos-warm text-[#3B2016] border-manos-sand hover:border-manos-red/30"
       )}
     >
       {label}

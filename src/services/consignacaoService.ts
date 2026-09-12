@@ -27,6 +27,23 @@ export async function registrarLeadConsignacao(lead: LeadConsignacao): Promise<v
 }
 
 export async function enviarConsignacao(payload: Record<string, unknown>): Promise<void> {
+  // 1. Dispara envio direto para o Webhook de Consignação do n8n
+  try {
+    await fetch('https://n8n.drivvoo.com/webhook/b1189edc-130f-4ab7-a748-c5901658b746', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tipo: 'lead_consignacao_completo',
+        enviadoEm: new Date().toISOString(),
+        ...payload,
+        ...envelope(),
+      }),
+    });
+  } catch (err) {
+    console.warn('Erro ao enviar webhook n8n de consignação:', err);
+  }
+
+  // 2. Dispara registro no servidor interno para scoring e CAPI Meta
   try {
     await fetch('/api/vendas/finalizar', {
       method: 'POST',
@@ -34,6 +51,6 @@ export async function enviarConsignacao(payload: Record<string, unknown>): Promi
       body: JSON.stringify({ ...payload, lead_type: 'Consignacao', ...envelope() }),
     });
   } catch (err) {
-    console.error('enviarConsignacao error:', err);
+    console.error('enviarConsignacao internal error:', err);
   }
 }

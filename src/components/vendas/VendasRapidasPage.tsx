@@ -314,7 +314,7 @@ export default function VendasRapidasPage() {
                 ))}
               </div>
               <p className="text-xs sm:text-sm font-bold text-white/80">
-                <span className="text-white font-black">4.8 no Google</span> (Mais de 154 avaliações reais de clientes)
+                <span className="text-white font-black">4.9 no Google</span>
               </p>
               <div className="hidden sm:flex items-center gap-2 text-xs text-white/50">
                 <Building2 className="w-4 h-4 text-manos-red" />

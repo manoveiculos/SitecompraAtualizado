@@ -27,6 +27,7 @@ import { renderLeadsPanel } from "./server/leadsPanel";
 import { basicAuth } from "./server/auth";
 import { digitosNacionais } from "./server/telefone";
 import { montarProdutos, produtosParaParquet } from "./server/openaiFeed";
+import { processConsultorMessage } from "./server/consultor";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -129,8 +130,23 @@ async function startServer() {
   // AI Visit Radar — logs crawler hits + AI/search referrals (fire-and-forget)
   app.use(radarMiddleware);
 
-  // API Proxy for Altimus Stock to avoid CORS
-  app.get("/api/stock", async (req, res) => {
+  // Redirect 301: /vendasrapidas -> /vender-meu-carro
+  app.get("/vendasrapidas", (_req, res) => {
+    res.redirect(301, "/vender-meu-carro");
+  });
+
+  // Altimus Stock Feed Endpoint (JSON & XML Proxy)
+  app.get("/api/stock", async (_req, res) => {
+    try {
+      const vehicles = await getVehicles();
+      res.json(vehicles);
+    } catch (error) {
+      console.error("Stock API error:", error);
+      res.status(500).json({ error: "Failed to fetch stock" });
+    }
+  });
+
+  app.get("/api/stock.xml", async (_req, res) => {
     try {
       const url = 'https://estoque.altimus.com.br/api/estoquexml?estoque=997c9e91-40d7-4bec-95cb-68e18a2668a3';
       const response = await fetch(url);
@@ -139,8 +155,34 @@ async function startServer() {
       res.set('Content-Type', 'text/xml');
       res.send(xml);
     } catch (error) {
-      console.error('Proxy error:', error);
-      res.status(500).json({ error: 'Failed to fetch stock' });
+      console.error('XML Proxy error:', error);
+      res.status(500).json({ error: 'Failed to fetch stock XML' });
+    }
+  });
+
+  // Consultor Manos AI Endpoints
+  app.post("/api/consultor", async (req, res) => {
+    try {
+      const resultado = await processConsultorMessage(req.body ?? {});
+      res.json({ ok: true, ...resultado });
+    } catch (error) {
+      console.error("Consultor API error:", error);
+      res.status(500).json({ ok: false, error: "Erro no Consultor Manos" });
+    }
+  });
+
+  app.post("/api/consultor/lead", async (req, res) => {
+    try {
+      const body = req.body ?? {};
+      const response = await fetch("https://n8n.drivvoo.com/webhook/49702c93-f827-4fbe-9e7f-ac2200cae3bc", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      res.status(response.ok ? 200 : response.status).json({ ok: response.ok, protocolo: `MANOS-${Date.now().toString().slice(-6)}` });
+    } catch (error) {
+      console.error("Consultor lead proxy error:", error);
+      res.status(500).json({ ok: false, error: "Erro ao registrar lead do consultor" });
     }
   });
 
@@ -552,6 +594,27 @@ async function startServer() {
     }
   });
 
+  app.get("/feed/vehicles.json", async (_req, res) => {
+    try {
+      const vehicles = await getVehicles();
+      const feed = vehicles.map((v: any) => ({
+        id: v.id,
+        title: v.description,
+        description: `${v.description} - ${v.year}, ${v.km}. Disponível em Rio do Sul/SC na Manos Veículos.`,
+        price: `${v.price} BRL`,
+        link: v.link || `https://manosveiculos.com.br/?veiculo=${v.id}`,
+        image_link: v.image,
+        condition: 'used',
+        availability: 'in_stock',
+        brand: v.brand || 'Manos Veículos',
+      }));
+      res.set("Content-Type", "application/json").json(feed);
+    } catch (err) {
+      console.error("feed error:", err);
+      res.status(500).json({ error: "Failed to generate vehicle feed" });
+    }
+  });
+
   app.get("/sobre", (_req, res) => {
     res
       .set("Content-Type", "text/html; charset=utf-8")
@@ -710,11 +773,15 @@ async function startServer() {
     }
   });
 
-  app.get("/estoque", async (req, res) => {
+  app.get("/estoque", async (req, res, next) => {
+    const accept = String(req.headers.accept || "");
+    const ua = String(req.headers["user-agent"] || "").toLowerCase();
+    const isBot = /bot|google|search|crawler|spider|perplexity|gptbot/i.test(ua);
+    if (!isBot && accept.includes("text/html") && process.env.NODE_ENV !== "production") {
+      return next();
+    }
     try {
       const todos = await getVehicles();
-      // Filtros vêm por query string e são renderizados como links, então
-      // continuam navegáveis por crawler e sem JavaScript.
       const filtro = {
         faixa: typeof req.query.faixa === "string" ? req.query.faixa : undefined,
         marca: typeof req.query.marca === "string" ? req.query.marca : undefined,
@@ -730,14 +797,17 @@ async function startServer() {
     }
   });
 
-  app.get("/estoque/:slug", async (req, res) => {
+  app.get("/estoque/:slug", async (req, res, next) => {
+    const accept = String(req.headers.accept || "");
+    const ua = String(req.headers["user-agent"] || "").toLowerCase();
+    const isBot = /bot|google|search|crawler|spider|perplexity|gptbot/i.test(ua);
+    if (!isBot && accept.includes("text/html") && process.env.NODE_ENV !== "production") {
+      return next();
+    }
     try {
       const vehicles = await getVehicles();
       const vehicle = findBySlug(vehicles, req.params.slug);
       if (!vehicle) {
-        // Carro vendido (ou URL antiga). Antes isto caía no catch-all da SPA e
-        // devolvia a home do quiz com status 200 — porta na cara para o
-        // comprador e soft-404 para o Google.
         return res
           .status(410)
           .set("Content-Type", "text/html; charset=utf-8")
