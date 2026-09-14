@@ -9,6 +9,7 @@ import VendasRapidasPage from './components/vendas/VendasRapidasPage.tsx';
 import ConsignacaoPage from './components/consignacao/ConsignacaoPage.tsx';
 import RepassePage from './components/repasse/RepassePage.tsx';
 import RepasseAdminPage from './components/repasse/RepasseAdminPage.tsx';
+import RepassePublicoPage from './components/repasse/RepassePublicoPage.tsx';
 import ErrorBoundary from './components/ErrorBoundary.tsx';
 import { initAttribution } from './lib/attribution.ts';
 import './index.css';
@@ -108,6 +109,10 @@ function Router() {
 
   if (path === '/consignacao') {
     return <ConsignacaoPage />;
+  }
+
+  if (path === '/repassesmanos' || path === '/repasses-manos' || path === '/repasse-publico') {
+    return <RepassePublicoPage />;
   }
 
   if (path === '/repasse-admin' || path === '/repasse/admin') {

@@ -11,7 +11,8 @@ import {
   MapPin, 
   ArrowRight,
   ExternalLink,
-  Lock
+  Lock,
+  MessageCircle
 } from 'lucide-react';
 import { LOJA, CONTATO, SOCIAL, waLink } from '../lib/manos';
 import { track } from '../lib/track';
@@ -104,6 +105,7 @@ export function TopBar({ title, onBack }: { title?: string; onBack?: () => void 
                   {[
                     { label: 'Início', href: '/' },
                     { label: 'Estoque', href: '/estoque' },
+                    { label: 'Área Lojistas (Atacado)', href: '/repasse' },
                     { label: 'Comparar Veículos', href: '/comparar' },
                     { label: 'Financiamento', href: '/financiamento' },
                     { label: 'Vender meu carro', href: '/vender-meu-carro' },
@@ -171,7 +173,7 @@ export function TrustCards() {
         </div>
       </div>
 
-      <div className="p-5 rounded-2xl bg-white border border-[#EEDFCF] shadow-sm flex items-start gap-4">
+      <div className="p-5 rounded-2xl bg-[#FDF8F1] border border-[#EEDFCF] shadow-sm flex items-start gap-4">
         <div className="w-10 h-10 rounded-xl bg-green-500/15 text-green-700 flex items-center justify-center flex-shrink-0">
           <ShieldCheck className="w-6 h-6" />
         </div>
@@ -230,20 +232,23 @@ export function Footer() {
             <h3 className="font-serif font-extrabold text-xs text-white uppercase tracking-wider border-b border-[#E0B68F]/30 pb-2">
               Nossos Serviços
             </h3>
-            <div className="space-y-2 text-xs font-semibold text-[#E8C6AC]">
-              <a href="/estoque" className="block hover:text-white hover:translate-x-1 transition-all">
+            <div className="flex flex-col space-y-2.5 text-xs font-semibold text-[#E8C6AC]">
+              <a href="/estoque" className="flex items-center hover:text-white hover:translate-x-1 transition-all">
                 Estoque Completo
               </a>
-              <a href="/vender-meu-carro" className="block hover:text-white hover:translate-x-1 transition-all">
+              <a href="/repasse" className="flex items-center text-amber-300 font-bold hover:text-white hover:translate-x-1 transition-all">
+                Área de Lojistas (Atacado)
+              </a>
+              <a href="/vender-meu-carro" className="flex items-center hover:text-white hover:translate-x-1 transition-all">
                 Vender meu Carro
               </a>
-              <a href="/consignacao" className="block text-[#E0B68F] font-bold hover:text-white hover:translate-x-1 transition-all flex items-center gap-1">
-                Consignar Veículo <span className="text-[9px] bg-[#E0B68F]/20 text-[#E0B68F] px-1.5 py-0.5 rounded-md uppercase">Novo</span>
+              <a href="/consignacao" className="flex items-center text-[#E0B68F] font-bold hover:text-white hover:translate-x-1 transition-all">
+                Consignar Veículo
               </a>
-              <a href="/financiamento" className="block hover:text-white hover:translate-x-1 transition-all">
+              <a href="/financiamento" className="flex items-center hover:text-white hover:translate-x-1 transition-all">
                 Simular Financiamento
               </a>
-              <a href="/comparar" className="block hover:text-white hover:translate-x-1 transition-all">
+              <a href="/comparar" className="flex items-center hover:text-white hover:translate-x-1 transition-all">
                 Comparar Veículos
               </a>
             </div>
@@ -254,11 +259,19 @@ export function Footer() {
             <h3 className="font-serif font-extrabold text-xs text-white uppercase tracking-wider border-b border-[#E0B68F]/30 pb-2">
               Institucional
             </h3>
-            <div className="space-y-2 text-xs font-semibold text-[#E8C6AC]">
-              <a href="/a-manos" className="block hover:text-white hover:translate-x-1 transition-all">A Manos Veículos</a>
-              <a href="/duvidas" className="block hover:text-white hover:translate-x-1 transition-all">Dúvidas Frequentes</a>
-              <a href="/contato" className="block hover:text-white hover:translate-x-1 transition-all">Fale Conosco</a>
-              <a href="/politica-de-privacidade" className="block hover:text-white hover:translate-x-1 transition-all text-[#F6DCC8]/70">Política de Privacidade</a>
+            <div className="flex flex-col space-y-2.5 text-xs font-semibold text-[#E8C6AC]">
+              <a href="/a-manos" className="flex items-center hover:text-white hover:translate-x-1 transition-all">
+                A Manos Veículos
+              </a>
+              <a href="/duvidas" className="flex items-center hover:text-white hover:translate-x-1 transition-all">
+                Dúvidas Frequentes
+              </a>
+              <a href="/contato" className="flex items-center hover:text-white hover:translate-x-1 transition-all">
+                Fale Conosco
+              </a>
+              <a href="/politica-de-privacidade" className="flex items-center hover:text-white hover:translate-x-1 transition-all text-[#F6DCC8]/70">
+                Política de Privacidade
+              </a>
             </div>
           </div>
 
@@ -393,6 +406,22 @@ export function StickyBar({
   );
 }
 
+export function FloatingWhatsAppButton() {
+  return (
+    <a
+      href={waLink('Olá! Vim pelo site da Manos Veículos e gostaria de atendimento rápido.')}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={() => track('whatsapp_click', { pagina: window.location.pathname, tipo: 'floating_button' })}
+      className="fixed bottom-20 sm:bottom-6 right-5 z-40 w-12 h-12 sm:w-14 sm:h-14 bg-[#25D366] hover:bg-[#20ba5a] text-white rounded-full shadow-lg hover:shadow-xl flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-95 group cursor-pointer"
+      aria-label="Atendimento via WhatsApp"
+      title="Falar no WhatsApp"
+    >
+      <MessageCircle className="w-6 h-6 sm:w-7 sm:h-7 fill-current text-white" />
+    </a>
+  );
+}
+
 export function SiteShell({ 
   children, 
   title, 
@@ -422,6 +451,7 @@ export function SiteShell({
         {showTrustCards && <TrustCards />}
         <Footer />
         <StickyBar variant={variant} vehicleSlug={vehicleSlug} priceFormatted={priceFormatted} />
+        <FloatingWhatsAppButton />
         <ConsultorPanel />
         <LGPDBanner />
       </div>

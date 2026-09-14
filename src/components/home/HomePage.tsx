@@ -17,7 +17,12 @@ import {
   Sparkles,
   MessageCircle,
   ExternalLink,
-  Award
+  Award,
+  Filter,
+  Check,
+  Zap,
+  RefreshCw,
+  X
 } from 'lucide-react';
 import { SiteShell, Logo } from '../ManosUI';
 import { LOJA, SOCIAL, waLink, brl } from '../../lib/manos';
@@ -31,6 +36,15 @@ export default function HomePage() {
   const [consultorPrompt, setConsultorPrompt] = useState('');
   const [buscaEstoque, setBuscaEstoque] = useState('');
 
+  // Estados da Busca Inteligente & Simulação de Parcela Direta na Home
+  const [activeSearch, setActiveSearch] = useState(false);
+  const [searchSummary, setSearchSummary] = useState('');
+  const [entradaSimulacao, setEntradaSimulacao] = useState<number | null>(null); // null = 30% Recomendado por padrão
+  const [parcelaMaxInput, setParcelaMaxInput] = useState<number | null>(null);
+  const [precoMaxInput, setPrecoMaxInput] = useState<number | null>(null);
+  const [cambioPref, setCambioPref] = useState<'todos' | 'automático' | 'manual'>('todos');
+  const [categoriaPref, setCategoriaPref] = useState<'todos' | 'suv' | 'hatch' | 'sedan' | 'picape' | 'moto'>('todos');
+
   useEffect(() => {
     fetchStock().then((data) => {
       setStock(data);
@@ -38,10 +52,120 @@ export default function HomePage() {
     });
   }, []);
 
-  const handleOpenConsultor = (prompt?: string) => {
-    const p = prompt || consultorPrompt;
-    track('consultor_hero_open', { prompt: p });
-    window.dispatchEvent(new CustomEvent('open-consultor', { detail: { prompt: p } }));
+  /**
+   * Cálculo de simulação estimada de parcela em 48x (Recomendado = 30% de Entrada)
+   */
+  const calcularSimulacao48x = (precoVeiculo: number, entradaDesejada?: number | null) => {
+    // Por padrão (recomendado), a entrada é 30% do preço do carro
+    const entrada = (entradaDesejada !== null && entradaDesejada !== undefined) 
+      ? entradaDesejada 
+      : Math.round(precoVeiculo * 0.30);
+
+    const financiado = Math.max(0, precoVeiculo - entrada);
+    const ehRecomendada30 = (entradaDesejada === null || entradaDesejada === undefined);
+
+    if (financiado <= 0) {
+      return { 
+        financiado: 0, 
+        parcela: 0, 
+        textoEntrada: '100% Quitado à vista', 
+        textoParcela: 'R$ 0',
+        ehRecomendada30 
+      };
+    }
+    // Fator estimado 48x (taxa ~1.8% a.m.) -> coeficiente 0.032
+    const parcela = Math.round(financiado * 0.032);
+    return {
+      financiado,
+      parcela,
+      textoEntrada: entrada > 0 ? `Entrada de ${brl(entrada)}` : 'Sem entrada',
+      textoParcela: `48x de ${brl(parcela)}`,
+      ehRecomendada30
+    };
+  };
+
+  /**
+   * Interpretador Inteligente de Linguagem Natural
+   */
+  const handleConsultorSearch = (promptOverride?: string) => {
+    const rawTxt = (promptOverride !== undefined ? promptOverride : consultorPrompt).trim();
+    if (!rawTxt) {
+      setActiveSearch(false);
+      return;
+    }
+
+    setConsultorPrompt(rawTxt);
+    setSearchSummary(rawTxt);
+    setActiveSearch(true);
+    track('consultor_home_inline_search', { query: rawTxt });
+
+    const txtLower = rawTxt.toLowerCase();
+
+    // 1. Extração de Parcela (ex: "parcela de 900", "900", "parcela 800")
+    const matchParcela = txtLower.match(/(?:parcela|mensal(?:idade)?|mês|mes)\D*(\d{3,4})/) || txtLower.match(/(\d{3,4})\s*(?:reais|mensais|por mês|\/mês)/);
+    if (matchParcela && matchParcela[1]) {
+      const pVal = parseInt(matchParcela[1], 10);
+      if (pVal >= 400 && pVal <= 4000) {
+        setParcelaMaxInput(pVal);
+      }
+    } else if (txtLower.includes('900')) {
+      setParcelaMaxInput(900);
+    } else if (txtLower.includes('800')) {
+      setParcelaMaxInput(800);
+    } else if (txtLower.includes('700')) {
+      setParcelaMaxInput(700);
+    } else {
+      setParcelaMaxInput(null);
+    }
+
+    // 2. Extração de Preço Teto (ex: "até 90 mil", "50k", "100 mil")
+    const matchMil = txtLower.match(/(?:até|ate|max|máximo)?\s*(\d{2,3})\s*(?:mil|k)/);
+    if (matchMil && matchMil[1]) {
+      setPrecoMaxInput(parseInt(matchMil[1], 10) * 1000);
+    } else {
+      setPrecoMaxInput(null);
+    }
+
+    // 3. Câmbio
+    if (txtLower.includes('automátic') || txtLower.includes('automatic') || txtLower.includes('auto')) {
+      setCambioPref('automático');
+    } else if (txtLower.includes('manual')) {
+      setCambioPref('manual');
+    } else {
+      setCambioPref('todos');
+    }
+
+    // 4. Categoria
+    if (txtLower.includes('suv')) {
+      setCategoriaPref('suv');
+    } else if (txtLower.includes('moto')) {
+      setCategoriaPref('moto');
+    } else if (txtLower.includes('picape') || txtLower.includes('pickup') || txtLower.includes('strada') || txtLower.includes('hilux')) {
+      setCategoriaPref('picape');
+    } else if (txtLower.includes('sedan') || txtLower.includes('sedã')) {
+      setCategoriaPref('sedan');
+    } else {
+      setCategoriaPref('todos');
+    }
+
+    // Rola para a seção de resultados
+    setTimeout(() => {
+      const el = document.getElementById('consultor-home-results');
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 100);
+  };
+
+  const handleLimparBuscaInteligente = () => {
+    setActiveSearch(false);
+    setConsultorPrompt('');
+    setSearchSummary('');
+    setParcelaMaxInput(null);
+    setPrecoMaxInput(null);
+    setCambioPref('todos');
+    setCategoriaPref('todos');
+    setEntradaSimulacao(null);
   };
 
   const handleBuscar = (e: React.FormEvent) => {
@@ -51,7 +175,88 @@ export default function HomePage() {
     }
   };
 
-  // Top 3 featured vehicles for "Escolhidos da semana"
+  // Filtragem dos veículos conforme preferências
+  let veiculosRecomendados = stock.filter((v) => {
+    if (!activeSearch) return true;
+
+    // Filtro Preço Máximo
+    if (precoMaxInput && v.price > precoMaxInput) return false;
+
+    // Filtro Câmbio
+    if (cambioPref !== 'todos') {
+      const desc = ((v.description || '') + ' ' + ((v as any).transmission || '')).toLowerCase();
+      const isAuto = desc.includes('aut') || desc.includes('at') || desc.includes('cvt') || desc.includes('dsg') || desc.includes('borboleta');
+      if (cambioPref === 'automático' && !isAuto) return false;
+      if (cambioPref === 'manual' && isAuto) return false;
+    }
+
+    // Filtro Categoria (Lista Completa de SUVs no Brasil)
+    if (categoriaPref !== 'todos') {
+      const desc = ((v.description || '') + ' ' + ((v as any).brand || '')).toLowerCase();
+      
+      if (categoriaPref === 'suv') {
+        const suvKeywords = [
+          'suv', 't-cross', 'tcross', 'nivus', 'tracker', 'creta', 'ecosport', 
+          'duster', 'hr-v', 'hrv', 'compass', 'renegade', 'kicks', 'pulse', 
+          'fastback', 'tiggo', 'corolla cross', 'taos', 'captur', 'wr-v', 
+          'wrv', 'tiguan', 'territory', 'kardian', 'c4 cactus', 'cactus', 
+          'tucson', 'ix35', 'sportage', 'rav4', 'cr-v', 'crv', 'haval'
+        ];
+        const isSuv = suvKeywords.some(kw => desc.includes(kw));
+        if (!isSuv) return false;
+      }
+
+      if (categoriaPref === 'picape') {
+        const picapeKeywords = ['picape', 'pickup', 'strada', 'toro', 'hilux', 's10', 'ranger', 'amarok', 'oroch', 'montana', 'saveiro', 'courier'];
+        const isPicape = picapeKeywords.some(kw => desc.includes(kw));
+        if (!isPicape) return false;
+      }
+
+      if (categoriaPref === 'moto') {
+        const isMoto = desc.includes('moto') || desc.includes('cg') || desc.includes('biz') || desc.includes('honda') || desc.includes('yamaha') || desc.includes('nmax') || desc.includes('pcx');
+        if (!isMoto) return false;
+      }
+    }
+
+    // Filtro Parcela Máxima
+    if (parcelaMaxInput) {
+      const sim = calcularSimulacao48x(v.price, entradaSimulacao);
+      if (sim.parcela > parcelaMaxInput + 150) return false;
+    }
+
+    return true;
+  });
+
+  // Busca Inteligente por Proximidade: Se não houver correspondência 100% exata (ex: SUV até 90 mil quando a menor SUV custa 107 mil)
+  let ehBuscaAproximada = false;
+  if (activeSearch && veiculosRecomendados.length === 0) {
+    ehBuscaAproximada = true;
+    veiculosRecomendados = stock.filter((v) => {
+      const desc = ((v.description || '') + ' ' + ((v as any).brand || '')).toLowerCase();
+      if (categoriaPref === 'suv') {
+        const suvKeywords = [
+          'suv', 't-cross', 'tcross', 'nivus', 'tracker', 'creta', 'ecosport', 
+          'duster', 'hr-v', 'hrv', 'compass', 'renegade', 'kicks', 'pulse', 
+          'fastback', 'tiggo', 'corolla cross', 'taos', 'captur', 'wr-v', 
+          'wrv', 'tiguan', 'territory', 'kardian', 'c4 cactus', 'cactus', 
+          'tucson', 'ix35', 'sportage', 'rav4', 'cr-v', 'crv', 'haval'
+        ];
+        return suvKeywords.some(kw => desc.includes(kw));
+      }
+      return true;
+    }).sort((a, b) => a.price - b.price);
+  } else {
+    veiculosRecomendados = veiculosRecomendados.sort((a, b) => {
+      if (parcelaMaxInput) {
+        const simA = calcularSimulacao48x(a.price, entradaSimulacao);
+        const simB = calcularSimulacao48x(b.price, entradaSimulacao);
+        return Math.abs(simA.parcela - parcelaMaxInput) - Math.abs(simB.parcela - parcelaMaxInput);
+      }
+      return a.price - b.price;
+    });
+  }
+
+  // Top 3 featured vehicles para "Escolhidos da semana"
   const escolhidos = stock.slice(0, 3);
 
   return (
@@ -74,22 +279,34 @@ export default function HomePage() {
           <div className="relative z-10 max-w-3xl space-y-6">
             
             {/* Consultor Header */}
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <div className="w-12 h-12 rounded-full bg-[#2E1810] border-2 border-[#E0B68F] flex items-center justify-center">
-                  <Bot className="w-7 h-7 text-[#E0B68F]" />
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <div className="w-12 h-12 rounded-full bg-[#2E1810] border-2 border-[#E0B68F] flex items-center justify-center">
+                    <Bot className="w-7 h-7 text-[#E0B68F]" />
+                  </div>
+                  <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 border-2 border-[#3B2016] rounded-full animate-pulse" />
                 </div>
-                <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 border-2 border-[#3B2016] rounded-full animate-pulse" />
+                <div>
+                  <span className="font-serif font-bold text-sm text-white">Consultor Manos IA</span>
+                  <p className="text-xs text-[#F6DCC8] font-medium flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400" /> Responde na hora · Busca inteligente de parcelas
+                  </p>
+                </div>
               </div>
-              <div>
-                <span className="font-serif font-bold text-sm text-white">Consultor Manos</span>
-                <p className="text-xs text-[#F6DCC8] font-medium flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400" /> Responde na hora · Atendimento em Rio do Sul
-                </p>
-              </div>
+
+              {activeSearch && (
+                <button
+                  onClick={handleLimparBuscaInteligente}
+                  className="px-3 py-1.5 bg-white/10 hover:bg-white/20 border border-white/20 rounded-xl text-xs font-bold text-white transition-all flex items-center gap-1"
+                >
+                  <X className="w-4 h-4" />
+                  <span>Limpar Busca</span>
+                </button>
+              )}
             </div>
 
-            {/* Title in Bitter */}
+            {/* Title */}
             <div className="space-y-2">
               <h1 className="font-serif font-extrabold text-2xl sm:text-4xl lg:text-5xl text-white leading-tight">
                 Diz do que você precisa. <span className="text-[#E0B68F]">Eu acho no pátio.</span>
@@ -99,12 +316,12 @@ export default function HomePage() {
               </p>
             </div>
 
-            {/* Conversational Input */}
-            <form onSubmit={(e) => { e.preventDefault(); handleOpenConsultor(); }} className="flex flex-col sm:flex-row gap-3">
+            {/* Conversational Input Form */}
+            <form onSubmit={(e) => { e.preventDefault(); handleConsultorSearch(); }} className="flex flex-col sm:flex-row gap-3">
               <div className="relative flex-1">
                 <input
                   type="text"
-                  placeholder="Ex: SUV automático até 90 mil, ou parcela de 800..."
+                  placeholder="Ex: SUV automático até 90 mil, ou parcela de 900..."
                   value={consultorPrompt}
                   onChange={(e) => setConsultorPrompt(e.target.value)}
                   className="w-full px-5 py-4 text-sm rounded-2xl bg-[#2E1810] border border-[#E0B68F]/40 text-white placeholder:text-[#F6DCC8]/50 focus:outline-hidden focus:border-[#E0B68F] transition-all"
@@ -123,26 +340,163 @@ export default function HomePage() {
             <div className="flex flex-wrap items-center gap-2 pt-1">
               <span className="text-xs text-[#F6DCC8]/70 font-semibold mr-1">Sugestões rápidas:</span>
               {[
-                'Econômico pra família',
                 'Cabe na parcela de 900',
-                'Quero trocar o meu',
+                'Econômico pra família',
+                'SUVs no pátio',
+                'Carros até 60 mil',
               ].map((chip) => (
                 <button
                   key={chip}
                   type="button"
-                  onClick={() => handleOpenConsultor(chip)}
-                  className="px-3.5 py-1.5 text-xs font-semibold bg-[#2E1810] border border-[#E0B68F]/30 hover:border-[#E0B68F] text-[#FDF3E7] hover:text-white rounded-full transition-all active:scale-95"
+                  onClick={() => handleConsultorSearch(chip)}
+                  className="px-3.5 py-1.5 text-xs font-semibold bg-[#2E1810] border border-[#E0B68F]/30 hover:border-[#E0B68F] text-[#FDF3E7] hover:text-white rounded-full transition-all active:scale-95 cursor-pointer"
                 >
                   {chip}
                 </button>
               ))}
             </div>
 
+
+
           </div>
         </section>
 
-        {/* 2. BUSCA POR TEXTO + 4 ATALHOS DE FAIXA */}
-        <section className="space-y-4">
+        {/* 2. SEÇÃO DE RESULTADOS DA BUSCA INTELIGENTE DO CONSULTOR IA (QUANDO ATIVA) */}
+        {activeSearch && (
+          <section id="consultor-home-results" className="space-y-6 p-6 sm:p-8 bg-[#F4E6D7] rounded-3xl border-2 border-[#7A2E1E]/30 shadow-xl scroll-mt-6">
+            {ehBuscaAproximada && (
+              <div className="p-4 bg-amber-500/15 border border-amber-500/30 rounded-2xl flex items-start gap-3 text-[#3B2016]">
+                <Sparkles className="w-5 h-5 text-[#7A2E1E] flex-shrink-0 mt-0.5" />
+                <div className="text-xs sm:text-sm space-y-0.5">
+                  <strong className="font-bold text-[#7A2E1E] block">Opções por Proximidade:</strong>
+                  <span>Não encontramos veículos exatamente abaixo da faixa solicitada no pátio neste momento. Selecionamos abaixo os modelos de categoria/estilo mais próximos disponíveis:</span>
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#EEDFCF] pb-4">
+              <div>
+                <div className="inline-flex items-center gap-2 px-3 py-1 bg-[#7A2E1E] text-white rounded-full text-xs font-bold uppercase tracking-wider mb-2">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  {ehBuscaAproximada ? 'Opções Mais Próximas no Pátio' : 'Opções Encontradas pelo Consultor IA'}
+                </div>
+                <h2 className="font-serif font-extrabold text-xl sm:text-3xl text-[#3B2016]">
+                  {veiculosRecomendados.length} Veículo(s) {ehBuscaAproximada ? 'sugerido(s)' : 'compatível(is)'} para: "{searchSummary || 'sua simulação'}"
+                </h2>
+                <p className="text-xs sm:text-sm text-[#7D6250]">
+                  Calculado para: <strong className="text-[#3B2016]">{
+                    entradaSimulacao === null
+                      ? 'Entrada Recomendada (30% do valor)'
+                      : (entradaSimulacao > 0 ? `Entrada de ${brl(entradaSimulacao)}` : 'Sem Entrada')
+                  }</strong> em 48x · <span className="italic text-[#7A2E1E] font-semibold">*Sujeito à aprovação de crédito bancário</span>
+                </p>
+              </div>
+
+              <button
+                onClick={handleLimparBuscaInteligente}
+                className="px-4 py-2 bg-white border border-[#EEDFCF] hover:border-[#7A2E1E] text-[#3B2016] font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all"
+              >
+                <X className="w-4 h-4 text-[#7A2E1E]" />
+                Ver Todo o Estoque Geral
+              </button>
+            </div>
+
+            {veiculosRecomendados.length === 0 ? (
+              <div className="text-center py-12 bg-white rounded-2xl p-6 space-y-3 border border-[#EEDFCF]">
+                <Car className="w-12 h-12 text-[#7D6250] mx-auto" />
+                <h3 className="font-serif font-bold text-lg text-[#3B2016]">Nenhum veículo bateu 100% com estes critérios exatos</h3>
+                <p className="text-xs text-[#7D6250] max-w-md mx-auto">
+                  Tente alterar a faixa de parcela desejada ou simular com a entrada recomendada de 30% para ver mais opções.
+                </p>
+                <div className="pt-2">
+                  <button
+                    onClick={() => { setEntradaSimulacao(null); setParcelaMaxInput(null); }}
+                    className="px-4 py-2.5 bg-[#7A2E1E] text-white font-bold text-xs uppercase rounded-xl"
+                  >
+                    Simular com Entrada Recomendada (30%)
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {veiculosRecomendados.map((v) => {
+                  const sim = calcularSimulacao48x(v.price, entradaSimulacao);
+
+                  return (
+                    <div
+                      key={v.id}
+                      className="bg-white rounded-2xl border-2 border-emerald-500/40 overflow-hidden hover:border-[#7A2E1E] transition-all group flex flex-col justify-between shadow-md"
+                    >
+                      <div>
+                        <a href={v.link} className="block relative aspect-4/3 overflow-hidden bg-[#F4E6D7]">
+                          <img
+                            src={v.image}
+                            alt={v.description}
+                            className="w-full h-[200px] object-cover group-hover:scale-105 transition-transform duration-300"
+                          />
+                          <span className="absolute top-3 right-3 px-2.5 py-1 bg-emerald-700 text-white text-[10px] font-black uppercase rounded-lg shadow-md">
+                            💡 Parcela Encontrada
+                          </span>
+                        </a>
+
+                        <div className="p-4 space-y-3">
+                          <div>
+                            <h3 className="font-serif font-bold text-base text-[#3B2016] group-hover:text-[#7A2E1E] transition-colors leading-snug">
+                              <a href={v.link}>{v.description}</a>
+                            </h3>
+                            <p className="text-xs text-[#7D6250] font-medium">
+                              {v.year} · {v.km}
+                            </p>
+                          </div>
+
+                          {/* Destaque da Simulação de Parcela */}
+                          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] uppercase font-bold text-emerald-800 block">
+                                {sim.ehRecomendada30 ? 'Simulação Recomendada' : 'Simulação de Parcela'}
+                              </span>
+                              <span className="text-[9px] bg-emerald-100 text-emerald-900 font-extrabold px-1.5 py-0.5 rounded border border-emerald-300">
+                                *Sujeito à aprovação
+                              </span>
+                            </div>
+                            <div className="flex items-baseline justify-between">
+                              <span className="text-xs font-bold text-emerald-900">{sim.textoEntrada}</span>
+                              <span className="text-base font-black text-emerald-700">{sim.textoParcela}</span>
+                            </div>
+                            <p className="text-[9px] text-emerald-700 leading-tight border-t border-emerald-200/60 pt-1">
+                              *Simulação estimada em 48x. Sujeito à análise de crédito do CPF junto aos bancos parceiros.
+                            </p>
+                          </div>
+
+                          <div className="flex items-center justify-between text-xs text-[#7D6250] pt-1">
+                            <span>Preço à vista:</span>
+                            <strong className="text-[#3B2016] font-extrabold text-sm">{v.priceFormatted}</strong>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="p-4 pt-0">
+                        <a
+                          href={waLink(`Olá! Vi o ${v.description} (${v.priceFormatted}) na Home da Manos Veículos.\nFiz a simulação com ${sim.textoEntrada} + ${sim.textoParcela}.\nGostaria de atendimento para este modelo!`)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={() => track('whatsapp_click', { pagina: '/', vehicleId: v.id, simulacao: sim.textoParcela })}
+                          className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs uppercase rounded-xl flex items-center justify-center gap-2 transition-all shadow-md min-h-[44px]"
+                        >
+                          <MessageCircle className="w-4 h-4 fill-current" />
+                          <span>Falar sobre esta parcela no Whats</span>
+                        </a>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* 3. BUSCA POR TEXTO E ESCOLHIDOS DA SEMANA */}
+        <section className="space-y-6">
           <form onSubmit={handleBuscar} className="flex gap-3">
             <div className="relative flex-1">
               <Search className="w-5 h-5 text-[#7D6250] absolute left-4 top-1/2 -translate-y-1/2" />
@@ -162,27 +516,57 @@ export default function HomePage() {
             </button>
           </form>
 
-          {/* 4 Atalhos de Faixa */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {[
-              { rotulo: 'Até R$ 50 mil', url: '/estoque?faixa=ate-50k' },
-              { rotulo: 'R$ 50–100 mil', url: '/estoque?faixa=50k-100k' },
-              { rotulo: 'SUVs', url: '/estoque?carroceria=suv' },
-              { rotulo: 'Motos', url: '/estoque?carroceria=moto' },
-            ].map((at) => (
+          {/* ESCOLHIDOS DA SEMANA (Destaques Diretos no Topo) */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="font-serif font-extrabold text-lg sm:text-xl text-[#3B2016]">
+                Escolhidos da semana
+              </h2>
               <a
-                key={at.rotulo}
-                href={at.url}
-                className="p-3.5 bg-[#F4E6D7] hover:bg-[#EEDFCF] text-[#3B2016] font-bold text-xs sm:text-sm rounded-xl text-center border border-[#EEDFCF] transition-all hover:scale-[1.02] flex items-center justify-center gap-1.5"
+                href="/estoque"
+                className="text-xs font-bold text-[#7A2E1E] hover:underline flex items-center gap-1"
               >
-                <span>{at.rotulo}</span>
-                <ChevronRight className="w-4 h-4 text-[#7A2E1E]" />
+                <span>Ver todo o estoque</span>
+                <ChevronRight className="w-4 h-4" />
               </a>
-            ))}
+            </div>
+
+            {loading ? (
+              <div className="p-8 text-center text-xs text-[#7D6250]">Carregando destaques do estoque...</div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {escolhidos.map((v) => (
+                  <a
+                    key={v.id}
+                    href={v.link}
+                    className="flex bg-white rounded-2xl border border-[#EEDFCF] overflow-hidden hover:border-[#7A2E1E] transition-all group shadow-2xs"
+                  >
+                    <img
+                      src={v.image}
+                      alt={v.description}
+                      className="w-[104px] h-[104px] object-cover bg-[#F4E6D7] flex-shrink-0"
+                    />
+                    <div className="p-3 flex flex-col justify-between flex-1 min-w-0">
+                      <div>
+                        <h3 className="font-serif font-bold text-sm text-[#3B2016] truncate group-hover:text-[#7A2E1E]">
+                          {v.description}
+                        </h3>
+                        <p className="text-[11px] text-[#7D6250]">
+                          {v.year} · {v.km}
+                        </p>
+                      </div>
+                      <div className="text-base font-extrabold text-[#7A2E1E]">
+                        {v.priceFormatted}
+                      </div>
+                    </div>
+                  </a>
+                ))}
+              </div>
+            )}
           </div>
         </section>
 
-        {/* 3. TRÊS PORTAS DE SERVIÇO (bg-areia) */}
+        {/* 4. TRÊS PORTAS DE SERVIÇO (bg-areia) */}
         <section className="space-y-4">
           <h2 className="font-serif font-extrabold text-xl sm:text-2xl text-[#3B2016]">
             O que você precisa fazer hoje?
@@ -258,66 +642,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* 4. ESCOLHIDOS DA SEMANA (3 veículos horizontais) */}
-        <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="font-serif font-extrabold text-xl sm:text-2xl text-[#3B2016]">
-              Escolhidos da semana
-            </h2>
-            <a
-              href="/estoque"
-              className="text-xs font-bold text-[#7A2E1E] hover:underline flex items-center gap-1"
-            >
-              <span>Ver todo o estoque</span>
-              <ChevronRight className="w-4 h-4" />
-            </a>
-          </div>
-
-          {loading ? (
-            <div className="p-8 text-center text-xs text-[#7D6250]">Carregando destaques do estoque...</div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {escolhidos.map((v) => (
-                <a
-                  key={v.id}
-                  href={v.link}
-                  className="flex bg-white rounded-2xl border border-[#EEDFCF] overflow-hidden hover:border-[#7A2E1E] transition-all group shadow-2xs"
-                >
-                  <img
-                    src={v.image}
-                    alt={v.description}
-                    className="w-[104px] h-[104px] object-cover bg-[#F4E6D7] flex-shrink-0"
-                  />
-                  <div className="p-3 flex flex-col justify-between flex-1 min-w-0">
-                    <div>
-                      <h3 className="font-serif font-bold text-sm text-[#3B2016] truncate group-hover:text-[#7A2E1E]">
-                        {v.description}
-                      </h3>
-                      <p className="text-[11px] text-[#7D6250]">
-                        {v.year} · {v.km}
-                      </p>
-                    </div>
-                    <div className="text-base font-extrabold text-[#7A2E1E]">
-                      {v.priceFormatted}
-                    </div>
-                  </div>
-                </a>
-              ))}
-            </div>
-          )}
-
-          <div className="text-center pt-2">
-            <a
-              href="/estoque"
-              className="inline-flex items-center gap-2 py-3 px-6 bg-[#7A2E1E] hover:bg-[#622316] text-[#FDF3E7] font-bold text-sm rounded-2xl transition-all"
-            >
-              <span>Ver estoque completo</span>
-              <ArrowRight className="w-4 h-4" />
-            </a>
-          </div>
-        </section>
-
-        {/* 4B. ESTOQUE COMPLETO NA HOME */}
+        {/* 6. ESTOQUE COMPLETO NA HOME */}
         <section className="space-y-6 pt-4 border-t border-[#EEDFCF]">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
@@ -407,7 +732,7 @@ export default function HomePage() {
           )}
         </section>
 
-        {/* 5. COMPRAMOS O SEU CARRO (bg-areia) */}
+        {/* 7. COMPRAMOS O SEU CARRO (bg-areia) */}
         <section className="bg-[#F4E6D7] border border-[#EEDFCF] rounded-3xl p-6 sm:p-8 space-y-6">
           <div className="space-y-2 max-w-xl">
             <h2 className="font-serif font-extrabold text-xl sm:text-2xl text-[#3B2016]">
@@ -443,7 +768,7 @@ export default function HomePage() {
           </a>
         </section>
 
-        {/* 6. QUATRO DIFERENCIAIS */}
+        {/* 8. QUATRO DIFERENCIAIS */}
         <section className="space-y-4">
           <h2 className="font-serif font-extrabold text-xl sm:text-2xl text-[#3B2016]">
             Por que escolher a Manos Veículos?
@@ -476,7 +801,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* 7. PROVA SOCIAL (bg-marrom luxo com alto contraste) */}
+        {/* 9. PROVA SOCIAL (bg-marrom luxo com alto contraste) */}
         <section className="bg-gradient-to-br from-[#2E1810] via-[#3B2016] to-[#2E1810] text-[#FDF3E7] rounded-3xl p-6 sm:p-10 space-y-6 relative overflow-hidden border border-[#E0B68F]/30 shadow-2xl">
           <div className="absolute inset-0 z-0 pointer-events-none">
             <img 

@@ -547,6 +547,8 @@ export async function excluirLeadRepasse(id: number | string): Promise<{ ok: boo
 // GESTÃO E AUTENTICAÇÃO DE LOJISTAS E REPASSADORES (ÁREA RESTRITA)
 // ===========================================================================
 
+const WEBHOOK_N8N_CADASTRO_REPASSE = 'https://n8n.drivvoo.com/webhook/7a146026-4b40-447d-a49d-0853ac749f26';
+
 export interface Repassador {
   id: number | string;
   created_at?: string;
@@ -555,7 +557,7 @@ export interface Repassador {
   nome_loja: string;
   cidade?: string;
   telefone: string;
-  status: 'ativo' | 'bloqueado';
+  status: 'pendente' | 'ativo' | 'bloqueado';
   observacoes?: string;
 }
 
@@ -611,8 +613,12 @@ export async function fetchRepassadores(): Promise<Repassador[]> {
   });
 }
 
+/**
+ * Cadastra um novo Lojista / Repassador com status padrão 'pendente'
+ * e dispara a notificação para o webhook do n8n (https://n8n.drivvoo.com/webhook/7a146026-4b40-447d-a49d-0853ac749f26).
+ */
 export async function cadastrarRepassador(
-  payload: Omit<Repassador, 'id' | 'created_at' | 'status'> & { status?: 'ativo' | 'bloqueado' }
+  payload: Omit<Repassador, 'id' | 'created_at' | 'status'> & { status?: 'pendente' | 'ativo' | 'bloqueado' }
 ): Promise<{ ok: boolean; data?: Repassador; error?: string }> {
   const telefoneDigits = cleanPhoneDigits(payload.telefone);
   if (telefoneDigits.length < 10) {
@@ -627,11 +633,46 @@ export async function cadastrarRepassador(
     nome_loja: payload.nome_loja.trim(),
     cidade: payload.cidade ? payload.cidade.trim() : '',
     telefone: telefoneDigits,
-    status: payload.status || 'ativo',
+    status: payload.status || 'pendente',
     observacoes: payload.observacoes || '',
   };
 
-  // Atualiza cache local
+  // 1. Notifica Webhook n8n de Novo Cadastro
+  const webhookEnvelope = {
+    event: 'novo_cadastro_lojista',
+    source: 'Portal Lojistas - Manos Veículos',
+    timestamp: new Date().toISOString(),
+    repassador: {
+      id: novoRepassador.id,
+      nome_completo: novoRepassador.nome_completo,
+      cpf_cnpj: novoRepassador.cpf_cnpj,
+      nome_loja: novoRepassador.nome_loja,
+      cidade: novoRepassador.cidade,
+      telefone: novoRepassador.telefone,
+      status: novoRepassador.status,
+      observacoes: novoRepassador.observacoes,
+    }
+  };
+
+  // Disparo assíncrono via proxy do backend
+  try {
+    fetch('/api/repasse/cadastro', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(webhookEnvelope),
+    }).catch(() => null);
+  } catch {}
+
+  // Disparo direto em fallback para redundância
+  try {
+    fetch(WEBHOOK_N8N_CADASTRO_REPASSE, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(webhookEnvelope),
+    }).catch(() => null);
+  } catch {}
+
+  // 2. Atualiza cache local
   const currentLocal = getLocalRepassadores();
   const existingIdx = currentLocal.findIndex(r => cleanPhoneDigits(r.telefone) === telefoneDigits);
   if (existingIdx !== -1) {
@@ -673,7 +714,7 @@ export async function cadastrarRepassador(
   }
 }
 
-export async function verificarAcessoRepassador(telefoneInput: string): Promise<{ ok: boolean; status?: 'ativo' | 'bloqueado' | 'nao_encontrado'; repassador?: Repassador; error?: string }> {
+export async function verificarAcessoRepassador(telefoneInput: string): Promise<{ ok: boolean; status?: 'ativo' | 'pendente' | 'bloqueado' | 'nao_encontrado'; repassador?: Repassador; error?: string }> {
   const digits = cleanPhoneDigits(telefoneInput);
   if (digits.length < 10) {
     return { ok: false, error: 'Telefone inválido' };
@@ -705,7 +746,7 @@ export async function verificarAcessoRepassador(telefoneInput: string): Promise<
 
 export async function atualizarStatusRepassador(
   id: number | string,
-  status: 'ativo' | 'bloqueado'
+  status: 'ativo' | 'pendente' | 'bloqueado'
 ): Promise<{ ok: boolean; error?: string }> {
   const localList = getLocalRepassadores();
   const idx = localList.findIndex(r => String(r.id) === String(id));

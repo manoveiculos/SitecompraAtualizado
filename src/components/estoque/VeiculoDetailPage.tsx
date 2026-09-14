@@ -326,9 +326,15 @@ export default function VeiculoDetailPage({ slug }: { slug: string }) {
                 </span>
               </div>
 
-              <div className="p-3 bg-[#FDF8F1] border border-[#EEDFCF] rounded-2xl flex items-center justify-between text-xs">
-                <span className="text-[#7D6250] font-medium">Financiamento estimado:</span>
-                <span className="text-[#7A2E1E] font-extrabold">Entrada + 48x {brl(parcelaEstimada)}</span>
+              <div className="p-3 bg-emerald-50/70 border border-emerald-200/80 rounded-2xl space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-[#7D6250] font-medium">Financiamento estimado (48x):</span>
+                  <span className="text-[#7A2E1E] font-extrabold">{brl(parcelaEstimada)}/mês</span>
+                </div>
+                <p className="text-[10px] text-[#7D6250] leading-tight border-t border-emerald-200/60 pt-1 flex items-center gap-1">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                  <span>*Simulação estimada. Sujeito à análise e aprovação de crédito pelas financeiras parceiras.</span>
+                </p>
               </div>
 
               {/* 4 OPÇÕES DE AÇÃO */}

@@ -443,6 +443,22 @@ async function startServer() {
     }
   });
 
+  // Novo Cadastro de Lojista/Repassador — notificação enviada ao n8n
+  app.post("/api/repasse/cadastro", async (req, res) => {
+    try {
+      const response = await fetch("https://n8n.drivvoo.com/webhook/7a146026-4b40-447d-a49d-0853ac749f26", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(req.body),
+      });
+      res.status(response.ok ? 200 : response.status).json({ ok: response.ok });
+    } catch (error) {
+      console.error("Repasse cadastro proxy error:", error);
+      res.status(500).json({ ok: false, error: "Failed to forward repasse cadastro" });
+    }
+  });
+
+
   // Placa lookup (apiplacas/wdapi2). Token fica no servidor; nunca no client.
   app.get("/api/placa/:placa", async (req, res) => {
     try {

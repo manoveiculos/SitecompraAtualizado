@@ -51,7 +51,7 @@ export default function RepasseAdminPage() {
   const [passwordError, setPasswordError] = useState('');
 
   // Main Admin Tabs
-  const [activeTab, setActiveTab] = useState<'estoque' | 'leads' | 'repassadores' | 'propostas'>('estoque');
+  const [activeTab, setActiveTab] = useState<'estoque' | 'leads' | 'repassadores' | 'propostas'>('repassadores');
 
   // Vehicles state
   const [veiculos, setVeiculos] = useState<VeiculoRepasse[]>([]);
@@ -66,6 +66,7 @@ export default function RepasseAdminPage() {
   const [repassadores, setRepassadores] = useState<Repassador[]>([]);
   const [loadingRepassadores, setLoadingRepassadores] = useState(false);
   const [searchRepassadores, setSearchRepassadores] = useState('');
+  const [filterRepassadorStatus, setFilterRepassadorStatus] = useState<'todos' | 'pendente' | 'ativo' | 'bloqueado'>('todos');
 
   // Propostas de Lojistas State
   const [propostas, setPropostas] = useState<PropostaRepasse[]>([]);
@@ -143,6 +144,7 @@ export default function RepasseAdminPage() {
     loadVeiculos();
     loadLeads();
     loadRepassadores();
+    loadPropostas();
   };
 
   const loadVeiculos = async () => {
@@ -164,6 +166,13 @@ export default function RepasseAdminPage() {
     const data = await fetchRepassadores();
     setRepassadores(data);
     setLoadingRepassadores(false);
+  };
+
+  const loadPropostas = async () => {
+    setLoadingPropostas(true);
+    const data = await fetchTodasPropostasAdmin();
+    setPropostas(data);
+    setLoadingPropostas(false);
   };
 
   const handleOpenAddModal = () => {
@@ -216,13 +225,18 @@ export default function RepasseAdminPage() {
     setShowFormModal(true);
   };
 
-  const handleToggleRepassadorStatus = async (r: Repassador, newStatus: 'ativo' | 'bloqueado') => {
+  const handleToggleRepassadorStatus = async (r: Repassador, newStatus: 'ativo' | 'pendente' | 'bloqueado') => {
     const res = await atualizarStatusRepassador(r.id, newStatus);
     if (res.ok) {
       loadRepassadores();
     } else {
       alert(`Erro ao atualizar status: ${res.error}`);
     }
+  };
+
+  const handleNotificarRepassadorWhatsApp = (r: Repassador) => {
+    const txt = `Olá ${r.nome_completo}! Seu cadastro de lojista (${r.nome_loja}) na Manos Veículos foi APROVADO! Agora você pode acessar o nosso estoque de repasse exclusivo em: https://manosveiculos.com.br/repasse`;
+    window.open(`https://wa.me/55${r.telefone}?text=${encodeURIComponent(txt)}`, '_blank');
   };
 
   const handleDeleteRepassador = async (r: Repassador) => {
@@ -270,57 +284,6 @@ export default function RepasseAdminPage() {
     }));
   };
 
-  const handleDragStart = (idx: number) => {
-    setDraggedPhotoIdx(idx);
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-  };
-
-  const handleDrop = (targetIdx: number) => {
-    if (draggedPhotoIdx === null || draggedPhotoIdx === targetIdx) return;
-    setFormData(prev => {
-      const newList = [...prev.fotosList];
-      const [moved] = newList.splice(draggedPhotoIdx, 1);
-      newList.splice(targetIdx, 0, moved);
-      return { ...prev, fotosList: newList };
-    });
-    setDraggedPhotoIdx(null);
-  };
-
-  const handleMoveLeft = (idx: number) => {
-    if (idx <= 0) return;
-    setFormData(prev => {
-      const newList = [...prev.fotosList];
-      const temp = newList[idx - 1];
-      newList[idx - 1] = newList[idx];
-      newList[idx] = temp;
-      return { ...prev, fotosList: newList };
-    });
-  };
-
-  const handleMoveRight = (idx: number) => {
-    setFormData(prev => {
-      if (idx >= prev.fotosList.length - 1) return prev;
-      const newList = [...prev.fotosList];
-      const temp = newList[idx + 1];
-      newList[idx + 1] = newList[idx];
-      newList[idx] = temp;
-      return { ...prev, fotosList: newList };
-    });
-  };
-
-  const handleMakeCover = (idx: number) => {
-    if (idx === 0) return;
-    setFormData(prev => {
-      const newList = [...prev.fotosList];
-      const [selected] = newList.splice(idx, 1);
-      newList.unshift(selected);
-      return { ...prev, fotosList: newList };
-    });
-  };
-
   const handleGenerateObsIA = async () => {
     if (!formData.titulo || !formData.preco_fipe || !formData.preco_repasse) {
       alert('Por favor, preencha o Título, Preço FIPE e Preço Repasse antes de gerar com IA.');
@@ -365,7 +328,6 @@ export default function RepasseAdminPage() {
     setGeneratingDesc(false);
   };
 
-
   const handleSaveForm = async (e: React.FormEvent) => {
     e.preventDefault();
     if (saving || uploadingPhotos) return;
@@ -397,7 +359,6 @@ export default function RepasseAdminPage() {
       destaque: formData.destaque,
       status: formData.status,
     };
-
 
     let res: { ok: boolean; error?: string };
 
@@ -438,7 +399,7 @@ export default function RepasseAdminPage() {
   };
 
   const handleDeleteLead = async (leadId: number | string) => {
-    if (!window.confirm('Tem certeza que deseja remover esta proposta?')) return;
+    if (!window.confirm('Tem certeza que deseja remover este registro de lead?')) return;
     const res = await excluirLeadRepasse(leadId);
     if (res.ok) {
       loadLeads();
@@ -446,22 +407,6 @@ export default function RepasseAdminPage() {
       alert(`Erro ao excluir lead: ${res.error}`);
     }
   };
-
-  const loadPropostas = async () => {
-    setLoadingPropostas(true);
-    const data = await fetchTodasPropostasAdmin();
-    setPropostas(data);
-    setLoadingPropostas(false);
-  };
-
-  useEffect(() => {
-    if (isAuthenticated) {
-      loadVeiculos();
-      loadLeads();
-      loadRepassadores();
-      loadPropostas();
-    }
-  }, [isAuthenticated]);
 
   const handleAbrirRespostaModal = (proposta: PropostaRepasse, type: 'aceitar' | 'recusar' | 'contraproposta') => {
     setSelectedPropostaAction(proposta);
@@ -527,6 +472,18 @@ export default function RepasseAdminPage() {
     v.modelo.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const repassadoresFiltrados = repassadores.filter(r => {
+    const matchText =
+      r.nome_completo.toLowerCase().includes(searchRepassadores.toLowerCase()) ||
+      r.nome_loja.toLowerCase().includes(searchRepassadores.toLowerCase()) ||
+      r.cpf_cnpj.includes(searchRepassadores) ||
+      r.telefone.includes(searchRepassadores);
+    const matchStatus = filterRepassadorStatus === 'todos' || r.status === filterRepassadorStatus;
+    return matchText && matchStatus;
+  });
+
+  const repassadoresPendentesCount = repassadores.filter(r => r.status === 'pendente').length;
+
   // PASSWORD GATE
   if (!isAuthenticated) {
     return (
@@ -581,7 +538,7 @@ export default function RepasseAdminPage() {
               href="/repasse"
               className="block text-center text-xs text-white/40 hover:text-white pt-2 transition-colors"
             >
-              &larr; Voltar para a página pública de repasses
+              &larr; Voltar para o Portal de Repasses
             </a>
           </form>
         </motion.div>
@@ -614,7 +571,17 @@ export default function RepasseAdminPage() {
               className="px-3.5 py-2 bg-white/5 hover:bg-white/10 border border-white/15 text-white/80 rounded-xl text-xs font-bold flex items-center gap-2 transition-all"
             >
               <Eye className="w-4 h-4 text-emerald-400" />
-              <span className="hidden sm:inline">Ver Site Público</span>
+              <span className="hidden sm:inline">Ver Portal Lojistas</span>
+            </a>
+
+            <a
+              href="/repassesmanos"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3.5 py-2 bg-white/5 hover:bg-white/10 border border-white/15 text-white/80 rounded-xl text-xs font-bold flex items-center gap-2 transition-all"
+            >
+              <Eye className="w-4 h-4 text-amber-400" />
+              <span className="hidden sm:inline">Ver Repasse Público</span>
             </a>
 
             <button
@@ -634,10 +601,27 @@ export default function RepasseAdminPage() {
         {/* TAB CONTROLS & ADD BUTTON */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-[#121216] border border-white/10 p-2 sm:p-3 rounded-2xl">
           
-          <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <button
+              onClick={() => setActiveTab('repassadores')}
+              className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                activeTab === 'repassadores'
+                  ? 'bg-manos-red text-white shadow-lg shadow-manos-red/20'
+                  : 'text-white/50 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Building2 className="w-4 h-4 text-amber-400" />
+              Lojistas & Repassadores ({repassadores.length})
+              {repassadoresPendentesCount > 0 && (
+                <span className="px-2 py-0.5 bg-amber-500 text-black text-[10px] font-black rounded-full animate-pulse">
+                  {repassadoresPendentesCount} Pendentes
+                </span>
+              )}
+            </button>
+
             <button
               onClick={() => setActiveTab('estoque')}
-              className={`flex-1 sm:flex-none px-5 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer ${
                 activeTab === 'estoque'
                   ? 'bg-manos-red text-white shadow-lg shadow-manos-red/20'
                   : 'text-white/50 hover:text-white hover:bg-white/5'
@@ -648,32 +632,8 @@ export default function RepasseAdminPage() {
             </button>
 
             <button
-              onClick={() => setActiveTab('leads')}
-              className={`flex-1 sm:flex-none px-5 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                activeTab === 'leads'
-                  ? 'bg-manos-red text-white shadow-lg shadow-manos-red/20'
-                  : 'text-white/50 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              <MessageCircle className="w-4 h-4 text-emerald-400" />
-              Leads ({leads.length})
-            </button>
-
-            <button
-              onClick={() => setActiveTab('repassadores')}
-              className={`flex-1 sm:flex-none px-5 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                activeTab === 'repassadores'
-                  ? 'bg-manos-red text-white shadow-lg shadow-manos-red/20'
-                  : 'text-white/50 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              <Building2 className="w-4 h-4 text-amber-400" />
-              Lojistas ({repassadores.length})
-            </button>
-
-            <button
               onClick={() => setActiveTab('propostas')}
-              className={`flex-1 sm:flex-none px-5 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer ${
                 activeTab === 'propostas'
                   ? 'bg-manos-red text-white shadow-lg shadow-manos-red/20'
                   : 'text-white/50 hover:text-white hover:bg-white/5'
@@ -687,6 +647,18 @@ export default function RepasseAdminPage() {
                 </span>
               )}
             </button>
+
+            <button
+              onClick={() => setActiveTab('leads')}
+              className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                activeTab === 'leads'
+                  ? 'bg-manos-red text-white shadow-lg shadow-manos-red/20'
+                  : 'text-white/50 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <MessageCircle className="w-4 h-4 text-emerald-400" />
+              Leads Repasse ({leads.length})
+            </button>
           </div>
 
           <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
@@ -695,7 +667,7 @@ export default function RepasseAdminPage() {
               className="p-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-white/70 hover:text-white transition-all cursor-pointer"
               title="Atualizar dados"
             >
-              <RefreshCw className={`w-4 h-4 ${(loadingVeiculos || loadingLeads || loadingRepassadores) ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-4 h-4 ${(loadingVeiculos || loadingLeads || loadingRepassadores || loadingPropostas) ? 'animate-spin' : ''}`} />
             </button>
 
             <button
@@ -703,17 +675,154 @@ export default function RepasseAdminPage() {
               className="w-full sm:w-auto px-5 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs uppercase rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 active:scale-95 transition-all cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              Cadastrar Novo Veículo
+              Cadastrar Veículo
             </button>
           </div>
 
         </div>
 
-        {/* TAB 1: ESTOQUE DE REPASSE */}
-        {activeTab === 'estoque' && (
+        {/* TAB 1: GESTÃO DE LOJISTAS E REPASSADORES (APROVAÇÃO MANUAL) */}
+        {activeTab === 'repassadores' && (
           <div className="space-y-4">
             
-            {/* Search Filter */}
+            {/* Filters */}
+            <div className="p-4 bg-[#121216] border border-white/10 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="relative w-full sm:w-80">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 w-4 h-4" />
+                <input
+                  type="text"
+                  placeholder="Buscar por nome, loja, CPF/CNPJ ou telefone..."
+                  className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-11 pr-4 text-xs text-white placeholder-white/40 outline-none focus:border-manos-red"
+                  value={searchRepassadores}
+                  onChange={e => setSearchRepassadores(e.target.value)}
+                />
+              </div>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <Filter className="w-4 h-4 text-white/40" />
+                <select
+                  className="bg-white/5 border border-white/10 rounded-xl py-2.5 px-3 text-xs text-white outline-none cursor-pointer font-bold"
+                  value={filterRepassadorStatus}
+                  onChange={e => setFilterRepassadorStatus(e.target.value as any)}
+                >
+                  <option value="todos" className="bg-zinc-900">Todos os Status ({repassadores.length})</option>
+                  <option value="pendente" className="bg-zinc-900">Pendentes de Aprovação ({repassadores.filter(r => r.status === 'pendente').length})</option>
+                  <option value="ativo" className="bg-zinc-900">Aprovados / Ativos ({repassadores.filter(r => r.status === 'ativo').length})</option>
+                  <option value="bloqueado" className="bg-zinc-900">Bloqueados ({repassadores.filter(r => r.status === 'bloqueado').length})</option>
+                </select>
+              </div>
+            </div>
+
+            {loadingRepassadores ? (
+              <div className="text-center py-20 bg-white/[0.02] border border-white/10 rounded-3xl space-y-3">
+                <Loader2 className="w-8 h-8 animate-spin text-manos-red mx-auto" />
+                <p className="text-xs text-white/50">Carregando lista de repassadores...</p>
+              </div>
+            ) : repassadoresFiltrados.length === 0 ? (
+              <div className="text-center py-16 bg-white/[0.02] border border-white/10 rounded-3xl space-y-3">
+                <Building2 className="w-10 h-10 text-white/20 mx-auto" />
+                <p className="text-sm font-bold text-white/70">Nenhum lojista encontrado com os filtros selecionados</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {repassadoresFiltrados.map(r => (
+                  <div
+                    key={r.id}
+                    className={`p-5 rounded-3xl border transition-all space-y-4 ${
+                      r.status === 'pendente'
+                        ? 'bg-amber-950/20 border-amber-500/50 shadow-lg shadow-amber-500/5'
+                        : r.status === 'ativo'
+                        ? 'bg-[#121216] border-emerald-500/30'
+                        : 'bg-zinc-900/50 border-red-500/30 opacity-70'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-extrabold text-base text-white">{r.nome_completo}</h3>
+                          {r.status === 'pendente' && (
+                            <span className="px-2.5 py-0.5 bg-amber-500 text-black text-[10px] font-black uppercase rounded-full animate-pulse">
+                              Aprovação Pendente
+                            </span>
+                          )}
+                          {r.status === 'ativo' && (
+                            <span className="px-2.5 py-0.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-black uppercase rounded-full">
+                              Aprovado / Ativo
+                            </span>
+                          )}
+                          {r.status === 'bloqueado' && (
+                            <span className="px-2.5 py-0.5 bg-red-500/20 text-red-400 border border-red-500/30 text-[10px] font-black uppercase rounded-full">
+                              Bloqueado
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs font-bold text-amber-400">{r.nome_loja} • {r.cidade || 'Cidade não informada'}</p>
+                      </div>
+
+                      <button
+                        onClick={() => handleDeleteRepassador(r)}
+                        className="p-2 text-white/40 hover:text-red-400 transition-colors"
+                        title="Excluir cadastro"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs text-white/70 bg-black/40 p-3 rounded-xl border border-white/5">
+                      <div>
+                        <span className="text-white/40 block text-[10px]">CPF / CNPJ:</span>
+                        <strong className="text-white">{r.cpf_cnpj}</strong>
+                      </div>
+                      <div>
+                        <span className="text-white/40 block text-[10px]">WhatsApp:</span>
+                        <strong className="text-white">{r.telefone}</strong>
+                      </div>
+                    </div>
+
+                    {/* Botões de Aprovação Manual em 1 Clique */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/10">
+                      <div className="flex items-center gap-2">
+                        {r.status !== 'ativo' && (
+                          <button
+                            onClick={() => handleToggleRepassadorStatus(r, 'ativo')}
+                            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs uppercase rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <UserCheck className="w-4 h-4" />
+                            Aprovar Acesso
+                          </button>
+                        )}
+
+                        {r.status !== 'bloqueado' && (
+                          <button
+                            onClick={() => handleToggleRepassadorStatus(r, 'bloqueado')}
+                            className="px-3.5 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/40 font-bold text-xs uppercase rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <UserX className="w-4 h-4" />
+                            Bloquear
+                          </button>
+                        )}
+                      </div>
+
+                      <button
+                        onClick={() => handleNotificarRepassadorWhatsApp(r)}
+                        className="px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all cursor-pointer"
+                      >
+                        <MessageCircle className="w-4 h-4 text-emerald-400" />
+                        Notificar Whats
+                      </button>
+                    </div>
+
+                  </div>
+                ))}
+              </div>
+            )}
+
+          </div>
+        )}
+
+        {/* TAB 2: ESTOQUE DE REPASSE */}
+        {activeTab === 'estoque' && (
+          <div className="space-y-4">
             <div className="relative max-w-md">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 w-4 h-4" />
               <input
@@ -752,7 +861,6 @@ export default function RepasseAdminPage() {
                       key={v.id}
                       className="bg-[#121216] border border-white/10 rounded-3xl overflow-hidden flex flex-col justify-between"
                     >
-                      {/* Image & Badges */}
                       <div className="relative aspect-[16/10] bg-zinc-900 overflow-hidden">
                         <img
                           src={v.fotos[0] || 'https://images.unsplash.com/photo-1541899481282-d53bffe3c35d?auto=format&fit=crop&w=1200&q=80'}
@@ -765,7 +873,6 @@ export default function RepasseAdminPage() {
                           -{pctDesconto}% FIPE
                         </div>
 
-                        {/* Status Badge */}
                         <div className="absolute top-3 right-3">
                           {v.status === 'disponivel' && (
                             <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-[10px] font-black uppercase px-2.5 py-1 rounded-full backdrop-blur-md">
@@ -785,7 +892,6 @@ export default function RepasseAdminPage() {
                         </div>
                       </div>
 
-                      {/* Content */}
                       <div className="p-5 space-y-4 flex-grow flex flex-col justify-between">
                         <div className="space-y-1.5">
                           <p className="text-[11px] font-bold text-white/50 uppercase">
@@ -799,467 +905,191 @@ export default function RepasseAdminPage() {
                           </p>
                         </div>
 
-                        {/* Prices & Actions */}
-                        <div className="space-y-3 pt-2">
-                          <div className="bg-white/5 p-3 rounded-2xl border border-white/10 flex items-center justify-between text-xs">
-                            <div>
-                              <span className="text-white/40 block text-[10px] uppercase font-bold">FIPE: {formatBRL(v.preco_fipe)}</span>
-                              <span className="text-lg font-black text-emerald-400 italic">{formatBRL(v.preco_repasse)}</span>
-                            </div>
-                            <div className="text-right">
-                              <span className="text-[10px] text-white/40 block">Economia</span>
-                              <span className="text-xs font-bold text-emerald-400">{formatBRL(economia)}</span>
-                            </div>
+                        <div className="space-y-2 pt-3 border-t border-white/10">
+                          <div className="flex justify-between text-xs">
+                            <span className="text-white/50">FIPE: {formatBRL(v.preco_fipe)}</span>
+                            <span className="font-extrabold text-emerald-400">Repasse: {formatBRL(v.preco_repasse)}</span>
                           </div>
+                          {v.preco_lojista && (
+                            <div className="flex justify-between text-xs font-bold text-amber-400">
+                              <span>Atacado Lojista:</span>
+                              <span>{formatBRL(v.preco_lojista)}</span>
+                            </div>
+                          )}
 
-                          {/* Quick Status Buttons */}
-                          <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl text-[10px] font-bold">
-                            <span className="text-white/40 px-2 uppercase text-[9px]">Status:</span>
-                            <button
-                              onClick={() => handleToggleStatus(v, 'disponivel')}
-                              className={`px-2 py-1 rounded-lg ${v.status === 'disponivel' ? 'bg-emerald-600 text-white' : 'text-white/50 hover:text-white'}`}
-                            >
-                              Disponível
-                            </button>
-                            <button
-                              onClick={() => handleToggleStatus(v, 'reservado')}
-                              className={`px-2 py-1 rounded-lg ${v.status === 'reservado' ? 'bg-amber-600 text-white' : 'text-white/50 hover:text-white'}`}
-                            >
-                              Reservado
-                            </button>
-                            <button
-                              onClick={() => handleToggleStatus(v, 'vendido')}
-                              className={`px-2 py-1 rounded-lg ${v.status === 'vendido' ? 'bg-red-600 text-white' : 'text-white/50 hover:text-white'}`}
-                            >
-                              Vendido
-                            </button>
-                          </div>
-
-                          {/* Action Buttons: Edit / Delete */}
-                          <div className="grid grid-cols-2 gap-2">
+                          <div className="grid grid-cols-2 gap-2 pt-2">
                             <button
                               onClick={() => handleOpenEditModal(v)}
-                              className="py-2.5 px-3 bg-white/10 hover:bg-white/15 text-white font-bold text-xs uppercase rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                              className="py-2 px-3 bg-white/10 hover:bg-white/20 text-white font-bold text-xs uppercase rounded-xl flex items-center justify-center gap-1.5"
                             >
-                              <Edit className="w-3.5 h-3.5 text-amber-400" />
-                              Editar
+                              <Edit className="w-3.5 h-3.5" /> Editar
                             </button>
-
                             <button
                               onClick={() => handleDeleteVeiculo(v)}
-                              className="py-2.5 px-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 font-bold text-xs uppercase rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                              className="py-2 px-3 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 font-bold text-xs uppercase rounded-xl flex items-center justify-center gap-1.5"
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
-                              Excluir
+                              <Trash2 className="w-3.5 h-3.5" /> Excluir
                             </button>
                           </div>
                         </div>
-
                       </div>
                     </div>
                   );
                 })}
               </div>
             )}
-
           </div>
         )}
 
-        {/* TAB 2: PROPOSTAS / LEADS */}
-        {activeTab === 'leads' && (
+        {/* TAB 3: PROPOSTAS DE LOJISTAS */}
+        {activeTab === 'propostas' && (
           <div className="space-y-4">
-            
-            {loadingLeads ? (
+            {loadingPropostas ? (
               <div className="text-center py-20 bg-white/[0.02] border border-white/10 rounded-3xl space-y-3">
-                <Loader2 className="w-8 h-8 animate-spin text-emerald-500 mx-auto" />
-                <p className="text-xs text-white/50">Carregando propostas de clientes...</p>
+                <Loader2 className="w-8 h-8 animate-spin text-manos-red mx-auto" />
+                <p className="text-xs text-white/50">Carregando propostas de lojistas...</p>
               </div>
-            ) : leads.length === 0 ? (
-              <div className="text-center py-16 bg-white/[0.02] border border-white/10 rounded-3xl space-y-2">
-                <MessageCircle className="w-10 h-10 text-white/20 mx-auto" />
-                <p className="text-sm font-bold text-white/70">Nenhuma proposta registrada até o momento</p>
+            ) : propostas.length === 0 ? (
+              <div className="text-center py-16 bg-white/[0.02] border border-white/10 rounded-3xl space-y-3">
+                <Handshake className="w-10 h-10 text-white/20 mx-auto" />
+                <p className="text-sm font-bold text-white/70">Nenhuma proposta recebida até o momento</p>
               </div>
             ) : (
-              <div className="space-y-3">
-                {leads.map(lead => {
-                  const phoneClean = lead.telefone.replace(/\D/g, '');
-                  const waUrl = `https://wa.me/55${phoneClean}?text=${encodeURIComponent(`Olá ${lead.nome}! Vi sua proposta pelo veículo de repasse ${lead.veiculo_titulo || ''} no site da Manos Veículos.`)}`;
-
-                  return (
-                    <div
-                      key={lead.id}
-                      className="bg-[#121216] border border-white/10 rounded-2xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:border-emerald-500/40 transition-all"
-                    >
-                      <div className="space-y-2 max-w-xl">
-                        <div className="flex items-center gap-2">
-                          <span className="text-base font-black text-white">{lead.nome}</span>
-                          <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
-                            {lead.cidade}
-                          </span>
-                          <span className="text-[10px] text-white/40">
-                            {new Date(lead.created_at).toLocaleDateString('pt-BR')} às {new Date(lead.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </div>
-
-                        {lead.veiculo_titulo && (
-                          <p className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
-                            <Tag className="w-3.5 h-3.5" />
-                            Interesse em: {lead.veiculo_titulo} {lead.valor_repasse ? `(${formatBRL(lead.valor_repasse)})` : ''}
-                          </p>
-                        )}
-
-                        {lead.proposta_mensagem && (
-                          <p className="text-xs text-white/80 italic bg-white/5 p-3 rounded-xl border border-white/5">
-                            "{lead.proposta_mensagem}"
-                          </p>
-                        )}
+              <div className="space-y-4">
+                {propostas.map(p => (
+                  <div key={p.id} className="p-5 bg-[#121216] border border-white/10 rounded-3xl space-y-3">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-white/10 pb-3">
+                      <div>
+                        <span className="text-[10px] font-extrabold uppercase text-amber-400">Lojista: {p.repassador_loja} ({p.repassador_nome})</span>
+                        <h4 className="font-extrabold text-base text-white">{p.veiculo_titulo}</h4>
+                        <p className="text-xs text-white/50">WhatsApp: {p.repassador_telefone} • Cidade: {p.repassador_cidade || 'N/I'}</p>
                       </div>
 
-                      <div className="flex items-center gap-2 pt-2 md:pt-0">
-                        <a
-                          href={waUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-4 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs uppercase rounded-xl flex items-center gap-2 shadow-lg shadow-emerald-600/20 active:scale-95 transition-all"
-                        >
-                          <MessageCircle className="w-4 h-4 fill-current" />
-                          Chamar no WhatsApp ({lead.telefone})
-                        </a>
-
+                      <div className="flex items-center gap-2">
+                        <span className={`px-3 py-1 rounded-full text-xs font-black uppercase ${
+                          p.status === 'aceita' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' :
+                          p.status === 'recusada' ? 'bg-red-500/20 text-red-400 border border-red-500/40' :
+                          p.status === 'contraproposta' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40' :
+                          'bg-zinc-800 text-zinc-300 border border-zinc-700'
+                        }`}>
+                          {p.status}
+                        </span>
                         <button
-                          onClick={() => handleDeleteLead(lead.id)}
-                          className="p-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl transition-all"
-                          title="Remover Proposta"
+                          onClick={() => handleDeleteProposta(p.id)}
+                          className="p-1.5 text-white/40 hover:text-red-400"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </div>
-                  );
-                })}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs bg-black/40 p-3 rounded-2xl border border-white/5">
+                      <div>
+                        <span className="text-white/40 block">Valor Anunciado:</span>
+                        <strong className="text-white">{formatBRL(p.valor_veiculo)}</strong>
+                      </div>
+                      <div>
+                        <span className="text-white/40 block">Proposta do Lojista:</span>
+                        <strong className="text-emerald-400 text-sm">{formatBRL(p.valor_proposta)}</strong>
+                      </div>
+                      <div>
+                        <span className="text-white/40 block">Diferença / Margem:</span>
+                        <strong className="text-amber-400">{formatBRL(p.valor_veiculo - p.valor_proposta)}</strong>
+                      </div>
+                    </div>
+
+                    {p.mensagem_lojista && (
+                      <p className="text-xs text-white/80 italic border-l-2 border-amber-500/40 pl-3 py-1">
+                        "{p.mensagem_lojista}"
+                      </p>
+                    )}
+
+                    {/* Resposta do Admin */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleAbrirRespostaModal(p, 'aceitar')}
+                          className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs uppercase rounded-xl flex items-center gap-1.5"
+                        >
+                          <Check className="w-4 h-4" /> Aceitar Proposta
+                        </button>
+                        <button
+                          onClick={() => handleAbrirRespostaModal(p, 'contraproposta')}
+                          className="px-3.5 py-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-bold text-xs uppercase rounded-xl flex items-center gap-1.5"
+                        >
+                          <Handshake className="w-4 h-4" /> Contraproposta
+                        </button>
+                        <button
+                          onClick={() => handleAbrirRespostaModal(p, 'recusar')}
+                          className="px-3.5 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/40 font-bold text-xs uppercase rounded-xl flex items-center gap-1.5"
+                        >
+                          <X className="w-4 h-4" /> Recusar
+                        </button>
+                      </div>
+
+                      <a
+                        href={`https://wa.me/55${rClean(p.repassador_telefone)}?text=${encodeURIComponent(`Olá ${p.repassador_nome} (${p.repassador_loja}), referente à sua proposta no ${p.veiculo_titulo}...`)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-xl flex items-center gap-1.5"
+                      >
+                        <MessageCircle className="w-4 h-4 text-emerald-400" />
+                        Responder no Whats
+                      </a>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
-
           </div>
         )}
 
-        {/* TAB 3: LOJISTAS E REPASSADORES CADASTRADOS */}
-        {activeTab === 'repassadores' && (
+        {/* TAB 4: LEADS */}
+        {activeTab === 'leads' && (
           <div className="space-y-4">
-            
-            {/* Filtro por Nome / CPF / CNPJ / Loja */}
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-              <div className="relative max-w-md w-full">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 w-4 h-4" />
-                <input
-                  type="text"
-                  placeholder="Filtrar por nome, loja, CPF/CNPJ ou telefone..."
-                  className="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-11 pr-4 text-xs text-white placeholder-white/40 focus:border-manos-red outline-none"
-                  value={searchRepassadores}
-                  onChange={e => setSearchRepassadores(e.target.value)}
-                />
-              </div>
-              <div className="text-xs text-white/50">
-                Total de Lojistas Cadastrados: <strong className="text-white">{repassadores.length}</strong>
-              </div>
-            </div>
-
-            {loadingRepassadores ? (
+            {loadingLeads ? (
               <div className="text-center py-20 bg-white/[0.02] border border-white/10 rounded-3xl space-y-3">
-                <Loader2 className="w-8 h-8 animate-spin text-amber-500 mx-auto" />
-                <p className="text-xs text-white/50">Carregando cadastros de lojistas e repassadores...</p>
+                <Loader2 className="w-8 h-8 animate-spin text-manos-red mx-auto" />
+                <p className="text-xs text-white/50">Carregando leads de repasse...</p>
               </div>
-            ) : repassadores.length === 0 ? (
-              <div className="text-center py-16 bg-white/[0.02] border border-white/10 rounded-3xl space-y-2">
-                <Building2 className="w-10 h-10 text-white/20 mx-auto" />
-                <p className="text-sm font-bold text-white/70">Nenhum lojista ou repassador cadastrado até o momento</p>
-                <p className="text-xs text-white/40">Os lojistas realizam o cadastro diretamente na página pública de repasse.</p>
+            ) : leads.length === 0 ? (
+              <div className="text-center py-16 bg-white/[0.02] border border-white/10 rounded-3xl space-y-3">
+                <MessageCircle className="w-10 h-10 text-white/20 mx-auto" />
+                <p className="text-sm font-bold text-white/70">Nenhum lead registrado</p>
               </div>
             ) : (
               <div className="space-y-3">
-                {repassadores
-                  .filter(r =>
-                    r.nome_completo.toLowerCase().includes(searchRepassadores.toLowerCase()) ||
-                    r.nome_loja.toLowerCase().includes(searchRepassadores.toLowerCase()) ||
-                    r.cpf_cnpj.toLowerCase().includes(searchRepassadores.toLowerCase()) ||
-                    (r.cidade && r.cidade.toLowerCase().includes(searchRepassadores.toLowerCase())) ||
-                    r.telefone.includes(searchRepassadores)
-                  )
-                  .map(r => {
-                    const phoneClean = r.telefone.replace(/\D/g, '');
-                    const waUrl = `https://wa.me/55${phoneClean}?text=${encodeURIComponent(`Olá ${r.nome_completo} (${r.nome_loja})! Sou da equipe Manos Veículos.`)}`;
-
-                    return (
-                      <div
-                        key={r.id}
-                        className="bg-[#121216] border border-white/10 rounded-2xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:border-amber-500/40 transition-all"
-                      >
-                        <div className="space-y-2 max-w-xl">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-base font-black text-white">{r.nome_completo}</span>
-                            <span className="text-xs font-bold text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-md border border-amber-500/20 flex items-center gap-1">
-                              <Building2 className="w-3.5 h-3.5" />
-                              {r.nome_loja}
-                            </span>
-                            {r.cidade && (
-                              <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-md border border-emerald-500/20">
-                                {r.cidade}
-                              </span>
-                            )}
-                            
-                            {r.status === 'ativo' ? (
-                              <span className="text-[10px] font-black uppercase text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30 flex items-center gap-1">
-                                <UserCheck className="w-3 h-3" /> Ativo / Acesso Liberado
-                              </span>
-                            ) : (
-                              <span className="text-[10px] font-black uppercase text-red-400 bg-red-500/10 px-2 py-0.5 rounded-full border border-red-500/30 flex items-center gap-1">
-                                <UserX className="w-3 h-3" /> Bloqueado pelo Admin
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-white/60 pt-1">
-                            <div>CPF/CNPJ: <strong className="text-white/90">{r.cpf_cnpj}</strong></div>
-                            <div>Telefone/WhatsApp: <strong className="text-white/90">{r.telefone}</strong></div>
-                            {r.cidade && <div>Cidade/UF: <strong className="text-white/90">{r.cidade}</strong></div>}
-                            {r.created_at && (
-                              <div className="text-[10px] text-white/40 sm:col-span-2">
-                                Cadastrado em: {new Date(r.created_at).toLocaleDateString('pt-BR')} às {new Date(r.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2 pt-2 md:pt-0">
-                          <a
-                            href={waUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="px-4 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs uppercase rounded-xl flex items-center gap-2 shadow-lg shadow-emerald-600/20 active:scale-95 transition-all"
-                          >
-                            <MessageCircle className="w-4 h-4 fill-current" />
-                            WhatsApp
-                          </a>
-
-                          {r.status === 'ativo' ? (
-                            <button
-                              onClick={() => handleToggleRepassadorStatus(r, 'bloqueado')}
-                              className="p-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded-xl text-xs font-bold flex items-center gap-1 transition-all cursor-pointer"
-                              title="Bloquear Acesso do Lojista"
-                            >
-                              <UserX className="w-4 h-4" />
-                              <span className="hidden sm:inline">Bloquear</span>
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => handleToggleRepassadorStatus(r, 'ativo')}
-                              className="p-3 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-bold flex items-center gap-1 transition-all cursor-pointer"
-                              title="Desbloquear Acesso do Lojista"
-                            >
-                              <UserCheck className="w-4 h-4" />
-                              <span className="hidden sm:inline">Desbloquear</span>
-                            </button>
-                          )}
-
-                          <button
-                            onClick={() => handleDeleteRepassador(r)}
-                            className="p-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl transition-all cursor-pointer"
-                            title="Excluir Lojista"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
+                {leads.map(l => (
+                  <div key={l.id} className="p-4 bg-[#121216] border border-white/10 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <strong className="text-sm text-white font-bold">{l.nome}</strong>
+                        <span className="text-xs text-amber-400 font-bold">({l.cidade})</span>
                       </div>
-                    );
-                  })}
-              </div>
-            )}
+                      <p className="text-xs text-white/50">WhatsApp: {l.telefone} • {new Date(l.created_at).toLocaleString('pt-BR')}</p>
+                      {l.veiculo_titulo && (
+                        <p className="text-xs text-emerald-400 font-bold mt-1">Interesse: {l.veiculo_titulo} ({formatBRL(l.valor_repasse || 0)})</p>
+                      )}
+                    </div>
 
-          </div>
-        )}
-
-        {/* TAB 4: PROPOSTAS E CONTRAPROPOSTAS DE LOJISTAS */}
-        {activeTab === 'propostas' && (
-          <div className="space-y-4">
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-              <div className="relative max-w-md w-full">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 w-4 h-4" />
-                <input
-                  type="text"
-                  placeholder="Filtrar por lojista, loja, veículo, cidade..."
-                  className="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-11 pr-4 text-xs text-white placeholder-white/40 focus:border-manos-red outline-none"
-                  value={searchPropostas}
-                  onChange={e => setSearchPropostas(e.target.value)}
-                />
-              </div>
-
-              <div className="text-xs text-white/50">
-                Total de Propostas Recebidas: <strong className="text-white">{propostas.length}</strong>
-              </div>
-            </div>
-
-            {loadingPropostas ? (
-              <div className="text-center py-20 bg-white/[0.02] border border-white/10 rounded-3xl space-y-3">
-                <Loader2 className="w-8 h-8 animate-spin text-amber-500 mx-auto" />
-                <p className="text-xs text-white/50">Carregando propostas de lojistas...</p>
-              </div>
-            ) : propostas.length === 0 ? (
-              <div className="text-center py-16 bg-white/[0.02] border border-white/10 rounded-3xl space-y-2">
-                <Handshake className="w-10 h-10 text-white/20 mx-auto" />
-                <p className="text-sm font-bold text-white/70">Nenhuma proposta de lojista recebida ainda</p>
-                <p className="text-xs text-white/40">As ofertas enviadas pelos lojistas autenticados aparecerão nesta tela para análise da equipe.</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {propostas
-                  .filter(p =>
-                    p.repassador_nome.toLowerCase().includes(searchPropostas.toLowerCase()) ||
-                    p.repassador_loja.toLowerCase().includes(searchPropostas.toLowerCase()) ||
-                    p.veiculo_titulo.toLowerCase().includes(searchPropostas.toLowerCase()) ||
-                    (p.repassador_cidade && p.repassador_cidade.toLowerCase().includes(searchPropostas.toLowerCase())) ||
-                    p.status.toLowerCase().includes(searchPropostas.toLowerCase())
-                  )
-                  .map(p => {
-                    const statusBadge = {
-                      pendente: { bg: 'bg-amber-500/10 border-amber-500/30 text-amber-400', label: '⏳ Oferta Pendente' },
-                      aceita: { bg: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400', label: '✅ Proposta Aceita' },
-                      recusada: { bg: 'bg-red-500/10 border-red-500/30 text-red-400', label: '❌ Proposta Recusada' },
-                      contraproposta: { bg: 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400', label: '🤝 Contraproposta Enviada' }
-                    }[p.status] || { bg: 'bg-white/5 border-white/10 text-white', label: p.status };
-
-                    const phoneClean = p.repassador_telefone.replace(/\D/g, '');
-                    const waText = p.status === 'contraproposta' && p.valor_contraproposta
-                      ? `Olá ${p.repassador_nome} (${p.repassador_loja})! Sobre sua proposta no ${p.veiculo_titulo}: fizemos uma contraproposta no valor de ${formatBRL(p.valor_contraproposta)}.`
-                      : `Olá ${p.repassador_nome} (${p.repassador_loja})! Recebemos sua proposta de ${formatBRL(p.valor_proposta)} para o ${p.veiculo_titulo}.`;
-
-                    const waUrl = `https://wa.me/55${phoneClean}?text=${encodeURIComponent(waText)}`;
-
-                    const descontoDiferenca = p.valor_veiculo - p.valor_proposta;
-                    const pctDescontoProposta = Math.round((descontoDiferenca / p.valor_veiculo) * 100);
-
-                    return (
-                      <div
-                        key={p.id}
-                        className="bg-[#121216] border border-white/10 rounded-2xl p-5 space-y-4 hover:border-amber-500/40 transition-all"
+                    <div className="flex items-center gap-2">
+                      <a
+                        href={`https://wa.me/55${l.telefone.replace(/\D/g, '')}?text=${encodeURIComponent(`Olá ${l.nome}! Vi seu interesse no repasse ${l.veiculo_titulo || ''} na Manos Veículos...`)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-3.5 py-2 bg-emerald-600 text-white text-xs font-bold rounded-xl flex items-center gap-1.5"
                       >
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                          <div className="space-y-1.5">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="text-base font-black text-white">{p.repassador_nome}</span>
-                              <span className="text-xs font-bold text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-md border border-amber-500/20 flex items-center gap-1">
-                                <Building2 className="w-3.5 h-3.5" />
-                                {p.repassador_loja}
-                              </span>
-                              {p.repassador_cidade && (
-                                <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
-                                  {p.repassador_cidade}
-                                </span>
-                              )}
-                              <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full border ${statusBadge.bg}`}>
-                                {statusBadge.label}
-                              </span>
-                            </div>
-
-                            <p className="text-xs text-white/60">
-                              Contato: <strong className="text-white">{p.repassador_telefone}</strong>
-                              {p.created_at && (
-                                <span className="ml-3 text-[10px] text-white/40">
-                                  Recebida em: {new Date(p.created_at).toLocaleDateString('pt-BR')} às {new Date(p.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                                </span>
-                              )}
-                            </p>
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <a
-                              href={waUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs uppercase rounded-xl flex items-center gap-1.5 shadow-lg shadow-emerald-600/20 active:scale-95 transition-all"
-                            >
-                              <MessageCircle className="w-4 h-4 fill-current" />
-                              WhatsApp Lojista
-                            </a>
-
-                            <button
-                              onClick={() => handleDeleteProposta(p.id)}
-                              className="p-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl transition-all cursor-pointer"
-                              title="Excluir Proposta"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* DETALHES DA OFERTA VS ANÚNCIO */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-black/40 p-4 rounded-xl border border-white/5">
-                          <div className="space-y-0.5">
-                            <span className="text-[10px] font-bold text-white/40 uppercase block">Veículo Ofertado</span>
-                            <span className="text-sm font-black text-white">{p.veiculo_titulo}</span>
-                            <span className="text-xs text-white/50 block">Preço Anunciado: {formatBRL(p.valor_veiculo)}</span>
-                          </div>
-
-                          <div className="space-y-0.5 border-y md:border-y-0 md:border-x border-white/10 py-2 md:py-0 md:px-3">
-                            <span className="text-[10px] font-bold text-amber-400 uppercase block">Proposta do Lojista</span>
-                            <span className="text-lg font-black text-amber-400">{formatBRL(p.valor_proposta)}</span>
-                            <span className="text-xs font-bold text-amber-300/80 block">
-                              Diferença: -{formatBRL(descontoDiferenca)} ({pctDescontoProposta}% abaixo)
-                            </span>
-                          </div>
-
-                          <div className="space-y-0.5">
-                            <span className="text-[10px] font-bold text-white/40 uppercase block">Status / Resposta Manos</span>
-                            {p.status === 'contraproposta' && p.valor_contraproposta ? (
-                              <div>
-                                <span className="text-xs font-black text-cyan-300 block">Contraproposta: {formatBRL(p.valor_contraproposta)}</span>
-                                {p.resposta_manos && <p className="text-[11px] text-white/70 italic">"{p.resposta_manos}"</p>}
-                              </div>
-                            ) : p.resposta_manos ? (
-                              <p className="text-xs text-white/80 italic">"{p.resposta_manos}"</p>
-                            ) : (
-                              <span className="text-xs text-white/40 italic">Nenhuma resposta registrada ainda.</span>
-                            )}
-                          </div>
-                        </div>
-
-                        {p.mensagem_lojista && (
-                          <div className="text-xs text-white/80 italic bg-white/5 p-3 rounded-xl border border-white/5">
-                            <span className="font-bold text-white/40 uppercase text-[10px] not-italic block mb-0.5">Recado do Lojista:</span>
-                            "{p.mensagem_lojista}"
-                          </div>
-                        )}
-
-                        {/* BARRAS DE AÇÃO PARA RESPONDER A PROPOSTA */}
-                        <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-white/5">
-                          <span className="text-xs font-bold text-white/50 uppercase mr-1">Responder Proposta:</span>
-
-                          <button
-                            onClick={() => handleAbrirRespostaModal(p, 'aceitar')}
-                            className="px-3.5 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
-                          >
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            Aceitar Oferta
-                          </button>
-
-                          <button
-                            onClick={() => handleAbrirRespostaModal(p, 'contraproposta')}
-                            className="px-3.5 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
-                          >
-                            <Handshake className="w-3.5 h-3.5" />
-                            Fazer Contraproposta
-                          </button>
-
-                          <button
-                            onClick={() => handleAbrirRespostaModal(p, 'recusar')}
-                            className="px-3.5 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
-                          >
-                            <XCircle className="w-3.5 h-3.5" />
-                            Recusar Oferta
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
+                        <MessageCircle className="w-4 h-4" /> WhatsApp
+                      </a>
+                      <button
+                        onClick={() => handleDeleteLead(l.id)}
+                        className="p-2 text-white/40 hover:text-red-400"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -1267,474 +1097,199 @@ export default function RepasseAdminPage() {
 
       </main>
 
-
-      {/* MODAL FORMULÁRIO DE CADASTRAR / EDITAR VEÍCULO */}
+      {/* MODAL CADASTRAR / EDITAR VEÍCULO */}
       <AnimatePresence>
         {showFormModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto bg-black/80 backdrop-blur-md">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowFormModal(false)}
+              className="fixed inset-0 bg-black/70 backdrop-blur-sm"
+            />
+
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-[#121216] border border-white/15 rounded-3xl max-w-2xl w-full p-6 sm:p-8 space-y-6 shadow-2xl relative text-left max-h-[90vh] overflow-y-auto custom-scrollbar"
+              className="relative w-full max-w-3xl bg-[#121216] border border-white/15 text-white rounded-3xl overflow-hidden shadow-2xl z-10 my-auto max-h-[90vh] flex flex-col"
             >
-              <button
-                onClick={() => setShowFormModal(false)}
-                className="absolute top-4 right-4 text-white/40 hover:text-white"
-              >
-                <X className="w-6 h-6" />
-              </button>
-
-              <div className="space-y-1">
-                <h3 className="text-xl font-black uppercase italic tracking-tight text-white">
+              <div className="p-4 sm:p-6 bg-[#09090B] border-b border-white/10 flex items-center justify-between flex-shrink-0">
+                <h3 className="font-black uppercase italic text-base sm:text-lg">
                   {editingId ? 'Editar Veículo de Repasse' : 'Cadastrar Novo Veículo de Repasse'}
                 </h3>
-                <p className="text-xs text-white/50">
-                  {editingId ? 'Atualização direta no Supabase' : 'Inserção direta na tabela veiculos_repasse no Supabase'}
-                </p>
+                <button onClick={() => setShowFormModal(false)} className="p-2 text-white/40 hover:text-white">
+                  <X className="w-5 h-5" />
+                </button>
               </div>
 
-              <form onSubmit={handleSaveForm} className="space-y-4 text-xs">
-                <div className="space-y-1">
-                  <label className="font-bold text-white/80 uppercase">Título do Anúncio *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ex.: Volkswagen Gol 1.6 MSI TotalFlex 8V"
-                    className="w-full p-3 bg-white/5 border border-white/15 rounded-xl text-white outline-none focus:border-manos-red"
-                    value={formData.titulo}
-                    onChange={e => setFormData({ ...formData, titulo: e.target.value })}
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="font-bold text-white/80 uppercase">Marca *</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Ex.: Volkswagen"
-                      className="w-full p-3 bg-white/5 border border-white/15 rounded-xl text-white outline-none text-sm sm:text-xs"
-                      value={formData.marca}
-                      onChange={e => setFormData({ ...formData, marca: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="font-bold text-white/80 uppercase">Modelo *</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Ex.: Gol"
-                      className="w-full p-3 bg-white/5 border border-white/15 rounded-xl text-white outline-none text-sm sm:text-xs"
-                      value={formData.modelo}
-                      onChange={e => setFormData({ ...formData, modelo: e.target.value })}
-                    />
-                  </div>
-                </div>
-
+              <form onSubmit={handleSaveForm} className="p-4 sm:p-6 overflow-y-auto space-y-4 text-xs">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="space-y-1">
-                    <label className="font-bold text-white/80 uppercase">Ano *</label>
+                  <div className="sm:col-span-2">
+                    <label className="font-bold text-white/70 block mb-1">Título Completo do Anúncio</label>
                     <input
                       type="text"
                       required
-                      placeholder="Ex.: 2019/2020"
-                      className="w-full p-3 bg-white/5 border border-white/15 rounded-xl text-white outline-none text-sm sm:text-xs"
-                      value={formData.ano}
-                      onChange={e => setFormData({ ...formData, ano: e.target.value })}
+                      placeholder="Ex: Volkswagen Gol 1.6 MSI TotalFlex"
+                      className="w-full p-3 bg-white/5 border border-white/10 rounded-xl text-white outline-none focus:border-manos-red"
+                      value={formData.titulo}
+                      onChange={e => setFormData({ ...formData, titulo: e.target.value })}
                     />
                   </div>
-                  <div className="space-y-1">
-                    <label className="font-bold text-white/80 uppercase">KM *</label>
-                    <input
-                      type="number"
-                      required
-                      className="w-full p-3 bg-white/5 border border-white/15 rounded-xl text-white outline-none text-sm sm:text-xs"
-                      value={formData.km}
-                      onChange={e => setFormData({ ...formData, km: Number(e.target.value) })}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="font-bold text-white/80 uppercase">Cor *</label>
+                  <div>
+                    <label className="font-bold text-white/70 block mb-1">Placa Final</label>
                     <input
                       type="text"
-                      required
-                      placeholder="Ex.: Branca"
-                      className="w-full p-3 bg-white/5 border border-white/15 rounded-xl text-white outline-none text-sm sm:text-xs"
-                      value={formData.cor}
-                      onChange={e => setFormData({ ...formData, cor: e.target.value })}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="space-y-1">
-                    <label className="font-bold text-white/80 uppercase">Combustível</label>
-                    <select
-                      className="w-full p-3 bg-white/5 border border-white/15 rounded-xl text-white outline-none cursor-pointer text-sm sm:text-xs"
-                      value={formData.combustivel}
-                      onChange={e => setFormData({ ...formData, combustivel: e.target.value })}
-                    >
-                      <option value="Flex" className="bg-zinc-900">Flex</option>
-                      <option value="Gasolina" className="bg-zinc-900">Gasolina</option>
-                      <option value="Diesel" className="bg-zinc-900">Diesel</option>
-                      <option value="Híbrido" className="bg-zinc-900">Híbrido</option>
-                      <option value="Elétrico" className="bg-zinc-900">Elétrico</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="font-bold text-white/80 uppercase">Câmbio</label>
-                    <select
-                      className="w-full p-3 bg-white/5 border border-white/15 rounded-xl text-white outline-none cursor-pointer text-sm sm:text-xs"
-                      value={formData.cambio}
-                      onChange={e => setFormData({ ...formData, cambio: e.target.value })}
-                    >
-                      <option value="Manual" className="bg-zinc-900">Manual</option>
-                      <option value="Automático" className="bg-zinc-900">Automático</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="font-bold text-white/80 uppercase">Placa Final</label>
-                    <input
-                      type="text"
-                      placeholder="Ex.: 7"
-                      className="w-full p-3 bg-white/5 border border-white/15 rounded-xl text-white outline-none text-sm sm:text-xs"
+                      placeholder="Ex: 7"
+                      className="w-full p-3 bg-white/5 border border-white/10 rounded-xl text-white outline-none focus:border-manos-red"
                       value={formData.placa_final}
                       onChange={e => setFormData({ ...formData, placa_final: e.target.value })}
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="space-y-1">
-                    <label className="font-bold text-emerald-400 uppercase">Preço Tabela FIPE (R$) *</label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div>
+                    <label className="font-bold text-white/70 block mb-1">Marca</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ex: Volkswagen"
+                      className="w-full p-3 bg-white/5 border border-white/10 rounded-xl text-white outline-none focus:border-manos-red"
+                      value={formData.marca}
+                      onChange={e => setFormData({ ...formData, marca: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="font-bold text-white/70 block mb-1">Modelo</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ex: Gol"
+                      className="w-full p-3 bg-white/5 border border-white/10 rounded-xl text-white outline-none focus:border-manos-red"
+                      value={formData.modelo}
+                      onChange={e => setFormData({ ...formData, modelo: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="font-bold text-white/70 block mb-1">Ano / Modelo</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ex: 2019/2020"
+                      className="w-full p-3 bg-white/5 border border-white/10 rounded-xl text-white outline-none focus:border-manos-red"
+                      value={formData.ano}
+                      onChange={e => setFormData({ ...formData, ano: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="font-bold text-white/70 block mb-1">Quilometragem (KM)</label>
                     <input
                       type="number"
                       required
-                      placeholder="52400"
-                      className="w-full p-3 bg-white/5 border border-emerald-500/30 rounded-xl text-white outline-none text-sm sm:text-xs"
-                      value={formData.preco_fipe || ''}
+                      className="w-full p-3 bg-white/5 border border-white/10 rounded-xl text-white outline-none focus:border-manos-red"
+                      value={formData.km}
+                      onChange={e => setFormData({ ...formData, km: Number(e.target.value) })}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="font-bold text-white/70 block mb-1">Preço Tabela FIPE (R$)</label>
+                    <input
+                      type="number"
+                      required
+                      className="w-full p-3 bg-white/5 border border-white/10 rounded-xl text-white outline-none focus:border-manos-red text-sm font-bold text-white"
+                      value={formData.preco_fipe}
                       onChange={e => setFormData({ ...formData, preco_fipe: Number(e.target.value) })}
                     />
                   </div>
-                  <div className="space-y-1">
-                    <label className="font-bold text-manos-red uppercase">Preço Público Repasse (R$) *</label>
+                  <div>
+                    <label className="font-bold text-white/70 block mb-1">Preço Repasse Público (R$)</label>
                     <input
                       type="number"
                       required
-                      placeholder="39900"
-                      className="w-full p-3 bg-white/5 border border-manos-red/40 rounded-xl text-white outline-none text-sm sm:text-xs"
-                      value={formData.preco_repasse || ''}
+                      className="w-full p-3 bg-white/5 border border-white/10 rounded-xl text-emerald-400 outline-none focus:border-manos-red text-sm font-bold"
+                      value={formData.preco_repasse}
                       onChange={e => setFormData({ ...formData, preco_repasse: Number(e.target.value) })}
                     />
                   </div>
-                  <div className="space-y-1">
-                    <label className="font-bold text-amber-400 uppercase flex items-center gap-1">
-                      <Building2 className="w-3.5 h-3.5" />
-                      Preço Lojista (Exclusivo R$)
-                    </label>
+                  <div>
+                    <label className="font-bold text-white/70 block mb-1">Preço Atacado Lojista (R$)</label>
                     <input
                       type="number"
-                      placeholder="37500"
-                      className="w-full p-3 bg-white/5 border border-amber-500/40 rounded-xl text-white outline-none text-sm sm:text-xs"
+                      placeholder="Preço exclusivo lojista"
+                      className="w-full p-3 bg-white/5 border border-white/10 rounded-xl text-amber-400 outline-none focus:border-manos-red text-sm font-bold"
                       value={formData.preco_lojista || ''}
                       onChange={e => setFormData({ ...formData, preco_lojista: Number(e.target.value) })}
                     />
                   </div>
                 </div>
 
-                {/* UPLOAD DE FOTOS DO COMPUTADOR LOCAL E REORDENAÇÃO */}
+                {/* Upload de Fotos */}
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="font-bold text-white/80 uppercase block">Fotos do Veículo (Upload do Computador) *</label>
-                    {formData.fotosList.length > 1 && (
-                      <span className="text-[10px] text-amber-400 font-bold flex items-center gap-1">
-                        <Move className="w-3 h-3" /> Arraste para reordenar a sequência
-                      </span>
-                    )}
+                  <label className="font-bold text-white/70 block">Fotos do Veículo ({formData.fotosList.length})</label>
+                  <div className="flex items-center gap-3">
+                    <label className="px-4 py-3 bg-white/10 hover:bg-white/20 border border-white/15 rounded-xl cursor-pointer text-xs font-bold flex items-center gap-2 transition-all">
+                      <Upload className="w-4 h-4 text-emerald-400" />
+                      <span>{uploadingPhotos ? 'Enviando fotos...' : 'Upload de Imagens'}</span>
+                      <input type="file" multiple accept="image/*" className="hidden" onChange={handleFileSelect} disabled={uploadingPhotos} />
+                    </label>
                   </div>
 
-                  <label className="border-2 border-dashed border-white/20 hover:border-emerald-500/50 bg-white/5 rounded-2xl p-6 flex flex-col items-center justify-center cursor-pointer transition-all hover:bg-white/[0.07] group">
-                    <Upload className="w-8 h-8 text-emerald-400 mb-2 group-hover:scale-110 transition-transform" />
-                    <span className="font-bold text-xs text-white">Clique para selecionar fotos do seu computador</span>
-                    <span className="text-[10px] text-white/40 mt-1">Selecione uma ou várias imagens (.jpg, .jpeg, .png, .webp) — Upload automático</span>
-                    <input
-                      type="file"
-                      multiple
-                      accept="image/*"
-                      onChange={handleFileSelect}
-                      className="hidden"
-                    />
-                  </label>
-
-                  {uploadingPhotos && (
-                    <div className="flex items-center justify-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-400 text-xs font-bold">
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Enviando foto(s) do computador para o banco de dados...
-                    </div>
-                  )}
-
-                  {/* PREVIEW E REORDENAÇÃO ARRASTÁVEL DAS FOTOS */}
                   {formData.fotosList.length > 0 && (
-                    <div className="space-y-2 pt-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold text-white/40 uppercase">
-                          {formData.fotosList.length} foto(s) • A 1ª foto será a CAPA PRINCIPAL do anúncio
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                        {formData.fotosList.map((fotoUrl, idx) => (
-                          <div
-                            key={idx}
-                            draggable
-                            onDragStart={() => handleDragStart(idx)}
-                            onDragOver={handleDragOver}
-                            onDrop={() => handleDrop(idx)}
-                            className={`relative aspect-[16/10] bg-black rounded-xl overflow-hidden border-2 transition-all cursor-grab active:cursor-grabbing group ${
-                              idx === 0 ? 'border-emerald-500 ring-2 ring-emerald-500/30' : 'border-white/10 hover:border-white/40'
-                            }`}
+                    <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 pt-2">
+                      {formData.fotosList.map((url, idx) => (
+                        <div key={idx} className="relative aspect-[16/10] bg-zinc-800 rounded-xl overflow-hidden group">
+                          <img src={url} alt="" className="w-full h-full object-cover" />
+                          <button
+                            type="button"
+                            onClick={() => handleRemovePhoto(idx)}
+                            className="absolute top-1 right-1 p-1 bg-black/60 rounded-full text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
                           >
-                            <img src={fotoUrl} alt={`Foto ${idx + 1}`} className="w-full h-full object-cover pointer-events-none" />
-                            
-                            {/* Badge Capa */}
-                            {idx === 0 ? (
-                              <span className="absolute top-2 left-2 bg-emerald-600 text-white text-[9px] font-black uppercase px-2 py-0.5 rounded-md shadow-md z-10">
-                                ★ FOTO CAPA
-                              </span>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => handleMakeCover(idx)}
-                                className="absolute top-2 left-2 bg-black/70 hover:bg-emerald-600 text-white text-[9px] font-bold uppercase px-2 py-0.5 rounded-md backdrop-blur-md opacity-80 group-hover:opacity-100 transition-all z-10 cursor-pointer"
-                                title="Definir como foto de capa"
-                              >
-                                Virar Capa
-                              </button>
-                            )}
-
-                            {/* Botão Remover */}
-                            <button
-                              type="button"
-                              onClick={() => handleRemovePhoto(idx)}
-                              className="absolute top-2 right-2 w-7 h-7 bg-red-600/90 hover:bg-red-600 text-white rounded-full flex items-center justify-center shadow-lg transition-transform hover:scale-110 z-10 cursor-pointer"
-                              title="Excluir foto"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-
-                            {/* Botões de Mover para Esquerda / Direita */}
-                            <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between opacity-80 group-hover:opacity-100 transition-opacity z-10">
-                              <button
-                                type="button"
-                                disabled={idx === 0}
-                                onClick={() => handleMoveLeft(idx)}
-                                className="p-1 bg-black/70 hover:bg-white/20 text-white rounded-lg disabled:opacity-20 cursor-pointer"
-                                title="Mover para esquerda"
-                              >
-                                <ChevronLeft className="w-4 h-4" />
-                              </button>
-
-                              <span className="text-[9px] font-mono font-bold text-white/90 bg-black/60 px-1.5 py-0.5 rounded">
-                                #{idx + 1}
-                              </span>
-
-                              <button
-                                type="button"
-                                disabled={idx === formData.fotosList.length - 1}
-                                onClick={() => handleMoveRight(idx)}
-                                className="p-1 bg-black/70 hover:bg-white/20 text-white rounded-lg disabled:opacity-20 cursor-pointer"
-                                title="Mover para direita"
-                              >
-                                <ChevronRight className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
 
-
-                {/* OBSERVAÇÕES DE REPASSE COM GERADOR DE IA */}
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
-                    <label className="font-bold text-amber-400 uppercase">Observações do Repasse (Motivo do desconto / Detalhes) *</label>
+                    <label className="font-bold text-white/70 block">Observações de Repasse (Vendas no Estado)</label>
                     <button
                       type="button"
                       onClick={handleGenerateObsIA}
                       disabled={generatingObs}
-                      className="px-3 py-1 bg-gradient-to-r from-amber-500/20 to-manos-red/20 hover:from-amber-500/30 hover:to-manos-red/30 border border-amber-500/40 rounded-xl text-amber-400 font-bold text-[11px] flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-40"
+                      className="text-amber-400 hover:text-amber-300 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
                     >
-                      <Sparkles className={`w-3.5 h-3.5 ${generatingObs ? 'animate-spin' : 'animate-pulse'}`} />
-                      {generatingObs ? 'Gerando com IA...' : 'Gerar Legenda com IA ✨'}
+                      <Sparkles className="w-3.5 h-3.5" /> {generatingObs ? 'Gerando com IA...' : 'Gerar Observação com IA'}
                     </button>
                   </div>
                   <textarea
                     rows={3}
                     required
-                    placeholder="Ex.: Desconto de R$ 12.500 abaixo da FIPE. Pequenos riscos no para-choque. Vendido no estado."
-                    className="w-full p-3 bg-white/5 border border-amber-500/30 rounded-xl text-white outline-none focus:border-amber-400"
+                    placeholder="Descreva detalhes estéticos, mecânicos ou observações transparentes de repasse..."
+                    className="w-full p-3 bg-white/5 border border-white/10 rounded-xl text-white outline-none focus:border-manos-red"
                     value={formData.observacoes_repasse}
                     onChange={e => setFormData({ ...formData, observacoes_repasse: e.target.value })}
                   />
                 </div>
 
-                {/* DESCRIÇÃO COMPLETA COM GERADOR DE IA */}
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <label className="font-bold text-white/80 uppercase">Descrição Completa do Anúncio</label>
-                    <button
-                      type="button"
-                      onClick={handleGenerateDescIA}
-                      disabled={generatingDesc}
-                      className="px-3 py-1 bg-gradient-to-r from-emerald-500/20 to-cyan-500/20 hover:from-emerald-500/30 hover:to-cyan-500/30 border border-emerald-500/40 rounded-xl text-emerald-400 font-bold text-[11px] flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-40"
-                    >
-                      <Sparkles className={`w-3.5 h-3.5 ${generatingDesc ? 'animate-spin' : 'animate-pulse'}`} />
-                      {generatingDesc ? 'Gerando com IA...' : 'Gerar Descrição com IA ✨'}
-                    </button>
-                  </div>
-                  <textarea
-                    rows={3}
-                    placeholder="Descrição geral dos opcionais e acessórios..."
-                    className="w-full p-3 bg-white/5 border border-white/15 rounded-xl text-white outline-none focus:border-emerald-400"
-                    value={formData.descricao}
-                    onChange={e => setFormData({ ...formData, descricao: e.target.value })}
-                  />
-                </div>
-
-
-                <div className="grid grid-cols-2 gap-3 pt-1">
-                  <div className="space-y-1">
-                    <label className="font-bold text-white/80 uppercase">Status no Estoque</label>
-                    <select
-                      className="w-full p-3 bg-white/5 border border-white/15 rounded-xl text-white outline-none cursor-pointer"
-                      value={formData.status}
-                      onChange={e => setFormData({ ...formData, status: e.target.value as any })}
-                    >
-                      <option value="disponivel" className="bg-zinc-900">Disponível</option>
-                      <option value="reservado" className="bg-zinc-900">Reservado</option>
-                      <option value="vendido" className="bg-zinc-900">Vendido</option>
-                    </select>
-                  </div>
-
-                  <div className="flex items-center gap-2 pt-6">
-                    <input
-                      type="checkbox"
-                      id="destaque-check"
-                      checked={formData.destaque}
-                      onChange={e => setFormData({ ...formData, destaque: e.target.checked })}
-                      className="w-4 h-4 accent-manos-red cursor-pointer"
-                    />
-                    <label htmlFor="destaque-check" className="font-bold text-white/80 cursor-pointer">
-                      Destacar no Topo
-                    </label>
-                  </div>
-                </div>
-
                 {formError && (
-                  <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 font-bold text-xs">
-                    {formError}
-                  </div>
+                  <p className="text-red-400 font-bold text-center">{formError}</p>
                 )}
 
                 <button
                   type="submit"
-                  disabled={saving}
-                  className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs uppercase rounded-2xl shadow-xl flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer"
+                  disabled={saving || uploadingPhotos}
+                  className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm uppercase rounded-xl shadow-xl transition-all cursor-pointer disabled:opacity-50"
                 >
-                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                  {editingId ? 'Salvar Alterações do Veículo' : 'Cadastrar no Banco de Dados'}
+                  {saving ? 'Salvando...' : editingId ? 'Atualizar Veículo' : 'Cadastrar Veículo de Repasse'}
                 </button>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* MODAL DE AÇÃO ADMIN PARA PROPOSTAS */}
-      <AnimatePresence>
-        {actionModalType && selectedPropostaAction && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-[#121216] border border-white/15 rounded-3xl p-6 sm:p-8 max-w-md w-full space-y-6 shadow-2xl relative text-left"
-            >
-              <button
-                onClick={() => { setActionModalType(null); setSelectedPropostaAction(null); }}
-                className="absolute top-5 right-5 text-white/50 hover:text-white p-2 rounded-xl bg-white/5 hover:bg-white/10 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-
-              <div className="space-y-1">
-                <h3 className="text-xl font-black uppercase text-white">
-                  {actionModalType === 'aceitar' && 'Aceitar Proposta do Lojista'}
-                  {actionModalType === 'recusar' && 'Recusar Proposta do Lojista'}
-                  {actionModalType === 'contraproposta' && 'Enviar Contraproposta ao Lojista'}
-                </h3>
-                <p className="text-xs text-white/60">
-                  Lojista: <strong className="text-white">{selectedPropostaAction.repassador_nome} ({selectedPropostaAction.repassador_loja})</strong>
-                </p>
-                <p className="text-xs text-amber-400 font-bold">
-                  Veículo: {selectedPropostaAction.veiculo_titulo} (Oferta: {formatBRL(selectedPropostaAction.valor_proposta)})
-                </p>
-              </div>
-
-              <form onSubmit={handleResponderPropostaSubmit} className="space-y-4">
-                {actionModalType === 'contraproposta' && (
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold uppercase text-white/80 block">
-                      Valor da Contraproposta (R$) *
-                    </label>
-                    <input
-                      type="number"
-                      step="100"
-                      required
-                      placeholder="Ex.: 38000"
-                      className="w-full bg-white/5 border border-cyan-500/40 rounded-xl py-3 px-4 text-base font-black text-cyan-300 outline-none focus:border-cyan-400"
-                      value={valorContrapropostaInput}
-                      onChange={e => setValorContrapropostaInput(e.target.value)}
-                    />
-                  </div>
-                )}
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold uppercase text-white/80 block">
-                    Mensagem / Recado da Manos (Visível ao Lojista)
-                  </label>
-                  <textarea
-                    rows={3}
-                    className="w-full bg-white/5 border border-white/15 rounded-xl p-3 text-xs text-white outline-none focus:border-manos-red resize-none"
-                    value={respostaManosInput}
-                    onChange={e => setRespostaManosInput(e.target.value)}
-                  />
-                </div>
-
-                <div className="flex justify-end gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => { setActionModalType(null); setSelectedPropostaAction(null); }}
-                    className="px-4 py-3 bg-white/5 text-white/70 font-bold text-xs uppercase rounded-xl cursor-pointer"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={actionLoading}
-                    className={`px-5 py-3 font-black text-xs uppercase rounded-xl shadow-lg flex items-center gap-2 cursor-pointer ${
-                      actionModalType === 'aceitar' ? 'bg-emerald-600 hover:bg-emerald-500 text-white' :
-                      actionModalType === 'contraproposta' ? 'bg-cyan-600 hover:bg-cyan-500 text-white' :
-                      'bg-red-600 hover:bg-red-500 text-white'
-                    }`}
-                  >
-                    {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                    Confirmar Resposta
-                  </button>
-                </div>
               </form>
             </motion.div>
           </div>
@@ -1743,4 +1298,8 @@ export default function RepasseAdminPage() {
 
     </div>
   );
+}
+
+function rClean(val: string): string {
+  return val.replace(/\D/g, '');
 }

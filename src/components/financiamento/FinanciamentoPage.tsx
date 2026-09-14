@@ -290,13 +290,13 @@ export default function FinanciamentoPage() {
                 </span>
               </div>
 
-              <div className="text-center py-2">
+              <div className="text-center py-2 space-y-1">
                 <div className="text-3xl font-serif font-extrabold text-white">
                   {parcelaEstimada > 0 ? `${brl(parcelaEstimada)}` : 'R$ --'}
                   <span className="text-xs font-sans text-[#E8C6AC] font-semibold"> / mês</span>
                 </div>
-                <p className="text-[10px] text-[#E8C6AC]/70 mt-1">
-                  *Valor sujeito à análise de crédito do CPF junto às financeiras parceiras.
+                <p className="text-[10px] text-[#E8C6AC] leading-tight font-medium">
+                  *Simulação prévia estimada. A concessão, taxa e aprovação final dependem exclusivamente da análise do CPF/Score pelas instituições financeiras parceiras.
                 </p>
               </div>
 

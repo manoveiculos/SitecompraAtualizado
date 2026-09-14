@@ -357,30 +357,7 @@ export default function ConsultorPanel() {
 
   return (
     <>
-      {/* Botão Flutuante do Chat */}
-      {!isOpen && (
-        <button
-          onClick={() => {
-            setIsOpen(true);
-            track('consultor_open', { source: 'floating_btn' });
-          }}
-          className="fixed bottom-20 right-4 lg:bottom-6 lg:right-6 z-40 flex items-center gap-3 bg-[#7A2E1E] hover:bg-[#622316] text-[#FDF3E7] p-3 lg:px-5 lg:py-3.5 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-105 active:scale-95 group border border-[#E0B68F]/40"
-          aria-label="Abrir Consultor Manos"
-        >
-          <div className="relative">
-            <div className="w-10 h-10 rounded-full bg-[#3B2016] border-2 border-[#E0B68F] flex items-center justify-center overflow-hidden">
-              <Bot className="w-6 h-6 text-[#E0B68F]" />
-            </div>
-            <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-emerald-500 border-2 border-[#7A2E1E] rounded-full animate-pulse" />
-          </div>
-          <div className="hidden sm:flex flex-col text-left pr-1">
-            <span className="font-serif font-bold text-sm leading-tight text-white">Consultor Manos</span>
-            <span className="text-[11px] text-[#F6DCC8] font-medium flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Responde na hora
-            </span>
-          </div>
-        </button>
-      )}
+      {/* Botão Flutuante do Chat removido a pedido do usuário (atendimento integrado na Home) */}
 
       {/* Painel do Chat */}
       {isOpen && (
