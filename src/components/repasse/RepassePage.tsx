@@ -5,7 +5,7 @@ import {
   ChevronRight, Phone, MessageCircle, ArrowRight, Loader2, RefreshCw,
   Sparkles, Filter, Percent, Banknote, X, ChevronLeft, Building2, HelpCircle,
   Plus, Check, ExternalLink, ShieldAlert, Lock, Unlock, UserCheck, UserPlus,
-  KeyRound, Users, Send, FileText, BadgeDollarSign, Clock, XCircle, Handshake
+  KeyRound, Users, Send, FileText, BadgeDollarSign, Clock, XCircle, Handshake, Eye
 } from 'lucide-react';
 import {
   fetchVeiculosRepasse,
@@ -765,21 +765,31 @@ export default function RepassePage() {
                             </div>
 
                             {/* Botões de Ação para Lojistas */}
-                            <div className="grid grid-cols-2 gap-2 pt-1">
+                            <div className="space-y-2 pt-1">
                               <button
-                                onClick={() => handleAbrirModalProposta(v)}
-                                className="py-3 px-3 bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs uppercase rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-sm"
+                                onClick={() => handleOpenDetail(v)}
+                                className="w-full py-2.5 px-3 bg-[#F4E6D7] hover:bg-[#EEDFCF] text-[#3B2016] font-extrabold text-xs uppercase rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                               >
-                                <Handshake className="w-4 h-4" />
-                                Enviar Proposta
+                                <Eye className="w-4 h-4 text-[#7A2E1E]" />
+                                Ver Detalhes do Anúncio
                               </button>
-                              <button
-                                onClick={() => openWhatsAppDirect(v)}
-                                className="py-3 px-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs uppercase rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5"
-                              >
-                                <MessageCircle className="w-4 h-4 fill-current" />
-                                Fechar no Whats
-                              </button>
+
+                              <div className="grid grid-cols-2 gap-2">
+                                <button
+                                  onClick={() => handleAbrirModalProposta(v)}
+                                  className="py-2.5 px-2 bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs uppercase rounded-xl transition-all flex items-center justify-center gap-1 shadow-sm cursor-pointer"
+                                >
+                                  <Handshake className="w-3.5 h-3.5" />
+                                  Enviar Proposta
+                                </button>
+                                <button
+                                  onClick={() => openWhatsAppDirect(v)}
+                                  className="py-2.5 px-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs uppercase rounded-xl shadow-md transition-all flex items-center justify-center gap-1 cursor-pointer"
+                                >
+                                  <MessageCircle className="w-3.5 h-3.5 fill-current" />
+                                  Fechar no Whats
+                                </button>
+                              </div>
                             </div>
 
                           </div>
@@ -950,6 +960,180 @@ export default function RepassePage() {
                 </form>
               )}
 
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL DETALHES COMPLETOS DO ANÚNCIO (LOJISTA) */}
+      <AnimatePresence>
+        {selectedVeiculo && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedVeiculo(null)}
+              className="fixed inset-0 bg-black/75 backdrop-blur-sm"
+            />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-3xl bg-white text-[#3B2016] rounded-3xl overflow-hidden shadow-2xl z-10 my-auto max-h-[90vh] flex flex-col"
+            >
+              {/* Header Modal */}
+              <div className="p-4 sm:p-6 bg-[#3B2016] text-[#FDF3E7] flex items-center justify-between border-b border-[#E0B68F]/20 flex-shrink-0">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase text-amber-400 tracking-wider">
+                      Anúncio Completo de Atacado Lojista
+                    </span>
+                    {selectedVeiculo.placa_final && (
+                      <span className="px-2 py-0.5 bg-black/40 text-white text-[10px] font-bold rounded-md border border-white/10">
+                        Placa final {selectedVeiculo.placa_final}
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="font-serif font-extrabold text-base sm:text-xl text-white truncate max-w-md">
+                    {selectedVeiculo.titulo}
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setSelectedVeiculo(null)}
+                  className="p-2 rounded-xl bg-white/10 text-white hover:bg-white/20 transition-all cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Scrollable Body */}
+              <div className="p-4 sm:p-6 overflow-y-auto space-y-6">
+                
+                {/* Galeria de Fotos */}
+                <div className="space-y-3">
+                  <div className="relative aspect-[16/10] bg-[#F4E6D7] rounded-2xl overflow-hidden shadow-md">
+                    <img
+                      src={selectedVeiculo.fotos[activePhotoIdx] || selectedVeiculo.fotos[0] || 'https://images.unsplash.com/photo-1541899481282-d53bffe3c35d?auto=format&fit=crop&w=1200&q=80'}
+                      alt={selectedVeiculo.titulo}
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute top-3 left-3 bg-amber-500 text-black text-xs font-black px-3 py-1 rounded-full uppercase shadow-md flex items-center gap-1">
+                      <Building2 className="w-3.5 h-3.5" />
+                      PREÇO LOJISTA: {formatBRL(selectedVeiculo.preco_lojista || selectedVeiculo.preco_repasse)}
+                    </div>
+                  </div>
+
+                  {selectedVeiculo.fotos.length > 1 && (
+                    <div className="flex items-center gap-2 overflow-x-auto pb-2 custom-scrollbar">
+                      {selectedVeiculo.fotos.map((foto, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => setActivePhotoIdx(idx)}
+                          className={`relative w-20 h-14 rounded-xl overflow-hidden flex-shrink-0 border-2 transition-all cursor-pointer ${
+                            activePhotoIdx === idx ? 'border-amber-500 scale-105 shadow-md' : 'border-transparent opacity-60 hover:opacity-100'
+                          }`}
+                        >
+                          <img src={foto} alt="" className="w-full h-full object-cover" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Preços e Margem Lojista */}
+                <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                    <div>
+                      <span className="text-[#7D6250] font-bold block text-[10px] uppercase">Tabela FIPE</span>
+                      <strong className="text-[#7D6250] line-through text-sm">{formatBRL(selectedVeiculo.preco_fipe)}</strong>
+                    </div>
+                    <div>
+                      <span className="text-[#7D6250] font-bold block text-[10px] uppercase">Repasse Público</span>
+                      <strong className="text-[#3B2016] text-sm">{formatBRL(selectedVeiculo.preco_repasse)}</strong>
+                    </div>
+                    <div>
+                      <span className="text-emerald-800 font-black block text-[10px] uppercase">Preço Atacado Lojista</span>
+                      <strong className="text-emerald-700 text-xl font-extrabold">{formatBRL(selectedVeiculo.preco_lojista || selectedVeiculo.preco_repasse)}</strong>
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 bg-white rounded-xl border border-emerald-300 flex items-center justify-between text-xs font-bold text-emerald-800">
+                    <span>Margem de Lucro Lojista vs FIPE:</span>
+                    <span className="font-extrabold text-sm text-emerald-700">
+                      {formatBRL(selectedVeiculo.preco_fipe - (selectedVeiculo.preco_lojista || selectedVeiculo.preco_repasse))}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Dados Técnicos */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                  <div className="p-3 bg-[#FDF8F1] rounded-xl border border-[#EEDFCF]">
+                    <span className="text-[#7D6250] block text-[10px]">Marca / Modelo:</span>
+                    <strong className="text-[#3B2016] text-xs font-extrabold">{selectedVeiculo.marca} {selectedVeiculo.modelo}</strong>
+                  </div>
+                  <div className="p-3 bg-[#FDF8F1] rounded-xl border border-[#EEDFCF]">
+                    <span className="text-[#7D6250] block text-[10px]">Ano / Modelo:</span>
+                    <strong className="text-[#3B2016] text-xs font-extrabold">{selectedVeiculo.ano}</strong>
+                  </div>
+                  <div className="p-3 bg-[#FDF8F1] rounded-xl border border-[#EEDFCF]">
+                    <span className="text-[#7D6250] block text-[10px]">Quilometragem:</span>
+                    <strong className="text-[#3B2016] text-xs font-extrabold">{selectedVeiculo.km.toLocaleString('pt-BR')} km</strong>
+                  </div>
+                  <div className="p-3 bg-[#FDF8F1] rounded-xl border border-[#EEDFCF]">
+                    <span className="text-[#7D6250] block text-[10px]">Câmbio / Combustível:</span>
+                    <strong className="text-[#3B2016] text-xs font-extrabold">{selectedVeiculo.cambio} • {selectedVeiculo.combustivel}</strong>
+                  </div>
+                </div>
+
+                {/* Observações de Repasse */}
+                {selectedVeiculo.observacoes_repasse && (
+                  <div className="p-4 bg-amber-50 rounded-2xl border border-amber-200 space-y-1.5">
+                    <h4 className="font-bold text-amber-900 text-xs uppercase flex items-center gap-1.5">
+                      <ShieldAlert className="w-4 h-4 text-amber-600" />
+                      Observações Transparentes de Repasse:
+                    </h4>
+                    <p className="text-xs text-amber-950 leading-relaxed font-medium">
+                      {selectedVeiculo.observacoes_repasse}
+                    </p>
+                  </div>
+                )}
+
+                {/* Descrição Detalhada */}
+                {selectedVeiculo.descricao && (
+                  <div className="space-y-1 text-xs">
+                    <h4 className="font-bold text-[#3B2016] uppercase text-[11px]">Descrição do Anúncio:</h4>
+                    <p className="text-[#7D6250] leading-relaxed bg-[#FDF8F1] p-3 rounded-xl border border-[#EEDFCF]">
+                      {selectedVeiculo.descricao}
+                    </p>
+                  </div>
+                )}
+
+                {/* Botões de Ação no Modal */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                  <button
+                    onClick={() => {
+                      const v = selectedVeiculo;
+                      setSelectedVeiculo(null);
+                      handleAbrirModalProposta(v);
+                    }}
+                    className="py-3.5 px-4 bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs uppercase rounded-xl transition-all flex items-center justify-center gap-2 shadow-md cursor-pointer"
+                  >
+                    <Handshake className="w-4 h-4" />
+                    <span>Enviar Proposta de Lojista</span>
+                  </button>
+
+                  <button
+                    onClick={() => openWhatsAppDirect(selectedVeiculo)}
+                    className="py-3.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs uppercase rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <MessageCircle className="w-4 h-4 fill-current" />
+                    <span>Fechar Negócio pelo WhatsApp</span>
+                  </button>
+                </div>
+
+              </div>
             </motion.div>
           </div>
         )}

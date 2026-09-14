@@ -682,6 +682,11 @@ export async function cadastrarRepassador(
   }
   saveLocalRepassadores(currentLocal);
 
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('manos-repassadores-updated'));
+    window.dispatchEvent(new Event('storage'));
+  }
+
   try {
     const { data, error } = await supabase
       .from('repassadores')
@@ -698,7 +703,24 @@ export async function cadastrarRepassador(
 
     if (error) {
       if (error.code === '23505') {
-        return { ok: false, error: 'Este número de telefone já possui cadastro.' };
+        // Se o telefone já existir no Supabase, atualiza o cadastro para pendente
+        const { data: updatedData } = await supabase
+          .from('repassadores')
+          .update({
+            nome_completo: novoRepassador.nome_completo,
+            cpf_cnpj: novoRepassador.cpf_cnpj,
+            nome_loja: novoRepassador.nome_loja,
+            cidade: novoRepassador.cidade,
+            status: novoRepassador.status,
+            observacoes: novoRepassador.observacoes
+          })
+          .eq('telefone', novoRepassador.telefone)
+          .select();
+
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('manos-repassadores-updated'));
+        }
+        return { ok: true, data: updatedData?.[0] || novoRepassador };
       }
       console.warn('Inserção Supabase repassador aviso (salvo localmente):', error.message);
       return { ok: true, data: novoRepassador };
@@ -755,6 +777,11 @@ export async function atualizarStatusRepassador(
     saveLocalRepassadores(localList);
   }
 
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('manos-repassadores-updated'));
+    window.dispatchEvent(new Event('storage'));
+  }
+
   try {
     const { error } = await supabase
       .from('repassadores')
@@ -773,6 +800,11 @@ export async function atualizarStatusRepassador(
 export async function excluirRepassador(id: number | string): Promise<{ ok: boolean; error?: string }> {
   const localList = getLocalRepassadores().filter(r => String(r.id) !== String(id));
   saveLocalRepassadores(localList);
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('manos-repassadores-updated'));
+    window.dispatchEvent(new Event('storage'));
+  }
 
   try {
     const { error } = await supabase
@@ -845,6 +877,11 @@ export async function cadastrarPropostaLojista(
   const currentList = getLocalPropostas();
   currentList.unshift(newProposta);
   saveLocalPropostas(currentList);
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('manos-propostas-updated'));
+    window.dispatchEvent(new Event('storage'));
+  }
 
   try {
     const { data, error } = await supabase
@@ -942,6 +979,11 @@ export async function responderPropostaAdmin(
     if (respostaManos !== undefined) localList[idx].resposta_manos = respostaManos;
     localList[idx].updated_at = new Date().toISOString();
     saveLocalPropostas(localList);
+  }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('manos-propostas-updated'));
+    window.dispatchEvent(new Event('storage'));
   }
 
   try {

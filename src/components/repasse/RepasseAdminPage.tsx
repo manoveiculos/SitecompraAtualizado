@@ -137,6 +137,29 @@ export default function RepasseAdminPage() {
   useEffect(() => {
     if (isAuthenticated) {
       loadData();
+
+      const handleRepassadoresEvent = () => loadRepassadores();
+      const handlePropostasEvent = () => loadPropostas();
+      const handleStorageEvent = (e: StorageEvent) => {
+        if (!e.key || e.key === 'manos_veiculos_repassadores_v1') loadRepassadores();
+        if (!e.key || e.key === 'manos_propostas_repasse_v1') loadPropostas();
+      };
+
+      window.addEventListener('manos-repassadores-updated', handleRepassadoresEvent);
+      window.addEventListener('manos-propostas-updated', handlePropostasEvent);
+      window.addEventListener('storage', handleStorageEvent);
+
+      const interval = setInterval(() => {
+        loadRepassadores();
+        loadPropostas();
+      }, 6000);
+
+      return () => {
+        window.removeEventListener('manos-repassadores-updated', handleRepassadoresEvent);
+        window.removeEventListener('manos-propostas-updated', handlePropostasEvent);
+        window.removeEventListener('storage', handleStorageEvent);
+        clearInterval(interval);
+      };
     }
   }, [isAuthenticated]);
 
@@ -438,11 +461,28 @@ export default function RepasseAdminPage() {
       valContra = parseFloat(valorContrapropostaInput.replace(/\D/g, '')) || 0;
     }
 
+    const targetId = selectedPropostaAction.id;
+    const targetResposta = respostaManosInput.trim();
+
+    // Atualiza otimisticamente a interface
+    setPropostas(prev => prev.map(p => {
+      if (String(p.id) === String(targetId)) {
+        return {
+          ...p,
+          status: finalStatus,
+          valor_contraproposta: valContra,
+          resposta_manos: targetResposta,
+          updated_at: new Date().toISOString()
+        };
+      }
+      return p;
+    }));
+
     const res = await responderPropostaAdmin(
-      selectedPropostaAction.id,
+      targetId,
       finalStatus,
       valContra,
-      respostaManosInput.trim()
+      targetResposta
     );
 
     setActionLoading(false);
@@ -1290,6 +1330,134 @@ export default function RepasseAdminPage() {
                 >
                   {saving ? 'Salvando...' : editingId ? 'Atualizar Veículo' : 'Cadastrar Veículo de Repasse'}
                 </button>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL DE RESPOSTA / AÇÃO PARA PROPOSTAS DE LOJISTAS */}
+      <AnimatePresence>
+        {actionModalType && selectedPropostaAction && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => { setActionModalType(null); setSelectedPropostaAction(null); }}
+              className="fixed inset-0 bg-black/70 backdrop-blur-sm"
+            />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative w-full max-w-lg bg-[#121216] border border-white/15 text-white rounded-3xl overflow-hidden shadow-2xl z-10 my-auto p-6 space-y-5"
+            >
+              <div className="flex items-center justify-between border-b border-white/10 pb-4">
+                <div className="flex items-center gap-2">
+                  {actionModalType === 'aceitar' && (
+                    <div className="px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 rounded-full text-xs font-black uppercase flex items-center gap-1.5">
+                      <Check className="w-4 h-4" /> Aceitar Proposta
+                    </div>
+                  )}
+                  {actionModalType === 'contraproposta' && (
+                    <div className="px-3 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded-full text-xs font-black uppercase flex items-center gap-1.5">
+                      <Handshake className="w-4 h-4" /> Enviar Contraproposta
+                    </div>
+                  )}
+                  {actionModalType === 'recusar' && (
+                    <div className="px-3 py-1 bg-red-500/20 text-red-400 border border-red-500/40 rounded-full text-xs font-black uppercase flex items-center gap-1.5">
+                      <X className="w-4 h-4" /> Recusar Proposta
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => { setActionModalType(null); setSelectedPropostaAction(null); }}
+                  className="p-1.5 text-white/40 hover:text-white"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Resumo da Proposta */}
+              <div className="bg-black/40 p-4 rounded-2xl border border-white/5 space-y-2 text-xs">
+                <div>
+                  <span className="text-white/40 block text-[10px] uppercase font-bold">Veículo:</span>
+                  <strong className="text-white text-sm font-extrabold">{selectedPropostaAction.veiculo_titulo}</strong>
+                </div>
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-white/5">
+                  <div>
+                    <span className="text-white/40 block text-[10px] font-bold">Lojista:</span>
+                    <strong className="text-amber-400">{selectedPropostaAction.repassador_loja}</strong>
+                    <span className="block text-white/60 text-[11px]">{selectedPropostaAction.repassador_nome}</span>
+                  </div>
+                  <div>
+                    <span className="text-white/40 block text-[10px] font-bold">Proposta Recebida:</span>
+                    <strong className="text-emerald-400 text-sm font-bold">{formatBRL(selectedPropostaAction.valor_proposta)}</strong>
+                    <span className="block text-white/50 text-[10px]">Anunciado: {formatBRL(selectedPropostaAction.valor_veiculo)}</span>
+                  </div>
+                </div>
+              </div>
+
+              <form onSubmit={handleResponderPropostaSubmit} className="space-y-4 text-xs">
+                {actionModalType === 'contraproposta' && (
+                  <div className="space-y-1">
+                    <label className="font-bold text-white/80 block">Valor da Contraproposta (R$)</label>
+                    <input
+                      type="text"
+                      required
+                      className="w-full p-3.5 bg-white/5 border border-amber-500/40 rounded-xl text-amber-300 font-extrabold text-base outline-none focus:border-amber-400"
+                      value={valorContrapropostaInput}
+                      onChange={e => setValorContrapropostaInput(e.target.value)}
+                    />
+                  </div>
+                )}
+
+                <div className="space-y-1">
+                  <label className="font-bold text-white/80 block">Mensagem de Resposta ao Lojista</label>
+                  <textarea
+                    rows={3}
+                    required
+                    className="w-full p-3 bg-white/5 border border-white/10 rounded-xl text-white outline-none focus:border-manos-red"
+                    value={respostaManosInput}
+                    onChange={e => setRespostaManosInput(e.target.value)}
+                  />
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-center gap-2 pt-2">
+                  <button
+                    type="submit"
+                    disabled={actionLoading}
+                    className={`w-full py-3.5 font-black text-xs uppercase rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                      actionModalType === 'aceitar' ? 'bg-emerald-600 hover:bg-emerald-500 text-white' :
+                      actionModalType === 'contraproposta' ? 'bg-amber-500 hover:bg-amber-400 text-black' :
+                      'bg-red-600 hover:bg-red-500 text-white'
+                    }`}
+                  >
+                    {actionLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4" />
+                        <span>
+                          {actionModalType === 'aceitar' && 'Confirmar e Aceitar Proposta'}
+                          {actionModalType === 'contraproposta' && 'Enviar Contraproposta'}
+                          {actionModalType === 'recusar' && 'Confirmar Recusa'}
+                        </span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => { setActionModalType(null); setSelectedPropostaAction(null); }}
+                    className="w-full sm:w-auto px-4 py-3.5 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-xl"
+                  >
+                    Cancelar
+                  </button>
+                </div>
               </form>
             </motion.div>
           </div>
