@@ -18,6 +18,16 @@ export const SITE_URL = 'https://manosveiculoscompra.com';
 // pelos buscadores e pelo ChatGPT) fica invisível para a medição.
 const OPENAI_ADS_PIXEL_ID =
   process.env.VITE_OPENAI_ADS_PIXEL_ID || process.env.OPENAI_ADS_PIXEL_ID || '';
+
+// Mesmo id do pixel Meta que já roda no index.html (server/meta.ts usa o
+// mesmo default). Não é segredo: chega ao navegador de qualquer jeito.
+//
+// Até aqui estas páginas SSR não carregavam o pixel da Meta — só o do
+// OpenAI Ads. Resultado: cliques em anúncio de catálogo dinâmico da Meta (que
+// abrem direto numa página de veículo) e todo o tráfego orgânico do
+// /estoque nunca disparavam ViewContent/AddToCart, e o catálogo ficava com
+// 0% de taxa de correspondência no Gerenciador de Comércio.
+const META_PIXEL_ID = process.env.META_PIXEL_ID || '3253946971444443';
 const FEED_URL =
   'https://estoque.altimus.com.br/api/estoquexml?estoque=997c9e91-40d7-4bec-95cb-68e18a2668a3';
 
@@ -431,6 +441,88 @@ function medicaoScript(veiculo?: { id: string; nome: string; preco: number }): s
 </script>`;
 }
 
+/**
+ * Pixel da Meta nas páginas do catálogo (SSR).
+ *
+ * Espelha exatamente o que medicaoScript() já faz para o OpenAI Ads, e existe
+ * pelo mesmo motivo: estas páginas são renderizadas fora do index.html, então
+ * precisam carregar e disparar o pixel por conta própria. Sem isto, cliques em
+ * anúncio de catálogo dinâmico da Meta — que abrem direto numa página de
+ * veículo — e todo o tráfego orgânico do /estoque nunca disparavam
+ * ViewContent/AddToCart, e o Gerenciador de Comércio reportava 0% de taxa de
+ * correspondência e os 3 eventos como ausentes.
+ *
+ * `ViewContent` só client-side de propósito (mesmo raciocínio documentado em
+ * RASTREAMENTO-OPENAI-ADS.md): a maior parte do tráfego bruto do /estoque é
+ * crawler, e crawler não executa JS — então nunca dispara aqui. Mandar pelo
+ * servidor contaria cada passagem de bot como visualização.
+ *
+ * `AddToCart` já sai também pelo servidor (Conversions API, server/meta.ts):
+ * é clique humano — precisa de JS para acontecer — e é justamente o tipo de
+ * evento que sumiria com um bloqueador de anúncio.
+ */
+function metaPixelScript(veiculo?: { id: string; nome: string; preco: number }): string {
+  if (!META_PIXEL_ID) return '';
+
+  const dadosVeiculo = veiculo
+    ? JSON.stringify({ id: veiculo.id, nome: veiculo.nome, preco: Math.round(veiculo.preco) }).replace(/</g, '<')
+    : 'null';
+
+  return `<script>
+!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', ${JSON.stringify(META_PIXEL_ID)});
+fbq('track', 'PageView');
+(function(w,d){
+  function novoId(){
+    try{ if(w.crypto&&w.crypto.randomUUID) return w.crypto.randomUUID(); }catch(e){}
+    return "evt_"+Date.now()+"_"+Math.random().toString(36).slice(2,11);
+  }
+
+  var v = ${dadosVeiculo};
+  if(v){
+    fbq('track','ViewContent',{content_ids:[v.id],content_type:'product',
+      content_name:v.nome,value:v.preco,currency:'BRL'});
+  }
+
+  // Delegação: os CTAs ("Tenho interesse" e WhatsApp) carregam o veículo em
+  // data-attributes — cobre tanto a página de um carro quanto os cards da
+  // listagem em /estoque, todos com o mesmo listener.
+  d.addEventListener("click", function(ev){
+    var a = ev.target && ev.target.closest ? ev.target.closest("a[data-vid]") : null;
+    if(!a) return;
+
+    var eid = novoId();
+    var vid = a.getAttribute("data-vid");
+    var nome = a.getAttribute("data-vname") || "";
+    var preco = parseFloat(a.getAttribute("data-vprice") || "0") || 0;
+
+    fbq('track','AddToCart',{content_ids:[vid],content_type:'product',
+      content_name:nome,value:preco,currency:'BRL'},{eventID:eid});
+
+    // sendBeacon sobrevive à navegação (WhatsApp sai do site); o servidor
+    // reenvia pela Conversions API com o mesmo event_id, deduplicando os dois.
+    try{
+      var corpo = JSON.stringify({evento:"catalogo_addtocart",event_id:eid,
+        vehicle_id:vid,vehicle_name:nome,value:preco,
+        source_url:w.location.origin+w.location.pathname});
+      if(navigator.sendBeacon){
+        navigator.sendBeacon("/api/ads/conversao", new Blob([corpo],{type:"application/json"}));
+      }
+    }catch(e){}
+  }, true);
+})(window,document);
+</script>
+<noscript><img height="1" width="1" style="display:none"
+src="https://www.facebook.com/tr?id=${encodeURIComponent(META_PIXEL_ID)}&ev=PageView&noscript=1" /></noscript>`;
+}
+
 function layout(opts: {
   title: string;
   description: string;
@@ -467,6 +559,7 @@ function layout(opts: {
 <html lang="pt-BR">
 <head>
 ${head}
+${metaPixelScript(opts.veiculo)}
 ${medicaoScript(opts.veiculo)}
 </head>
 <body>
@@ -589,8 +682,8 @@ export function renderCatalog(
       <div class="muted small">${escHtml(v.year)} • ${escHtml(v.km)}${v.fuel ? ' • ' + escHtml(v.fuel) : ''}</div>
       <div class="price">${escHtml(v.priceFormatted)}</div>
       <div class="card-actions">
-        <a class="btn" href="${SITE_URL}/?id=${encodeURIComponent(v.id)}">Tenho interesse</a>
-        <a class="btn ghost" href="https://wa.me/${DEALER.whatsapp}?text=${encodeURIComponent('Olá! Tenho interesse no ' + v.title)}">WhatsApp</a>
+        <a class="btn" href="${SITE_URL}/?id=${encodeURIComponent(v.id)}" data-vid="${escHtml(v.id)}" data-vname="${escHtml(v.title)}" data-vprice="${v.price || 0}">Tenho interesse</a>
+        <a class="btn ghost" href="https://wa.me/${DEALER.whatsapp}?text=${encodeURIComponent('Olá! Tenho interesse no ' + v.title)}" data-vid="${escHtml(v.id)}" data-vname="${escHtml(v.title)}" data-vprice="${v.price || 0}">WhatsApp</a>
       </div>
     </div>
   </div>`,
@@ -669,9 +762,9 @@ export function renderVehicle(v: FeedVehicle): string {
   <h1>${escHtml(v.title)}</h1>
   <div class="price" style="font-size:26px">${escHtml(v.priceFormatted)}</div>
   <div class="specs">${specs}</div>
-  <a class="cta" href="${SITE_URL}/?id=${encodeURIComponent(v.id)}">Tenho interesse — receber proposta</a>
+  <a class="cta" href="${SITE_URL}/?id=${encodeURIComponent(v.id)}" data-vid="${escHtml(v.id)}" data-vname="${escHtml(v.title)}" data-vprice="${v.price || 0}">Tenho interesse — receber proposta</a>
   &nbsp;
-  <a class="cta alt" href="https://wa.me/${DEALER.whatsapp}?text=${encodeURIComponent('Olá! Tenho interesse no ' + v.title + ' (' + canonical + ')')}">WhatsApp</a>
+  <a class="cta alt" href="https://wa.me/${DEALER.whatsapp}?text=${encodeURIComponent('Olá! Tenho interesse no ' + v.title + ' (' + canonical + ')')}" data-vid="${escHtml(v.id)}" data-vname="${escHtml(v.title)}" data-vprice="${v.price || 0}">WhatsApp</a>
   ${gallery ? `<h2>Fotos</h2><div class="gallery">${gallery}</div>` : ''}
   <h2>Sobre este veículo</h2>
   <p>${escHtml(v.title)} à venda na <strong>${escHtml(DEALER.name)}</strong>, em ${escHtml(DEALER.city)}/${DEALER.region}. Veículo seminovo${v.km ? ` com ${escHtml(v.km)}` : ''}${v.fuel ? `, motor ${escHtml(v.fuel)}` : ''}${v.transmission ? `, câmbio ${escHtml(v.transmission)}` : ''}. Aceitamos seu usado na troca e oferecemos financiamento.</p>

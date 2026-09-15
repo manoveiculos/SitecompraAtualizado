@@ -675,6 +675,8 @@ async function startServer() {
     const scores = await diagnosticoScores();
     res.json({
       meta_capi: capiConfigurado() ? "configurado" : "sem META_CAPI_TOKEN",
+      meta_pixel_catalogo: process.env.META_PIXEL_ID || "3253946971444443 (default)",
+      meta_venda_confirmada: process.env.META_WEBHOOK_SECRET ? "configurado" : "sem META_WEBHOOK_SECRET",
       openai_ads_capi: openAiAdsConfigurado() ? "configurado" : "sem OPENAI_ADS_API_KEY",
       // Tabela quebrada e tabela vazia pedem ações opostas — conserto de RLS
       // versus falta de tráfego. Antes as duas apareciam na mesma frase e o
@@ -698,40 +700,117 @@ async function startServer() {
   // frágil de medir: a pessoa sai da página no mesmo instante e o evento é o
   // primeiro que um bloqueador derruba. O navegador manda um beacon aqui e o
   // servidor reenvia pela Conversions API, com o MESMO event_id — então quando
-  // os dois chegam, a OpenAI conta uma conversão, não duas.
+  // os dois chegam, a plataforma conta uma conversão, não duas.
   //
   // Só eventos da lista são aceitos: o endpoint é público, e sem a lista
   // qualquer um poderia inventar conversão e sujar a otimização da campanha.
+  //
+  // Dois grupos, duas plataformas: "whatsapp"/"telefone" vêm do funil (SPA) e
+  // do catálogo, e reenviam pela CAPI do OpenAI Ads. "catalogo_addtocart" vem
+  // só das páginas SSR do catálogo (server/catalog.ts) e reenvia pela
+  // Conversions API da Meta — é o mesmo clique em "Tenho interesse"/WhatsApp
+  // que já dispara o `fbq('track','AddToCart', ...)` no navegador; aqui é só
+  // o reforço contra bloqueador, com o MESMO event_id para não dobrar.
   // -------------------------------------------------------------------------
-  const EVENTOS_ESPELHADOS = new Set(["whatsapp", "telefone"]);
+  const EVENTOS_OPENAI = new Set(["whatsapp", "telefone"]);
+  const EVENTOS_META = new Set(["catalogo_addtocart"]);
 
   app.post("/api/ads/conversao", (req, res) => {
     try {
       const body = req.body ?? {};
       const evento = String(body.evento || "");
       const eventId = String(body.event_id || "");
+      const paraOpenAi = EVENTOS_OPENAI.has(evento);
+      const paraMeta = EVENTOS_META.has(evento);
 
-      if (!EVENTOS_ESPELHADOS.has(evento) || !eventId) {
+      if ((!paraOpenAi && !paraMeta) || !eventId) {
         return res.status(400).json({ ok: false });
       }
 
       const atribuicao = (body.atribuicao ?? {}) as Record<string, string | undefined>;
 
-      void enviarEventoOpenAiAds({
-        eventName: "custom",
-        customEventName: evento,
-        eventId,
-        clientIp: req.ip,
-        userAgent: String(req.headers["user-agent"] || ""),
-        oppref: atribuicao.oppref ?? null,
-        sourceUrl: typeof body.source_url === "string" ? body.source_url : undefined,
-      });
+      if (paraOpenAi) {
+        void enviarEventoOpenAiAds({
+          eventName: "custom",
+          customEventName: evento,
+          eventId,
+          clientIp: req.ip,
+          userAgent: String(req.headers["user-agent"] || ""),
+          oppref: atribuicao.oppref ?? null,
+          sourceUrl: typeof body.source_url === "string" ? body.source_url : undefined,
+        });
+      }
+
+      if (paraMeta) {
+        void enviarEventoCapi({
+          eventName: "AddToCart",
+          eventId,
+          clientIp: req.ip,
+          userAgent: String(req.headers["user-agent"] || ""),
+          ...cookiesMeta(req, atribuicao),
+          value: Number(body.value) || 0,
+          currency: "BRL",
+          contentIds: body.vehicle_id ? [String(body.vehicle_id)] : undefined,
+          contentName: typeof body.vehicle_name === "string" ? body.vehicle_name : undefined,
+          sourceUrl: typeof body.source_url === "string" ? body.source_url : undefined,
+        });
+      }
 
       // 204: o navegador está saindo da página e não vai ler resposta nenhuma.
       res.status(204).end();
     } catch (err) {
       console.error("espelho de conversao falhou:", err);
       res.status(204).end();
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Evento `Purchase` para a Meta — venda confirmada no CRM.
+  //
+  // Não existe checkout neste site (é um funil de lead para revenda de
+  // veículos), então "compra" só existe quando o CRM marca a venda como
+  // fechada. Este endpoint é o gancho para isso: o CRM (ou o n8n) chama aqui
+  // quando o lead vira venda, e o servidor reenvia pela Conversions API.
+  //
+  // Terceiro dos três eventos que o Gerenciador de Comércio apontava como
+  // ausentes nos últimos 7 dias (os outros dois — ViewContent e AddToCart —
+  // já saem das páginas do catálogo, ver server/catalog.ts).
+  //
+  // Protegido por segredo compartilhado (não é rota pública como a de cima):
+  // sem META_WEBHOOK_SECRET configurado, o endpoint responde 503 — falha
+  // fechada, mesmo padrão do /leads-manos.
+  // -------------------------------------------------------------------------
+  app.post("/api/meta/venda-confirmada", express.json(), (req, res) => {
+    const segredo = process.env.META_WEBHOOK_SECRET || "";
+    if (!segredo) {
+      return res.status(503).json({ ok: false, error: "META_WEBHOOK_SECRET não configurado" });
+    }
+    if (req.headers["x-webhook-secret"] !== segredo) {
+      return res.status(401).json({ ok: false });
+    }
+
+    try {
+      const body = req.body ?? {};
+      const eventId = String(body.event_id || `venda_${Date.now()}`);
+      const vehicleId = body.vehicle_id ? String(body.vehicle_id) : undefined;
+
+      void enviarEventoCapi({
+        eventName: "Purchase",
+        eventId,
+        phone: typeof body.phone === "string" ? body.phone : undefined,
+        firstName: typeof body.name === "string" ? body.name : undefined,
+        city: typeof body.city === "string" ? body.city : undefined,
+        value: Number(body.value) || 0,
+        currency: "BRL",
+        contentIds: vehicleId ? [vehicleId] : undefined,
+        contentName: typeof body.vehicle_name === "string" ? body.vehicle_name : undefined,
+        sourceUrl: vehicleId ? `https://manosveiculoscompra.com/estoque/${vehicleId}` : undefined,
+      });
+
+      res.status(200).json({ ok: true });
+    } catch (err) {
+      console.error("venda-confirmada falhou:", err);
+      res.status(500).json({ ok: false });
     }
   });
 
