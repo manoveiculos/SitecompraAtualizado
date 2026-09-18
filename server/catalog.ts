@@ -10,6 +10,8 @@
 // Everything is generated on the fly with a short in-memory cache.
 // ---------------------------------------------------------------------------
 
+import { aplicarMapeamento } from './catalogSync';
+
 export const SITE_URL = 'https://manosveiculoscompra.com';
 
 // Mesmo pixel do funil. Estas páginas são renderizadas aqui, fora do
@@ -79,6 +81,13 @@ export interface FeedVehicle {
   options: string[];
   images: string[];
   description: string;
+  /** Chave estável entre Altimus, catálogo da Meta e CRM. */
+  placa: string;
+  /**
+   * content_id do catálogo da Meta, quando o mapeamento já resolveu esta placa
+   * (ver server/catalogSync.ts). Ausente = manda o id da Altimus, como antes.
+   */
+  metaContentId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -193,6 +202,7 @@ function parseFeed(xml: string): FeedVehicle[] {
       options,
       images,
       description,
+      placa: getTag('placa').toUpperCase(),
     });
   }
 
@@ -226,7 +236,9 @@ export async function getVehicles(): Promise<FeedVehicle[]> {
     const res = await fetch(FEED_URL);
     if (!res.ok) throw new Error(`Feed responded ${res.status}`);
     const xml = await res.text();
-    const vehicles = parseFeed(xml);
+    // O mapeamento entra junto com o feed e vale pela mesma janela de cache:
+    // uma consulta a cada 10 minutos, nenhuma por requisição de página.
+    const vehicles = await aplicarMapeamento(parseFeed(xml));
     cache = { at: Date.now(), vehicles };
     return vehicles;
   } catch (err) {
@@ -394,7 +406,7 @@ function medicaoScript(veiculo?: { id: string; nome: string; preco: number }): s
   // JSON dentro de <script> precisa ter o `<` escapado, senão um `</` no nome
   // do veículo fecharia a tag no meio.
   const dadosVeiculo = veiculo
-    ? JSON.stringify({ id: veiculo.id, nome: veiculo.nome, preco: Math.round(veiculo.preco) }).replace(/</g, '\u003c')
+    ? JSON.stringify({ id: veiculo.id, nome: veiculo.nome, preco: Math.round(veiculo.preco) }).replace(/</g, '\\u003c')
     : 'null';
 
   return `<script>
@@ -461,11 +473,21 @@ function medicaoScript(veiculo?: { id: string; nome: string; preco: number }): s
  * é clique humano — precisa de JS para acontecer — e é justamente o tipo de
  * evento que sumiria com um bloqueador de anúncio.
  */
-function metaPixelScript(veiculo?: { id: string; nome: string; preco: number }): string {
+function metaPixelScript(
+  veiculo?: { id: string; nome: string; preco: number; metaId?: string },
+): string {
   if (!META_PIXEL_ID) return '';
 
+  // `metaId` é o id do produto no catálogo da Meta; o id da Altimus é o
+  // fallback para quem ainda não tem correspondência. O OpenAI Ads segue com o
+  // id da Altimus (o feed dele é montado com esse número) — por isso os dois
+  // scripts não compartilham o mesmo campo.
   const dadosVeiculo = veiculo
-    ? JSON.stringify({ id: veiculo.id, nome: veiculo.nome, preco: Math.round(veiculo.preco) }).replace(/</g, '<')
+    ? JSON.stringify({
+        id: veiculo.metaId || veiculo.id,
+        nome: veiculo.nome,
+        preco: Math.round(veiculo.preco),
+      }).replace(/</g, '\\u003c')
     : 'null';
 
   return `<script>
@@ -533,7 +555,7 @@ function layout(opts: {
   /** Sobrescreve a diretiva padrão — usado por páginas que não devem indexar. */
   robots?: string;
   /** Quando a página é de um veículo, dispara `contents_viewed` com ele. */
-  veiculo?: { id: string; nome: string; preco: number };
+  veiculo?: { id: string; nome: string; preco: number; metaId?: string };
 }): string {
   const head = [
     '<meta charset="utf-8">',
@@ -682,8 +704,8 @@ export function renderCatalog(
       <div class="muted small">${escHtml(v.year)} • ${escHtml(v.km)}${v.fuel ? ' • ' + escHtml(v.fuel) : ''}</div>
       <div class="price">${escHtml(v.priceFormatted)}</div>
       <div class="card-actions">
-        <a class="btn" href="${SITE_URL}/?id=${encodeURIComponent(v.id)}" data-vid="${escHtml(v.id)}" data-vname="${escHtml(v.title)}" data-vprice="${v.price || 0}">Tenho interesse</a>
-        <a class="btn ghost" href="https://wa.me/${DEALER.whatsapp}?text=${encodeURIComponent('Olá! Tenho interesse no ' + v.title)}" data-vid="${escHtml(v.id)}" data-vname="${escHtml(v.title)}" data-vprice="${v.price || 0}">WhatsApp</a>
+        <a class="btn" href="${SITE_URL}/?id=${encodeURIComponent(v.id)}" data-vid="${escHtml(v.metaContentId || v.id)}" data-vname="${escHtml(v.title)}" data-vprice="${v.price || 0}">Tenho interesse</a>
+        <a class="btn ghost" href="https://wa.me/${DEALER.whatsapp}?text=${encodeURIComponent('Olá! Tenho interesse no ' + v.title)}" data-vid="${escHtml(v.metaContentId || v.id)}" data-vname="${escHtml(v.title)}" data-vprice="${v.price || 0}">WhatsApp</a>
       </div>
     </div>
   </div>`,
@@ -762,9 +784,9 @@ export function renderVehicle(v: FeedVehicle): string {
   <h1>${escHtml(v.title)}</h1>
   <div class="price" style="font-size:26px">${escHtml(v.priceFormatted)}</div>
   <div class="specs">${specs}</div>
-  <a class="cta" href="${SITE_URL}/?id=${encodeURIComponent(v.id)}" data-vid="${escHtml(v.id)}" data-vname="${escHtml(v.title)}" data-vprice="${v.price || 0}">Tenho interesse — receber proposta</a>
+  <a class="cta" href="${SITE_URL}/?id=${encodeURIComponent(v.id)}" data-vid="${escHtml(v.metaContentId || v.id)}" data-vname="${escHtml(v.title)}" data-vprice="${v.price || 0}">Tenho interesse — receber proposta</a>
   &nbsp;
-  <a class="cta alt" href="https://wa.me/${DEALER.whatsapp}?text=${encodeURIComponent('Olá! Tenho interesse no ' + v.title + ' (' + canonical + ')')}" data-vid="${escHtml(v.id)}" data-vname="${escHtml(v.title)}" data-vprice="${v.price || 0}">WhatsApp</a>
+  <a class="cta alt" href="https://wa.me/${DEALER.whatsapp}?text=${encodeURIComponent('Olá! Tenho interesse no ' + v.title + ' (' + canonical + ')')}" data-vid="${escHtml(v.metaContentId || v.id)}" data-vname="${escHtml(v.title)}" data-vprice="${v.price || 0}">WhatsApp</a>
   ${gallery ? `<h2>Fotos</h2><div class="gallery">${gallery}</div>` : ''}
   <h2>Sobre este veículo</h2>
   <p>${escHtml(v.title)} à venda na <strong>${escHtml(DEALER.name)}</strong>, em ${escHtml(DEALER.city)}/${DEALER.region}. Veículo seminovo${v.km ? ` com ${escHtml(v.km)}` : ''}${v.fuel ? `, motor ${escHtml(v.fuel)}` : ''}${v.transmission ? `, câmbio ${escHtml(v.transmission)}` : ''}. Aceitamos seu usado na troca e oferecemos financiamento.</p>
@@ -776,7 +798,7 @@ export function renderVehicle(v: FeedVehicle): string {
     canonical,
     ogImage: v.images[0] || DEALER.logo,
     jsonLdBlocks: [jsonLd(vehicleSchema(v)), jsonLd(breadcrumb)],
-    veiculo: { id: v.id, nome: v.title, preco: v.price },
+    veiculo: { id: v.id, nome: v.title, preco: v.price, metaId: v.metaContentId },
     body,
   });
 }

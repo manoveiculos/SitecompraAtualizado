@@ -21,6 +21,11 @@ import {
 import { radarMiddleware } from "./server/radar";
 import { calcularScore, acaoRecomendada } from "./server/scoring";
 import { enviarEventoCapi, capiConfigurado } from "./server/meta";
+import {
+  syncCatalogMapping,
+  mapeamentoConfigurado,
+  contentIdParaVenda,
+} from "./server/catalogSync";
 import { enviarEventoOpenAiAds, openAiAdsConfigurado } from "./server/openaiAds";
 import { registrarScore, lerScores, diagnosticoScores } from "./server/leadStats";
 import { renderLeadsPanel } from "./server/leadsPanel";
@@ -677,6 +682,9 @@ async function startServer() {
       meta_capi: capiConfigurado() ? "configurado" : "sem META_CAPI_TOKEN",
       meta_pixel_catalogo: process.env.META_PIXEL_ID || "3253946971444443 (default)",
       meta_venda_confirmada: process.env.META_WEBHOOK_SECRET ? "configurado" : "sem META_WEBHOOK_SECRET",
+      meta_catalogo_mapping: mapeamentoConfigurado()
+        ? "configurado"
+        : "sem META_CATALOG_ACCESS_TOKEN/SUPABASE_SERVICE_ROLE_KEY — eventos saem com o id da Altimus",
       openai_ads_capi: openAiAdsConfigurado() ? "configurado" : "sem OPENAI_ADS_API_KEY",
       // Tabela quebrada e tabela vazia pedem ações opostas — conserto de RLS
       // versus falta de tráfego. Antes as duas apareciam na mesma frase e o
@@ -779,8 +787,16 @@ async function startServer() {
   // Protegido por segredo compartilhado (não é rota pública como a de cima):
   // sem META_WEBHOOK_SECRET configurado, o endpoint responde 503 — falha
   // fechada, mesmo padrão do /leads-manos.
+  //
+  // Corpo esperado: `placa` (recomendado), `event_id` (id da venda no CRM, para
+  // reenvio não contar duas vezes), `value`, `phone`, `name`, `city`,
+  // `vehicle_name`. A `placa` é a chave que o CRM tem e a única estável entre
+  // Altimus, catálogo da Meta e CRM — o content_id do catálogo sai dela, pelo
+  // mapeamento (server/catalogSync.ts). `vehicle_id` continua aceito para quem
+  // já chama assim, mas vai como veio: se for o id da Altimus, o catálogo da
+  // Meta não reconhece.
   // -------------------------------------------------------------------------
-  app.post("/api/meta/venda-confirmada", express.json(), (req, res) => {
+  app.post("/api/meta/venda-confirmada", express.json(), async (req, res) => {
     const segredo = process.env.META_WEBHOOK_SECRET || "";
     if (!segredo) {
       return res.status(503).json({ ok: false, error: "META_WEBHOOK_SECRET não configurado" });
@@ -792,25 +808,102 @@ async function startServer() {
     try {
       const body = req.body ?? {};
       const eventId = String(body.event_id || `venda_${Date.now()}`);
+      const placa = typeof body.placa === "string" ? body.placa : "";
       const vehicleId = body.vehicle_id ? String(body.vehicle_id) : undefined;
+
+      // Com placa, o id vem do mapeamento — e um match aproximado é recusado
+      // lá: numa venda, produto errado credita dinheiro ao veículo errado, o
+      // que é pior do que venda sem produto.
+      const doMapa = placa ? await contentIdParaVenda(placa) : null;
+      const contentId = doMapa ? (doMapa.contentId ?? undefined) : vehicleId;
+
+      const aviso = doMapa && !doMapa.contentId
+        ? `venda sem produto do catálogo (${doMapa.motivo}) — confira a placa em vehicle_meta_mapping`
+        : !placa
+          ? "mande `placa` para casar a venda com o catálogo da Meta"
+          : undefined;
+      if (aviso) console.warn(`venda-confirmada: ${aviso} (event_id ${eventId})`);
 
       void enviarEventoCapi({
         eventName: "Purchase",
         eventId,
+        // A venda foi fechada no CRM, não numa página do site.
+        actionSource: "system_generated",
         phone: typeof body.phone === "string" ? body.phone : undefined,
         firstName: typeof body.name === "string" ? body.name : undefined,
         city: typeof body.city === "string" ? body.city : undefined,
         value: Number(body.value) || 0,
         currency: "BRL",
-        contentIds: vehicleId ? [vehicleId] : undefined,
+        contentIds: contentId ? [contentId] : undefined,
         contentName: typeof body.vehicle_name === "string" ? body.vehicle_name : undefined,
-        sourceUrl: vehicleId ? `https://manosveiculoscompra.com/estoque/${vehicleId}` : undefined,
       });
 
-      res.status(200).json({ ok: true });
+      res.status(200).json({ ok: true, content_id: contentId ?? null, aviso });
     } catch (err) {
       console.error("venda-confirmada falhou:", err);
       res.status(500).json({ ok: false });
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Sincronização placa -> content_id do catálogo da Meta.
+  //
+  // O catálogo do Gerenciador de Comércio é alimentado pela Autos 360, que
+  // numera os veículos do jeito dela. Sem esta tradução, os eventos saem com o
+  // id da Altimus, a Meta não reconhece o produto e a correspondência do
+  // catálogo fica em 0% mesmo com o pixel disparando certo.
+  //
+  // Protegida por segredo, como a de venda confirmada: fala com a Graph API e
+  // escreve no Supabase. Sem INTERNAL_SYNC_SECRET responde 503 — falha fechada.
+  //
+  // Para agendar de hora em hora sem depender de cron externo (pg_cron + pg_net
+  // já rodam no projeto):
+  //
+  //   select cron.schedule(
+  //     'sync-catalog-mapping-hourly',
+  //     '0 * * * *',
+  //     $
+  //     select net.http_post(
+  //       url := 'https://manosveiculoscompra.com/api/internal/sync-catalog-mapping',
+  //       headers := jsonb_build_object(
+  //         'Content-Type', 'application/json',
+  //         'x-internal-secret', 'MESMO_VALOR_DE_INTERNAL_SYNC_SECRET'
+  //       )
+  //     );
+  //     $
+  //   );
+  // -------------------------------------------------------------------------
+  app.post("/api/internal/sync-catalog-mapping", async (req, res) => {
+    const segredo = process.env.INTERNAL_SYNC_SECRET || "";
+    if (!segredo) {
+      return res.status(503).json({ ok: false, error: "INTERNAL_SYNC_SECRET não configurado" });
+    }
+    // Header repetido chega como array; comparar direto daria falso negativo.
+    if (String(req.headers["x-internal-secret"] || "") !== segredo) {
+      return res.status(401).json({ ok: false });
+    }
+
+    try {
+      const vehicles = await getVehicles();
+      const resumo = await syncCatalogMapping(
+        vehicles.map((v) => ({ id: v.id, placa: v.placa, title: v.title, price: v.price })),
+      );
+      res.json({
+        ok: true,
+        matched: resumo.matched,
+        needsReview: resumo.needsReview,
+        unmatched: resumo.unmatched,
+        // Vendidos continuam na tabela por um tempo: a venda é confirmada no
+        // CRM depois de o carro sair do feed, e o Purchase precisa do id.
+        marcadosForaDeEstoque: resumo.marcadosForaDeEstoque,
+        purgados: resumo.purgados,
+        // Só volta o que precisa de olho humano: a lista inteira não ajuda a
+        // decidir nada, e placa é dado de veículo.
+        revisar: resumo.results.filter((r) => r.needsReview || r.confidence === "unmatched"),
+      });
+    } catch (err) {
+      console.error("sync-catalog-mapping falhou:", err);
+      res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
     }
   });
 

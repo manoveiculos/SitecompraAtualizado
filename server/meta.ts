@@ -46,6 +46,11 @@ export interface EventoCapi {
   contentIds?: string[];
   contentName?: string;
   sourceUrl?: string;
+  /**
+   * `system_generated` para evento que não aconteceu numa página — a venda
+   * confirmada no CRM é o caso. O padrão é `website`.
+   */
+  actionSource?: 'website' | 'system_generated';
 }
 
 export function capiConfigurado(): boolean {
@@ -79,6 +84,10 @@ export async function enviarEventoCapi(evento: EventoCapi): Promise<boolean> {
     if (evento.contentIds?.length) {
       customData.content_ids = evento.contentIds;
       customData.content_type = 'product';
+      // Evento de catálogo quer os dois: `content_ids` casa o produto e
+      // `contents` carrega a quantidade. Só com o primeiro, o Gerenciador de
+      // Comércio aceita o evento mas não fecha a atribuição por produto.
+      customData.contents = evento.contentIds.map((id) => ({ id, quantity: 1 }));
     }
     if (evento.contentName) customData.content_name = evento.contentName;
 
@@ -88,7 +97,7 @@ export async function enviarEventoCapi(evento: EventoCapi): Promise<boolean> {
           event_name: evento.eventName,
           event_time: Math.floor(Date.now() / 1000),
           event_id: evento.eventId,
-          action_source: 'website',
+          action_source: evento.actionSource || 'website',
           event_source_url: evento.sourceUrl || 'https://manosveiculoscompra.com/',
           user_data: userData,
           custom_data: customData,
