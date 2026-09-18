@@ -69,7 +69,8 @@ do VPS. O **pixel id não é segredo** — ele chega ao navegador de qualquer je
 Está em variável para trocar de conta sem editar código, e para o servidor não
 ter um default embutido que mandaria conversão para a conta errada.
 
-Depois de alterar o `.env`: `pm2 reload manos --update-env`.
+Depois de alterar as variáveis no hPanel, reinicie/republique o app — e, se
+mexeu em alguma `VITE_*`, republique, porque ela é lida no build (ver DEPLOY.md).
 
 ## Validação
 

@@ -22,7 +22,8 @@ O estoque dos dois vem do mesmo feed XML da Altimus, com cache de 10 minutos.
 ## Stack
 
 Vite + React 19 + Tailwind 4 no front. Express no back (SSR do catálogo, APIs de
-lead, proxies). Supabase para métricas. PM2 + nginx no VPS.
+lead, proxies). Supabase para métricas. Hospedado na Hostinger, com publicação automática a
+partir da branch `main` (ver DEPLOY.md).
 
 ## Rodar localmente
 

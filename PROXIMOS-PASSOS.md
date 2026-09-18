@@ -1,8 +1,9 @@
 # Próximos passos — funil de conversão
 
-> **Situação em 19/08/2026.** Tudo já foi mesclado na `main` e publicado. O que
-> falta é **configuração em sistemas externos** — nenhuma delas quebra o site se
-> ficar faltando, mas cada uma desliga um número em silêncio.
+> **Situação em 18/09/2026.** Tudo já foi mesclado na `main` e publicado — a
+> hospedagem publica sozinha a cada push (ver [DEPLOY.md](DEPLOY.md)). O que
+> falta é **configuração em sistemas externos**: nada disso quebra o site, mas
+> cada item desliga um número em silêncio.
 >
 > Verificado direto na produção nesta data:
 >
@@ -10,13 +11,19 @@
 > |---|---|
 > | 2. Tabela `lead_scores` | ✅ **feita** — já gravando leads reais |
 > | 5. Senha do painel | ❌ **pendente** — `/leads-manos` responde **503**, nunca abriu |
-> | 6. Meta CAPI | ❌ **pendente** — `sem META_CAPI_TOKEN` |
+> | 6. Meta CAPI (token) | ✅ **feito** — `meta_capi: configurado` |
+> | 6b. Evento `Purchase` | ❌ **pendente** — `sem META_WEBHOOK_SECRET`, nenhuma venda é reportada |
+> | 9. Mapeamento do catálogo | ❌ **pendente** — eventos saem com o id da Altimus |
 > | 8. OpenAI Ads CAPI | ❌ **pendente** — `sem OPENAI_ADS_API_KEY` |
 >
 > Confira a qualquer momento com:
 > `curl -s https://manosveiculoscompra.com/api/health/tracking`
 
-Ordem sugerida pelo retorno: **5 → 6 → 8 → 3 → 4 → 7**.
+Ordem sugerida pelo retorno: **6b → 9 → 5 → 10 → 8 → 3 → 4 → 7**.
+
+> **Onde se configura:** no app Node.js do hPanel, não em `.env` de máquina
+> local nem em VPS. O `deploy.sh` e o `pm2` que aparecem em textos antigos
+> deste repositório descrevem uma infra que não é a que está no ar.
 
 ---
 
@@ -179,11 +186,8 @@ Gerar uma senha longa:
 openssl rand -base64 24
 ```
 
-Depois de mexer no `.env`, o PM2 precisa recarregar o ambiente:
-
-```bash
-pm2 reload manos --update-env
-```
+Depois de gravar a variável no hPanel, reinicie/republique o app — o processo
+só enxerga valores novos ao subir de novo.
 
 **Conferir:** abrir `/leads-manos` no navegador — tem que aparecer a caixa de
 usuário e senha. O resto do site (`/`, `/estoque`, `/vendasrapidas`) continua
@@ -195,25 +199,52 @@ público, sem senha nenhuma.
 
 ---
 
-## 6. Meta — token do Conversions API ⚠️ PENDENTE
+## 6. Meta — Conversions API ✅ TOKEN FEITO
 
-No Gerenciador de Eventos → pixel `3253946971444443` → Configurações → gerar
-token de acesso. Depois, no servidor:
+`META_CAPI_TOKEN` está configurado desde 18/09/2026 e o health responde
+`meta_capi: configurado`. Os eventos de lead agora saem pelos dois caminhos com
+o mesmo `event_id`, e o envio do servidor leva `_fbp`, `_fbc`, `external_id`,
+telefone, nome e cidade.
+
+**Validar quando houver tráfego:** com `META_TEST_EVENT_CODE` preenchido por
+alguns minutos, complete um lead e confira em "Eventos de teste" que o `Lead`
+aparece **uma vez**, como "Navegador e servidor". Duas linhas = `event_id` não
+está casando. Apague o código de teste depois, senão os eventos reais continuam
+contando como teste.
+
+### 6b. Evento `Purchase` ⚠️ PENDENTE — nenhuma venda é medida hoje
+
+Não existe checkout no site: "compra" só existe quando o CRM marca a venda como
+fechada. O gancho é `POST /api/meta/venda-confirmada`, protegido por segredo
+compartilhado — e **sem `META_WEBHOOK_SECRET` ele responde 503**, ou seja,
+nenhuma venda vira evento.
 
 ```bash
-# adicionar ao .env do servidor
-META_CAPI_TOKEN="o-token-gerado"
-# opcional, só enquanto estiver testando:
-META_TEST_EVENT_CODE="TEST12345"
+META_WEBHOOK_SECRET="$(openssl rand -base64 24)"
 ```
 
-Sem o token o envio é ignorado em silêncio — o funil nunca quebra por
-mensuração.
+O CRM chama assim (a `placa` é o que permite achar o produto certo no catálogo;
+o `event_id` deve ser o id da venda, para reenvio não contar duas vezes):
 
-**Conferir:** `/api/health/tracking` deve mostrar `"meta_capi": "configurado"`.
-Depois, no Gerenciador de Eventos, o evento `Lead` tem que aparecer como
-**"Navegador e servidor"** com deduplicação — não como dois eventos separados.
-Se aparecer duplicado, o `event_id` não está casando.
+```bash
+curl -s -X POST https://manosveiculoscompra.com/api/meta/venda-confirmada \
+  -H "Content-Type: application/json" \
+  -H "x-webhook-secret: $META_WEBHOOK_SECRET" \
+  -d '{"event_id":"venda-123","placa":"ABC1D23","value":89900,
+       "phone":"5547999998888","name":"Maria","city":"Rio do Sul",
+       "external_id":"id-do-visitante-guardado-na-captura"}'
+```
+
+A resposta diz o que aconteceu: `content_id` preenchido quando o mapeamento
+resolveu a placa, ou um `aviso` explicando por que não resolveu.
+
+### Qualidade da correspondência
+
+Desde 18/09 todo evento carrega um `external_id` — um id anônimo por visitante,
+em cookie de primeira parte (`manos_vid`, 2 anos), lido tanto pelo pixel quanto
+pelo Express. Na captura do lead, nome e telefone também entram no advanced
+matching do pixel. É o que o CRM deve guardar junto do lead para devolver no
+`Purchase`, semanas depois.
 
 ---
 
@@ -232,14 +263,84 @@ VITE_OPENAI_ADS_PIXEL_ID="QhX8YkwW1KcmEMR9JPQD8Q"
 
 As duas últimas recebem o mesmo id: uma é lida no build do front, a outra em
 tempo de execução no servidor (as páginas SSR do catálogo carregam o pixel por
-outro caminho). Por isso é preciso **rebuildar**, não só recarregar o pm2 —
-`bash deploy.sh` já faz os dois.
+outro caminho). Como a `VITE_*` é lida no build, mudá-la exige **republicar** o
+app, não só reiniciar.
 
 **Conferir:** `/api/health/tracking` deve mostrar `"openai_ads_capi":
 "configurado"`.
 
 Detalhes de eventos, deduplicação e validação estão em
 **[RASTREAMENTO-OPENAI-ADS.md](RASTREAMENTO-OPENAI-ADS.md)**.
+
+---
+
+## 9. Catálogo da Meta — mapeamento placa → content_id ⚠️ PENDENTE
+
+O catálogo do Gerenciador de Comércio é alimentado pela Autos 360, que numera os
+veículos do jeito dela: o `id` do feed da Altimus — que o site manda em todos os
+eventos — **não** é o `content_id` que a Meta conhece. Confirmado com um veículo
+real (Altimus `3563862` = catálogo `3405412`, mesmo nome e mesmo preço). A
+Altimus foi acionada e não fornece essa correspondência.
+
+Enquanto isso não for resolvido, a taxa de correspondência do catálogo fica em
+**0% mesmo com o pixel perfeito** — foram sempre dois problemas independentes.
+
+`server/catalogSync.ts` resolve sozinho, casando nome normalizado + preço contra
+o catálogo lido pela Graph API. Para ligar:
+
+1. Rodar `supabase/vehicle_meta_mapping.sql` no SQL Editor.
+2. Gerar um token de System User com permissão `catalog_management` no catálogo
+   (Configurações da Empresa → Usuários do sistema) — é **diferente** do token do
+   CAPI.
+3. No hPanel: `META_CATALOG_ACCESS_TOKEN`, `SUPABASE_SERVICE_ROLE_KEY` e
+   `INTERNAL_SYNC_SECRET`.
+4. Rodar uma vez à mão e olhar o resultado antes de agendar:
+   ```bash
+   curl -s -X POST https://manosveiculoscompra.com/api/internal/sync-catalog-mapping \
+     -H "x-internal-secret: $INTERNAL_SYNC_SECRET"
+   ```
+5. Agendar de hora em hora com `pg_cron` + `pg_net` (SQL no comentário da rota,
+   em `server.ts`).
+
+Essa primeira rodada é a prova da tese: se vier quase tudo `exact`, a
+correspondência por nome e preço funciona. Muito `unmatched` significa que os
+nomes do catálogo divergem mais do que o exemplo sugeria — nesse caso, revisar o
+critério antes de usar isso para atribuir venda.
+
+**Conferir:** `/api/health/tracking` deve mostrar
+`"meta_catalogo_mapping": "configurado"`.
+
+---
+
+## 10. Duplicação de PageView — investigação em aberto
+
+Diagnóstico de 18/09/2026, no breakdown por fonte do `PageView`:
+
+| Fonte | Volume |
+|---|---|
+| Browser | 2.389 |
+| Integração direta e parceiros da API de Conversões | 3.457 |
+| API de Conversões com a Meta | 2.877 |
+
+**Este servidor nunca envia `PageView` pela Conversions API** — só `Lead`,
+`QualifiedLead`, `AddToCart` e `Purchase`. Os dois baldes server-side vêm de
+integração configurada fora deste repositório.
+
+Isso explica a nota baixa de correspondência melhor que qualquer outra hipótese:
+só 27% dos eventos vêm do navegador, e a cobertura de `_fbp` medida é 23% —
+`_fbp` é cookie de navegador, então evento server-side sem ele conta como zero.
+
+- Em 18/09 o recurso de enriquecimento automático da Meta foi **desligado**.
+  Observar se o balde "API de Conversões com a Meta" cai.
+- Se o balde "integração direta e parceiros" continuar alto, a origem é uma tag
+  no GTM (container `GTM-MNL7Z6XR`) repassando `{{Event}}` do dataLayer como
+  nome de evento da Meta. O código já manda os eventos com nomes próprios e
+  `event_id`; a tag do GTM duplicaria tudo sem desduplicação.
+
+Também em 18/09, a tag `<noscript>` do pixel foi removida das páginas do
+catálogo: ela disparava um `PageView` por carregamento de imagem, sem JS e
+portanto sem cookie nenhum, e o catálogo é a superfície mais visitada por
+crawler do site.
 
 ---
 
