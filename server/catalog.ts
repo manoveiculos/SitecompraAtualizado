@@ -556,6 +556,18 @@ fbq('track', 'PageView');
     fbq('track','AddToCart',{content_ids:[vid],content_type:'product',
       content_name:nome,value:preco,currency:'BRL'},{eventID:eid});
 
+    // Clique de WhatsApp é contato de verdade, não só intenção de carrinho. O
+    // evento vai separado, com id próprio: são dois acontecimentos distintos
+    // para a Meta, e juntá-los num só faria a plataforma deduplicar um contra o
+    // outro. "Tenho interesse" não conta — aquilo leva ao funil, não abre
+    // conversa.
+    var ehWhatsApp = (a.getAttribute("href") || "").indexOf("wa.me") > -1;
+    var eidContato = ehWhatsApp ? novoId() : "";
+    if(ehWhatsApp){
+      fbq('track','Contact',{content_ids:[vid],content_type:'product',
+        content_name:nome},{eventID:eidContato});
+    }
+
     // sendBeacon sobrevive à navegação (WhatsApp sai do site); o servidor
     // reenvia pela Conversions API com o mesmo event_id, deduplicando os dois.
     try{
@@ -564,6 +576,12 @@ fbq('track', 'PageView');
         source_url:w.location.origin+w.location.pathname});
       if(navigator.sendBeacon){
         navigator.sendBeacon("/api/ads/conversao", new Blob([corpo],{type:"application/json"}));
+        if(ehWhatsApp){
+          var corpoContato = JSON.stringify({evento:"catalogo_contato",event_id:eidContato,
+            vehicle_id:vid,vehicle_name:nome,
+            source_url:w.location.origin+w.location.pathname});
+          navigator.sendBeacon("/api/ads/conversao", new Blob([corpoContato],{type:"application/json"}));
+        }
       }
     }catch(e){}
   }, true);

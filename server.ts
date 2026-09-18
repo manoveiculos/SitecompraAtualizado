@@ -780,7 +780,13 @@ async function startServer() {
   // o reforço contra bloqueador, com o MESMO event_id para não dobrar.
   // -------------------------------------------------------------------------
   const EVENTOS_OPENAI = new Set(["whatsapp", "telefone"]);
-  const EVENTOS_META = new Set(["catalogo_addtocart"]);
+  // Nome do evento no beacon -> nome padrão da Meta. O clique de WhatsApp no
+  // catálogo manda os dois: AddToCart (sinal de catálogo) e Contact (é por ele
+  // que campanha de conversa otimiza).
+  const EVENTOS_META: Record<string, "AddToCart" | "Contact"> = {
+    catalogo_addtocart: "AddToCart",
+    catalogo_contato: "Contact",
+  };
 
   app.post("/api/ads/conversao", (req, res) => {
     try {
@@ -788,7 +794,8 @@ async function startServer() {
       const evento = String(body.evento || "");
       const eventId = String(body.event_id || "");
       const paraOpenAi = EVENTOS_OPENAI.has(evento);
-      const paraMeta = EVENTOS_META.has(evento);
+      const nomeMeta = EVENTOS_META[evento];
+      const paraMeta = Boolean(nomeMeta);
 
       if ((!paraOpenAi && !paraMeta) || !eventId) {
         return res.status(400).json({ ok: false });
@@ -813,7 +820,7 @@ async function startServer() {
 
       if (paraMeta) {
         void enviarEventoCapi({
-          eventName: "AddToCart",
+          eventName: nomeMeta,
           eventId,
           clientIp: req.ip,
           userAgent: String(req.headers["user-agent"] || ""),
