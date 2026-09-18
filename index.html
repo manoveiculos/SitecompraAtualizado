@@ -45,7 +45,20 @@
           return id;
         } catch (e) { return ""; }
       })();
-      window.__manosPixelId = "3253946971444443";
+      // Id do dataset da Meta. Vem de VITE_META_PIXEL_ID e o Vite o substitui no
+      // build; sem a variável, sobra o marcador com "%" e caímos no dataset de
+      // produção. Mesmo padrão do pixel do OpenAI Ads, logo abaixo.
+      //
+      // O par desta variável é META_PIXEL_ID, lida em tempo de execução pelo
+      // servidor (Conversions API e páginas SSR do catálogo). As duas recebem o
+      // MESMO id: trocar só uma coloca funil e catálogo em datasets diferentes.
+      window.__manosPixelId = (function () {
+        var id = "%VITE_META_PIXEL_ID%";
+        // Sem a variável, o marcador sobra literal e começa com "%"; definida e
+        // vazia, o Vite substitui por string vazia. Os dois casos caem no
+        // padrão — melhor o dataset de produção do que pixel com id em branco.
+        return !id || id.charAt(0) === "%" ? "3253946971444443" : id;
+      })();
       window.__medirEmProducao =
         !/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) && !/\.local$/.test(location.hostname);
     </script>
@@ -63,7 +76,7 @@
     // external_id no init: vale para TODOS os eventos seguintes, inclusive o
     // PageView logo abaixo. É o sinal que sobrevive à troca de dispositivo e
     // chega até o Purchase, semanas depois, vindo do CRM.
-    fbq('init', '3253946971444443', window.__manosVid ? { external_id: window.__manosVid } : {});
+    fbq('init', window.__manosPixelId, window.__manosVid ? { external_id: window.__manosVid } : {});
     fbq('track', 'PageView');
     }
     </script>
@@ -95,6 +108,10 @@
     <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-MNL7Z6XR"
     height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     <!-- End Google Tag Manager (noscript) -->
+    <!-- Este <noscript> NÃO acompanha VITE_META_PIXEL_ID: sem JS não há como
+         ler variável nenhuma, e o id precisa estar escrito aqui. Se um dia o
+         dataset mudar, ou este id muda junto, ou a tag sai (foi o que fizemos
+         nas páginas do catálogo, onde ela só alimentava crawler). -->
     <noscript><img height="1" width="1" style="display:none"
     src="https://www.facebook.com/tr?id=3253946971444443&ev=PageView&noscript=1"
     /></noscript>

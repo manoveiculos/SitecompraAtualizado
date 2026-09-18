@@ -94,7 +94,8 @@ mas com recursos desligados em silêncio:
 | `META_CATALOG_ACCESS_TOKEN` | sem mapeamento de catálogo: os eventos saem com o id da Altimus, que o catálogo da Meta não reconhece |
 | `SUPABASE_SERVICE_ROLE_KEY` | idem — a tabela do mapeamento é service-role-only |
 | `INTERNAL_SYNC_SECRET` | `/api/internal/sync-catalog-mapping` responde 503 |
-| `META_PIXEL_ID` | opcional; sem ela usa o pixel de produção embutido no código |
+| `META_PIXEL_ID` | opcional; sem ela usa o dataset de produção embutido no código (vale para a CAPI e as páginas SSR) |
+| `VITE_META_PIXEL_ID` | o mesmo id, lido no build do funil; sem ela o funil fica no dataset embutido, e trocar só uma das duas separa funil e catálogo |
 | `OPENAI_ADS_API_KEY` | Conversions API do OpenAI Ads não envia |
 | `OPENAI_ADS_PIXEL_ID` | idem — a CAPI precisa dos dois |
 | `VITE_OPENAI_ADS_PIXEL_ID` | o pixel do OpenAI Ads não inicializa em nenhuma superfície |
