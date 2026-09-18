@@ -17,7 +17,14 @@
 import { createHash } from 'crypto';
 import { paraE164 } from './telefone';
 
-const PIXEL_ID = process.env.META_PIXEL_ID || '3253946971444443';
+/**
+ * Dataset usado quando nada é configurado. O funil (index.html) repete este
+ * valor por necessidade — lá não há import — e o health compara os dois para
+ * avisar se saírem do lugar.
+ */
+export const PIXEL_PADRAO = '3253946971444443';
+/** Dataset em uso pelo servidor: Conversions API e páginas SSR do catálogo. */
+export const PIXEL_ID = process.env.META_PIXEL_ID || PIXEL_PADRAO;
 const CAPI_TOKEN = process.env.META_CAPI_TOKEN || '';
 const API_VERSION = 'v21.0';
 // Código de teste do Gerenciador de Eventos; deixe vazio em produção.

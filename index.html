@@ -62,6 +62,11 @@
       window.__medirEmProducao =
         !/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) && !/\.local$/.test(location.hostname);
     </script>
+    <!-- Qual dataset ficou neste build. Existe para o servidor conferir, em
+         /api/health/tracking, se o funil e as páginas do catálogo estão no
+         mesmo conjunto de dados — trocar só uma das duas variáveis é um erro
+         que não dá sintoma nenhum na tela. -->
+    <meta name="manos:meta-pixel" content="%VITE_META_PIXEL_ID%" />
     <!-- Meta Pixel Code -->
     <script>
     if (window.__medirEmProducao) {
@@ -108,13 +113,12 @@
     <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-MNL7Z6XR"
     height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     <!-- End Google Tag Manager (noscript) -->
-    <!-- Este <noscript> NÃO acompanha VITE_META_PIXEL_ID: sem JS não há como
-         ler variável nenhuma, e o id precisa estar escrito aqui. Se um dia o
-         dataset mudar, ou este id muda junto, ou a tag sai (foi o que fizemos
-         nas páginas do catálogo, onde ela só alimentava crawler). -->
-    <noscript><img height="1" width="1" style="display:none"
-    src="https://www.facebook.com/tr?id=3253946971444443&ev=PageView&noscript=1"
-    /></noscript>
+    <!-- Não há <noscript> do pixel aqui, de propósito. Sem JS não existe
+         variável para ler, então a tag ficaria presa a um dataset escrito na
+         mão — e passaria a mandar PageView para o conjunto errado no dia em que
+         o dataset mudasse. Além disso ela dispara um evento sem cookie nenhum,
+         que entra na conta da qualidade da correspondência como se fosse
+         visita real. Mesmo motivo pelo qual saiu das páginas do catálogo. -->
     <!--
       Conteúdo de emergência dentro do #root. O funil é 100% client-side: se o
       bundle não carregar (rede de celular ruim, JS bloqueado, erro de deploy), a

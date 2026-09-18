@@ -11,6 +11,7 @@
 // ---------------------------------------------------------------------------
 
 import { aplicarMapeamento } from './catalogSync';
+import { PIXEL_ID } from './meta';
 
 export const SITE_URL = 'https://manosveiculoscompra.com';
 
@@ -29,7 +30,7 @@ const OPENAI_ADS_PIXEL_ID =
 // abrem direto numa página de veículo) e todo o tráfego orgânico do
 // /estoque nunca disparavam ViewContent/AddToCart, e o catálogo ficava com
 // 0% de taxa de correspondência no Gerenciador de Comércio.
-const META_PIXEL_ID = process.env.META_PIXEL_ID || '3253946971444443';
+const META_PIXEL_ID = PIXEL_ID;
 const FEED_URL =
   'https://estoque.altimus.com.br/api/estoquexml?estoque=997c9e91-40d7-4bec-95cb-68e18a2668a3';
 

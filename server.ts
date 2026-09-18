@@ -20,7 +20,8 @@ import {
 } from "./server/catalog";
 import { radarMiddleware } from "./server/radar";
 import { calcularScore, acaoRecomendada } from "./server/scoring";
-import { enviarEventoCapi, capiConfigurado } from "./server/meta";
+import { readFileSync } from "fs";
+import { enviarEventoCapi, capiConfigurado, PIXEL_ID, PIXEL_PADRAO } from "./server/meta";
 import {
   syncCatalogMapping,
   mapeamentoConfigurado,
@@ -81,6 +82,32 @@ function enviarLeadQualificado(
     eventName: "QualifiedLead",
     eventId: `${base.eventId}-qualified`,
   });
+}
+
+/**
+ * Dataset que ficou gravado no build do funil.
+ *
+ * O funil resolve o id no build (VITE_META_PIXEL_ID) e o servidor em tempo de
+ * execução (META_PIXEL_ID). Definir só uma das duas deixa o funil medindo num
+ * conjunto de dados e o catálogo em outro — sem erro, sem sintoma na tela, e a
+ * conta só não fecha semanas depois. Por isso o health compara os dois.
+ *
+ * Lido uma vez e guardado: o arquivo só muda quando há nova publicação, que
+ * reinicia o processo de qualquer forma.
+ */
+let pixelDoFunilCache: string | null | undefined;
+function pixelDoFunil(): string | null {
+  if (pixelDoFunilCache !== undefined) return pixelDoFunilCache;
+  try {
+    const html = readFileSync(path.join(__dirname, "dist", "index.html"), "utf8");
+    const achado = html.match(/name="manos:meta-pixel"\s+content="([^"]*)"/);
+    const valor = achado?.[1] ?? "";
+    // Marcador não substituído (começa com "%") ou vazio: o funil caiu no padrão.
+    pixelDoFunilCache = !valor || valor.charAt(0) === "%" ? PIXEL_PADRAO : valor;
+  } catch {
+    pixelDoFunilCache = null; // sem build (desenvolvimento)
+  }
+  return pixelDoFunilCache;
 }
 
 /**
@@ -706,7 +733,13 @@ async function startServer() {
     const scores = await diagnosticoScores();
     res.json({
       meta_capi: capiConfigurado() ? "configurado" : "sem META_CAPI_TOKEN",
-      meta_pixel_catalogo: process.env.META_PIXEL_ID || "3253946971444443 (default)",
+      meta_pixel_catalogo: process.env.META_PIXEL_ID ? PIXEL_ID : `${PIXEL_ID} (default)`,
+      meta_pixel_funil: (() => {
+        const funil = pixelDoFunil();
+        if (!funil) return "dist/index.html não encontrado — rodando sem build?";
+        if (funil === PIXEL_ID) return "igual ao servidor";
+        return `DIVERGENTE — funil ${funil}, servidor ${PIXEL_ID}. Defina VITE_META_PIXEL_ID igual a META_PIXEL_ID e republique`;
+      })(),
       meta_venda_confirmada: process.env.META_WEBHOOK_SECRET ? "configurado" : "sem META_WEBHOOK_SECRET",
       meta_catalogo_mapping: mapeamentoConfigurado()
         ? "configurado"
