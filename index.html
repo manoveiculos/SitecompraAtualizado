@@ -5,6 +5,10 @@
     <!-- Página em pt-BR: impede a tradução automática do Chrome de reescrever
          o DOM e quebrar o React (removeChild NotFoundError -> tela preta). -->
     <meta name="google" content="notranslate" />
+    <!-- Verificação de domínio da Meta (Configurações do Negócio → Domínios).
+         Precisa estar no <head> de todas as páginas do domínio, inclusive as
+         renderizadas no servidor — ver o layout em server/catalog.ts. -->
+    <meta name="facebook-domain-verification" content="n91926e6jtyofyvpj8jgf2z68uasoe" />
     <!-- Google Tag Manager -->
     <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
     new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],

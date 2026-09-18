@@ -63,9 +63,21 @@ export interface ResultadoMatch {
 }
 
 interface ProdutoCatalogo {
+  /** Id interno da Graph. NÃO é o que a Meta casa com os eventos. */
   id: string;
+  /**
+   * SKU que veio do feed — é ESTE valor que precisa ir em content_ids para o
+   * catálogo reconhecer o produto. Confundir um com o outro deixa a taxa de
+   * correspondência em 0% com tudo parecendo certo dos dois lados.
+   */
+  retailer_id?: string;
   name: string;
   price: string; // "219900.00 BRL"
+}
+
+/** O que vai em content_ids: retailer_id quando existir, id interno como último recurso. */
+function idParaEvento(p: ProdutoCatalogo): string {
+  return p.retailer_id || p.id;
 }
 
 export function mapeamentoConfigurado(): boolean {
@@ -265,7 +277,7 @@ async function lerCatalogoMeta(): Promise<ProdutoCatalogo[]> {
   // e de proxy.
   let url =
     `https://graph.facebook.com/${GRAPH_VERSION}/${CATALOG_ID}/products` +
-    `?fields=id,name,price&limit=100`;
+    `?fields=id,retailer_id,name,price&limit=100`;
 
   // Teto de páginas: paginação com defeito não pode virar laço infinito.
   for (let pagina = 0; url && pagina < 50; pagina++) {
@@ -343,7 +355,7 @@ function casarVeiculos(
     resultados.push({
       placa: veiculo.placa,
       altimusId: veiculo.id,
-      metaContentId: escolhido?.id ?? null,
+      metaContentId: escolhido ? idParaEvento(escolhido) : null,
       matchedName: escolhido?.name ?? null,
       confidence,
       needsReview: confidence === 'fuzzy' || confidence === 'ambiguous',
@@ -377,6 +389,12 @@ export interface ResumoSync {
   matched: number;
   needsReview: number;
   unmatched: number;
+  /**
+   * Casamentos em que o id do catálogo é IGUAL ao id do feed da Altimus. Se
+   * este número for igual a `matched`, o catálogo usa o mesmo número e todo o
+   * mapeamento é desnecessário.
+   */
+  jaIguais: number;
   /** Saíram do feed nesta rodada (vendidos): linha mantida para o Purchase. */
   marcadosForaDeEstoque: number;
   /** Passaram da janela de retenção e foram removidos de vez. */
@@ -484,6 +502,12 @@ export async function syncCatalogMapping(veiculos: VeiculoParaSync[]): Promise<R
 
   const needsReview = resultados.filter((r) => r.needsReview).length;
   const unmatched = resultados.filter((r) => r.confidence === 'unmatched').length;
+  // Responde de uma vez a pergunta que originou este módulo: o catálogo usa o
+  // mesmo número do feed? Se todos baterem, o mapeamento é redundante e o site
+  // já estava mandando o id certo — o 0% tem outra causa.
+  const jaIguais = resultados.filter(
+    (r) => r.metaContentId && r.metaContentId === r.altimusId,
+  ).length;
 
   if (needsReview > 0 || unmatched > 0) {
     console.warn(
@@ -499,6 +523,7 @@ export async function syncCatalogMapping(veiculos: VeiculoParaSync[]): Promise<R
     matched: resultados.filter((r) => r.confidence === 'exact').length,
     needsReview,
     unmatched,
+    jaIguais,
     marcadosForaDeEstoque,
     purgados,
     results: resultados,

@@ -959,6 +959,9 @@ async function startServer() {
         matched: resumo.matched,
         needsReview: resumo.needsReview,
         unmatched: resumo.unmatched,
+        // jaIguais == matched significa que o catálogo já usa o id do feed e o
+        // mapeamento não era necessário.
+        jaIguais: resumo.jaIguais,
         // Vendidos continuam na tabela por um tempo: a venda é confirmada no
         // CRM depois de o carro sair do feed, e o Purchase precisa do id.
         marcadosForaDeEstoque: resumo.marcadosForaDeEstoque,

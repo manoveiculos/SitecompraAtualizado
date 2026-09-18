@@ -587,6 +587,9 @@ function layout(opts: {
   const head = [
     '<meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
+    // Mesma tag do index.html: a Meta pode conferir qualquer URL do domínio, e
+    // /estoque é justamente a parte que ela mais rastreia.
+    '<meta name="facebook-domain-verification" content="n91926e6jtyofyvpj8jgf2z68uasoe">',
     `<title>${escHtml(opts.title)}</title>`,
     `<meta name="description" content="${escHtml(opts.description)}">`,
     `<link rel="canonical" href="${escHtml(opts.canonical)}">`,
