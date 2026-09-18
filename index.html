@@ -24,8 +24,20 @@
 
       gtag('config', 'G-F3SGE82RSK');
     </script>
+    <!-- Medição só fora de desenvolvimento.
+         O pixel não tinha condição nenhuma, então `npm run dev` em localhost
+         alimentava o dataset de produção. Isso não é só ruído de volume: esses
+         eventos entram no cálculo de qualidade da correspondência como se
+         fossem visita real, e puxam a nota para baixo. Para testar de
+         propósito, use "Eventos de teste" do Gerenciador de Eventos
+         (META_TEST_EVENT_CODE) ou um dataset separado. -->
+    <script>
+      window.__medirEmProducao =
+        !/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) && !/\.local$/.test(location.hostname);
+    </script>
     <!-- Meta Pixel Code -->
     <script>
+    if (window.__medirEmProducao) {
     !function(f,b,e,v,n,t,s)
     {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
     n.callMethod.apply(n,arguments):n.queue.push(arguments)};
@@ -36,6 +48,7 @@
     'https://connect.facebook.net/en_US/fbevents.js');
     fbq('init', '3253946971444443');
     fbq('track', 'PageView');
+    }
     </script>
     <!-- End Meta Pixel Code -->
     <!-- OpenAI Ads Pixel (anúncios dentro do ChatGPT).
@@ -47,6 +60,7 @@
     <script>
       (function (w, d, s, u, id) {
         if (!id || id.charAt(0) === "%") return;
+        if (!w.__medirEmProducao) return;
         if (!w.oaiq) {
           var q = function () { q.q.push(arguments) };
           q.q = []; w.oaiq = q;

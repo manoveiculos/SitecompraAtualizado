@@ -410,6 +410,9 @@ function medicaoScript(veiculo?: { id: string; nome: string; preco: number }): s
     : 'null';
 
   return `<script>
+// Mesma guarda do index.html: servidor rodando em localhost não manda evento
+// para o dataset de produção.
+if (!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname))
 (function(w,d,s,u,id){
   if(!id) return;
   if(!w.oaiq){var q=function(){q.q.push(arguments)};q.q=[];w.oaiq=q;
@@ -491,6 +494,9 @@ function metaPixelScript(
     : 'null';
 
   return `<script>
+// Mesma guarda do index.html: servidor rodando em localhost não manda evento
+// para o dataset de produção.
+if (!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) {
 !function(f,b,e,v,n,t,s)
 {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
 n.callMethod.apply(n,arguments):n.queue.push(arguments)};
@@ -540,6 +546,7 @@ fbq('track', 'PageView');
     }catch(e){}
   }, true);
 })(window,document);
+}
 </script>
 <noscript><img height="1" width="1" style="display:none"
 src="https://www.facebook.com/tr?id=${encodeURIComponent(META_PIXEL_ID)}&ev=PageView&noscript=1" /></noscript>`;

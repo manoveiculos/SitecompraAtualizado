@@ -83,6 +83,29 @@ function enviarLeadQualificado(
   });
 }
 
+/**
+ * Requisição veio de ambiente de desenvolvimento?
+ *
+ * O pixel do navegador já tem a mesma guarda (index.html), mas os envios
+ * server-side precisam da sua: em desenvolvimento o `.env` da máquina costuma
+ * ter os tokens de produção, e um lead de teste viraria conversão real no
+ * Gerenciador de Eventos.
+ *
+ * A checagem é pelo Host da requisição, não por NODE_ENV: a hospedagem não
+ * garante essa variável, e um NODE_ENV ausente em produção desligaria a
+ * medição inteira sem ninguém perceber. O domínio real nunca é localhost.
+ */
+function ambienteDeTeste(req: express.Request): boolean {
+  const host = String(req.headers.host || "").split(":")[0].toLowerCase();
+  return (
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    host === "::1" ||
+    host === "[::1]" ||
+    host.endsWith(".local")
+  );
+}
+
 /** Lê um cookie do cabeçalho cru — evita uma dependência só para isto. */
 function lerCookie(req: express.Request, nome: string): string | undefined {
   const cru = req.headers.cookie;
@@ -292,7 +315,7 @@ async function startServer() {
       // Só o lead completo vira conversão no Meta. O parcial é sinal de funil,
       // não de negócio — otimizar por ele treinaria a campanha a buscar quem
       // apenas deixa telefone.
-      if (stage === "completo" && body.event_id) {
+      if (stage === "completo" && body.event_id && !ambienteDeTeste(req)) {
         const eventoMeta = {
           eventName: "Lead" as const,
           eventId: String(body.event_id),
@@ -560,7 +583,7 @@ async function startServer() {
         }),
       });
 
-      if (body.event_id) {
+      if (body.event_id && !ambienteDeTeste(req)) {
         const eventoMeta = {
           eventName: "Lead" as const,
           eventId: String(body.event_id),
@@ -734,6 +757,9 @@ async function startServer() {
       if ((!paraOpenAi && !paraMeta) || !eventId) {
         return res.status(400).json({ ok: false });
       }
+
+      // Beacon de desenvolvimento não vira conversão de produção.
+      if (ambienteDeTeste(req)) return res.status(204).end();
 
       const atribuicao = (body.atribuicao ?? {}) as Record<string, string | undefined>;
 
