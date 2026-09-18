@@ -475,6 +475,13 @@ if (!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname))
  * `AddToCart` já sai também pelo servidor (Conversions API, server/meta.ts):
  * é clique humano — precisa de JS para acontecer — e é justamente o tipo de
  * evento que sumiria com um bloqueador de anúncio.
+ *
+ * SEM a tag `<noscript>` de propósito, ao contrário do index.html. Ela dispara
+ * um PageView por carregamento de imagem, sem JS e portanto sem `_fbp` nem
+ * `_fbc` — e estas páginas são a superfície mais visitada por crawler do site.
+ * Cada passagem de bot virava um PageView de qualidade zero, que entra no
+ * cálculo da correspondência como se fosse gente. Quem navega sem JS não é
+ * público de anúncio; o pixel por JS cobre o tráfego humano inteiro.
  */
 function metaPixelScript(
   veiculo?: { id: string; nome: string; preco: number; metaId?: string },
@@ -561,9 +568,7 @@ fbq('track', 'PageView');
   }, true);
 })(window,document);
 }
-</script>
-<noscript><img height="1" width="1" style="display:none"
-src="https://www.facebook.com/tr?id=${encodeURIComponent(META_PIXEL_ID)}&ev=PageView&noscript=1" /></noscript>`;
+</script>`;
 }
 
 function layout(opts: {
