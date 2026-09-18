@@ -16,6 +16,7 @@
 // API dela entrar.
 
 import { getAttribution, getChannel } from './attribution';
+import { idDoVisitante, telefoneParaMeta } from './visitante';
 
 type Json = Record<string, unknown>;
 
@@ -97,6 +98,41 @@ function espelharNoServidor(evento: string, eventId: string, extras: Json = {}):
     });
   } catch (err) {
     console.error('[tracking] beacon error:', err);
+  }
+}
+
+/**
+ * Advanced matching: passa ao pixel o que a pessoa já informou.
+ *
+ * Reinicializar o pixel com esses dados é a forma documentada de atualizá-los —
+ * eles passam a acompanhar todo evento seguinte, não só o próximo. Os valores
+ * vão em claro para o `fbq`, que os normaliza e hasheia no navegador antes de
+ * qualquer requisição; o mesmo dado sai hasheado pelo servidor em
+ * server/meta.ts, e os dois lados chegam ao mesmo hash.
+ */
+export function identificarVisitante(dados: {
+  nome?: string | null;
+  telefone?: string | null;
+  email?: string | null;
+}): void {
+  try {
+    const w = window as unknown as { fbq?: (...args: unknown[]) => void; __manosPixelId?: string };
+    const pixelId = w.__manosPixelId;
+    if (!w.fbq || !pixelId) return;
+
+    const avancado: Record<string, string> = { external_id: idDoVisitante() };
+    const telefone = telefoneParaMeta(dados.telefone ?? '');
+    if (telefone) avancado.ph = telefone;
+    if (dados.email) avancado.em = dados.email.trim().toLowerCase();
+    if (dados.nome) {
+      const partes = dados.nome.trim().toLowerCase().split(/\s+/);
+      if (partes[0]) avancado.fn = partes[0];
+      if (partes.length > 1) avancado.ln = partes[partes.length - 1];
+    }
+
+    w.fbq('init', pixelId, avancado);
+  } catch (err) {
+    console.error('[tracking] advanced matching error:', err);
   }
 }
 

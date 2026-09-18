@@ -135,13 +135,16 @@ function lerCookie(req: express.Request, nome: string): string | undefined {
 function cookiesMeta(
   req: express.Request,
   atribuicao: Record<string, string | undefined>,
-): { fbp?: string; fbc?: string } {
+): { fbp?: string; fbc?: string; externalId?: string } {
   const fbp = lerCookie(req, "_fbp");
   let fbc = lerCookie(req, "_fbc");
   if (!fbc && atribuicao.fbclid) {
     fbc = `fb.1.${Date.now()}.${atribuicao.fbclid}`;
   }
-  return { fbp, fbc };
+  // Id anônimo do visitante (src/lib/visitante.ts). O pixel manda o mesmo valor
+  // como external_id, então navegador e servidor descrevem a mesma pessoa.
+  const externalId = lerCookie(req, "manos_vid");
+  return { fbp, fbc, externalId };
 }
 
 async function startServer() {
@@ -858,6 +861,10 @@ async function startServer() {
         phone: typeof body.phone === "string" ? body.phone : undefined,
         firstName: typeof body.name === "string" ? body.name : undefined,
         city: typeof body.city === "string" ? body.city : undefined,
+        email: typeof body.email === "string" ? body.email : undefined,
+        // O CRM guardou este id no momento da captura do lead; é o que liga a
+        // venda de hoje à visita de semanas atrás.
+        externalId: typeof body.external_id === "string" ? body.external_id : undefined,
         value: Number(body.value) || 0,
         currency: "BRL",
         contentIds: contentId ? [contentId] : undefined,

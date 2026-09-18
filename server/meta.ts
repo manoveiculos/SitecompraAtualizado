@@ -41,6 +41,14 @@ export interface EventoCapi {
   /** Cookies do navegador, quando o cliente os enviar. */
   fbp?: string;
   fbc?: string;
+  /**
+   * Id anônimo do visitante (cookie manos_vid). O pixel manda o mesmo valor no
+   * advanced matching, então os dois lados casam na mesma pessoa — e o CRM
+   * guarda esse id para o Purchase, quando o navegador já não existe mais.
+   */
+  externalId?: string;
+  /** E-mail, quando a pessoa informou. Hasheado aqui, nunca enviado em claro. */
+  email?: string;
   value?: number;
   currency?: string;
   contentIds?: string[];
@@ -70,6 +78,10 @@ export async function enviarEventoCapi(evento: EventoCapi): Promise<boolean> {
     const telefone = paraE164(evento.phone || '');
     if (telefone) userData.ph = [hash(telefone)];
     if (evento.firstName) userData.fn = [hash(evento.firstName.split(' ')[0])];
+    if (evento.email) userData.em = [hash(evento.email)];
+    // O pixel hasheia o advanced matching do mesmo jeito (sha256 do valor em
+    // minúsculas), então servidor e navegador chegam ao mesmo hash.
+    if (evento.externalId) userData.external_id = [hash(evento.externalId)];
     if (evento.city) userData.ct = [hash(evento.city.replace(/\s/g, ''))];
     if (evento.clientIp) userData.client_ip_address = evento.clientIp;
     if (evento.userAgent) userData.client_user_agent = evento.userAgent;

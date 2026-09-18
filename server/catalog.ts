@@ -497,6 +497,20 @@ function metaPixelScript(
 // Mesma guarda do index.html: servidor rodando em localhost não manda evento
 // para o dataset de produção.
 if (!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) {
+// Mesmo cookie do funil (src/lib/visitante.ts): o visitante que chega pelo
+// catálogo e converte no funil precisa ser a mesma pessoa para a Meta.
+window.__manosVid = (function(){
+  try {
+    var m = document.cookie.match(/(?:^|;\s*)manos_vid=([^;]*)/);
+    if (m) return decodeURIComponent(m[1]);
+    var id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+      : "v_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2,11);
+    document.cookie = "manos_vid=" + encodeURIComponent(id) +
+      ";Max-Age=63072000;Path=/;SameSite=Lax" +
+      (location.protocol === "https:" ? ";Secure" : "");
+    return id;
+  } catch (e) { return ""; }
+})();
 !function(f,b,e,v,n,t,s)
 {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
 n.callMethod.apply(n,arguments):n.queue.push(arguments)};
@@ -505,7 +519,7 @@ n.queue=[];t=b.createElement(e);t.async=!0;
 t.src=v;s=b.getElementsByTagName(e)[0];
 s.parentNode.insertBefore(t,s)}(window, document,'script',
 'https://connect.facebook.net/en_US/fbevents.js');
-fbq('init', ${JSON.stringify(META_PIXEL_ID)});
+fbq('init', ${JSON.stringify(META_PIXEL_ID)}, window.__manosVid ? {external_id: window.__manosVid} : {});
 fbq('track', 'PageView');
 (function(w,d){
   function novoId(){

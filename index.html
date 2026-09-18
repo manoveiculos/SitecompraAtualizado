@@ -32,6 +32,20 @@
          propósito, use "Eventos de teste" do Gerenciador de Eventos
          (META_TEST_EVENT_CODE) ou um dataset separado. -->
     <script>
+      window.__manosVid = (function () {
+        try {
+          var m = document.cookie.match(/(?:^|;\s*)manos_vid=([^;]*)/);
+          if (m) return decodeURIComponent(m[1]);
+          var id = (window.crypto && crypto.randomUUID)
+            ? crypto.randomUUID()
+            : "v_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 11);
+          document.cookie = "manos_vid=" + encodeURIComponent(id) +
+            ";Max-Age=63072000;Path=/;SameSite=Lax" +
+            (location.protocol === "https:" ? ";Secure" : "");
+          return id;
+        } catch (e) { return ""; }
+      })();
+      window.__manosPixelId = "3253946971444443";
       window.__medirEmProducao =
         !/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) && !/\.local$/.test(location.hostname);
     </script>
@@ -46,7 +60,10 @@
     t.src=v;s=b.getElementsByTagName(e)[0];
     s.parentNode.insertBefore(t,s)}(window, document,'script',
     'https://connect.facebook.net/en_US/fbevents.js');
-    fbq('init', '3253946971444443');
+    // external_id no init: vale para TODOS os eventos seguintes, inclusive o
+    // PageView logo abaixo. É o sinal que sobrevive à troca de dispositivo e
+    // chega até o Purchase, semanas depois, vindo do CRM.
+    fbq('init', '3253946971444443', window.__manosVid ? { external_id: window.__manosVid } : {});
     fbq('track', 'PageView');
     }
     </script>

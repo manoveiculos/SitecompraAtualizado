@@ -3,12 +3,21 @@
 // nunca expostos no bundle do navegador.
 
 import { getAttribution } from '../lib/attribution';
+import { idDoVisitante } from '../lib/visitante';
+import { identificarVisitante } from '../lib/tracking';
 
 const SOURCE = 'Vendas Rápidas - Manos Veículos';
 
 /** Campos comuns a toda chamada: origem do anúncio + carimbo de tempo. */
 function envelope() {
-  return { source: SOURCE, atribuicao: getAttribution(), timestamp: new Date().toISOString() };
+  return {
+    source: SOURCE,
+    atribuicao: getAttribution(),
+    // Mesmo id que o pixel manda como external_id — o CRM guarda e reaproveita
+    // quando a venda fecha.
+    external_id: idDoVisitante(),
+    timestamp: new Date().toISOString(),
+  };
 }
 
 export interface VeiculoPlaca {
@@ -39,6 +48,7 @@ export interface LeadVenda {
  */
 export async function registrarLeadVenda(lead: LeadVenda): Promise<void> {
   try {
+    identificarVisitante({ nome: lead.nome, telefone: lead.telefone });
     await fetch('/api/vendas/lead', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
