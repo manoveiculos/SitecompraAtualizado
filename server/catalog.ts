@@ -71,6 +71,12 @@ export interface FeedVehicle {
   slug: string;
   title: string;
   brand: string;
+  /**
+   * `<tipo>` da Altimus: 1 = carro, 4 = moto. O feed da Meta precisa disto
+   * porque o catálogo de veículos não tem carroceria de moto — sem o tipo, uma
+   * Biz entraria como hatch (ver server/metaFeed.ts).
+   */
+  tipo: string;
   year: string;
   price: number;
   priceFormatted: string;
@@ -192,6 +198,7 @@ function parseFeed(xml: string): FeedVehicle[] {
       slug: `${slugify(description)}-${id}`,
       title: description,
       brand,
+      tipo: getTag('tipo'),
       year: getTag('ano'),
       price,
       priceFormatted: price > 0 ? formatBRL(price) : 'Consulte',

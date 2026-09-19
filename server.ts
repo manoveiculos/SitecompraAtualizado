@@ -4,6 +4,7 @@ import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 import {
+  SITE_URL,
   getVehicles,
   renderCatalog,
   renderVehicle,
@@ -33,6 +34,12 @@ import { renderLeadsPanel } from "./server/leadsPanel";
 import { basicAuth } from "./server/auth";
 import { digitosNacionais } from "./server/telefone";
 import { montarProdutos, produtosParaParquet } from "./server/openaiFeed";
+import {
+  montarProdutos as montarProdutosMeta,
+  montarVeiculos as montarVeiculosMeta,
+  produtosParaCsv,
+  veiculosParaCsv,
+} from "./server/metaFeed";
 import { processConsultorMessage } from "./server/consultor";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -668,21 +675,19 @@ async function startServer() {
     }
   });
 
+  // Versão JSON do mesmo feed de produtos. A Meta NÃO aceita JSON como fonte de
+  // dados (só CSV/TSV/XML/XLSX) — quem for ligar o catálogo usa
+  // /feeds/meta/produtos.csv. Esta rota fica para consumo interno e de
+  // parceiros.
+  //
+  // Ela montava os campos à mão a partir de propriedades que o feed não tem
+  // (`v.image`, `v.link`), então saía com `image_link` e `link` indefinidos e
+  // `availability: in_stock` — valor que a Meta escreve com espaço. Agora sai do
+  // mesmo montador do CSV, um lugar só a definir o formato.
   app.get("/feed/vehicles.json", async (_req, res) => {
     try {
       const vehicles = await getVehicles();
-      const feed = vehicles.map((v: any) => ({
-        id: v.id,
-        title: v.description,
-        description: `${v.description} - ${v.year}, ${v.km}. Disponível em Rio do Sul/SC na Manos Veículos.`,
-        price: `${v.price} BRL`,
-        link: v.link || `https://manosveiculos.com.br/?veiculo=${v.id}`,
-        image_link: v.image,
-        condition: 'used',
-        availability: 'in_stock',
-        brand: v.brand || 'Manos Veículos',
-      }));
-      res.set("Content-Type", "application/json").json(feed);
+      res.set("Content-Type", "application/json").json(montarProdutosMeta(vehicles));
     } catch (err) {
       console.error("feed error:", err);
       res.status(500).json({ error: "Failed to generate vehicle feed" });
@@ -741,6 +746,14 @@ async function startServer() {
         return `DIVERGENTE — funil ${funil}, servidor ${PIXEL_ID}. Defina VITE_META_PIXEL_ID igual a META_PIXEL_ID e republique`;
       })(),
       meta_venda_confirmada: process.env.META_WEBHOOK_SECRET ? "configurado" : "sem META_WEBHOOK_SECRET",
+      // Enquanto o catálogo for alimentado por terceiro, o id do produto não é
+      // o nosso e o mapeamento acima é obrigatório. Apontar o catálogo para
+      // este feed torna o mapeamento desnecessário — por isso a URL aparece
+      // aqui, ao lado do sintoma que ela resolve.
+      meta_catalogo_feed: {
+        veiculos: `${SITE_URL}/feeds/meta/veiculos.csv`,
+        produtos: `${SITE_URL}/feeds/meta/produtos.csv`,
+      },
       meta_catalogo_mapping: mapeamentoConfigurado()
         ? "configurado"
         : "sem META_CATALOG_ACCESS_TOKEN/SUPABASE_SERVICE_ROLE_KEY — eventos saem com o id da Altimus",
@@ -1023,6 +1036,85 @@ async function startServer() {
         .send(parquet);
     } catch (err) {
       console.error("openai feed error:", err);
+      res.status(500).json({ error: "failed to build feed" });
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Data feed da Meta (Gerenciador de Comércio › Fontes de dados › URL agendada)
+  //
+  // São duas URLs porque a Meta valida o arquivo contra o TIPO do catálogo e os
+  // nomes das colunas mudam entre eles (ver server/metaFeed.ts):
+  //
+  //   /feeds/meta/veiculos.csv  → catálogo "Veículos" (inventário automotivo)
+  //   /feeds/meta/produtos.csv  → catálogo "E-commerce/Produtos"
+  //
+  // Colar a URL errada dá erro de coluna obrigatória ausente na hora do upload,
+  // não silenciosamente depois — dá para testar as duas sem risco.
+  //
+  // `?preview=1` devolve as mesmas linhas em JSON, para conferir sem abrir o CSV.
+  // -------------------------------------------------------------------------
+  function responderFeedMeta(
+    res: express.Response,
+    nomeArquivo: string,
+    csv: string,
+  ): void {
+    res
+      .set("Content-Type", "text/csv; charset=utf-8")
+      .set("Content-Disposition", `inline; filename="${nomeArquivo}"`)
+      // O estoque em memória tem TTL de 10 min; alinhar evita servir cache mais
+      // velho que a fonte.
+      .set("Cache-Control", "public, max-age=600")
+      .set("X-Robots-Tag", "noindex, nofollow")
+      .send(csv);
+  }
+
+  app.get("/feeds/meta/veiculos.csv", async (req, res) => {
+    try {
+      const vehicles = await getVehicles();
+      const linhas = montarVeiculosMeta(vehicles);
+
+      if (req.query.preview) {
+        return res
+          .set("Cache-Control", "no-store")
+          .set("X-Robots-Tag", "noindex, nofollow")
+          .json({
+            schema: "vehicles (anúncios de inventário automotivo)",
+            total_estoque: vehicles.length,
+            total_no_feed: linhas.length,
+            descartados_sem_preco_ou_foto: vehicles.length - linhas.length,
+            veiculos: linhas,
+          });
+      }
+
+      responderFeedMeta(res, "manos-veiculos.csv", veiculosParaCsv(linhas));
+    } catch (err) {
+      console.error("meta feed (veiculos) error:", err);
+      res.status(500).json({ error: "failed to build feed" });
+    }
+  });
+
+  app.get("/feeds/meta/produtos.csv", async (req, res) => {
+    try {
+      const vehicles = await getVehicles();
+      const produtos = montarProdutosMeta(vehicles);
+
+      if (req.query.preview) {
+        return res
+          .set("Cache-Control", "no-store")
+          .set("X-Robots-Tag", "noindex, nofollow")
+          .json({
+            schema: "products (catálogo de e-commerce)",
+            total_estoque: vehicles.length,
+            total_no_feed: produtos.length,
+            descartados_sem_preco_ou_foto: vehicles.length - produtos.length,
+            produtos,
+          });
+      }
+
+      responderFeedMeta(res, "manos-produtos.csv", produtosParaCsv(produtos));
+    } catch (err) {
+      console.error("meta feed (produtos) error:", err);
       res.status(500).json({ error: "failed to build feed" });
     }
   });

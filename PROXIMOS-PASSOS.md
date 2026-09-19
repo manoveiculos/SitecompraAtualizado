@@ -312,6 +312,44 @@ critério antes de usar isso para atribuir venda.
 
 ---
 
+## 9b. Catálogo da Meta — feed próprio (resolve a causa, não o sintoma)
+
+O mapeamento do item 9 é um contorno: ele adivinha, por nome e preço, qual
+produto da Autos 360 corresponde a qual veículo nosso. A correção de raiz é o
+catálogo deixar de ser alimentado por terceiro e passar a ler um feed nosso, em
+que o `vehicle_id` **é** o `id` da Altimus que o pixel já envia. Aí a
+correspondência é exata por construção e o `catalogSync` vira redundante.
+
+Duas URLs, porque a Meta valida o arquivo contra o **tipo** do catálogo e os
+nomes das colunas mudam entre eles (`server/metaFeed.ts`):
+
+| Tipo do catálogo no Gerenciador de Comércio | URL para colar |
+|---|---|
+| **Veículos** (anúncios de inventário automotivo) | `https://manosveiculoscompra.com/feeds/meta/veiculos.csv` |
+| **E-commerce / Produtos** | `https://manosveiculoscompra.com/feeds/meta/produtos.csv` |
+
+Colar a errada dá erro de coluna obrigatória ausente **na hora do upload**, não
+silenciosamente depois — dá para testar as duas sem risco.
+
+Onde colar: Gerenciador de Comércio → Catálogo → **Fontes de dados** →
+*Usar um URL ou o Planilhas Google*. Sem usuário e sem senha: as rotas são
+públicas. Agendamento **diário** basta — o estoque gira em dias, não em horas.
+
+Cuidados que já custaram tempo neste projeto:
+
+- A URL só funciona **depois do deploy**. Antes disso o catch-all do SPA
+  responde `200` com HTML para qualquer caminho, então a Meta aceita o endereço
+  e falha ao ler o arquivo. Conferir com
+  `curl -sI .../feeds/meta/veiculos.csv | grep content-type` → tem que ser
+  `text/csv`.
+- Se o catálogo continuar recebendo o feed da Autos 360 em paralelo, cada
+  veículo entra **duas vezes**, com ids diferentes, e o problema de
+  correspondência volta pela outra porta. Uma fonte de dados por catálogo.
+- `?preview=1` devolve as mesmas linhas em JSON, para conferir o conteúdo sem
+  abrir o CSV.
+
+---
+
 ## 10. Duplicação de PageView — investigação em aberto
 
 Diagnóstico de 18/09/2026, no breakdown por fonte do `PageView`:
