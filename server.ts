@@ -1080,6 +1080,11 @@ async function startServer() {
           .set("X-Robots-Tag", "noindex, nofollow")
           .json({
             schema: "vehicles (anúncios de inventário automotivo)",
+            // Prova de que o arquivo não é estático: muda a cada requisição.
+            // O navegador baixa o .csv em vez de exibir (é o que ele faz com
+            // text/csv), então esta é a janela para conferir o conteúdo — e o
+            // horário sobe a cada F5.
+            gerado_em: new Date().toISOString(),
             total_estoque: vehicles.length,
             total_no_feed: linhas.length,
             descartados_sem_preco_ou_foto: vehicles.length - linhas.length,
@@ -1105,6 +1110,7 @@ async function startServer() {
           .set("X-Robots-Tag", "noindex, nofollow")
           .json({
             schema: "products (catálogo de e-commerce)",
+            gerado_em: new Date().toISOString(),
             total_estoque: vehicles.length,
             total_no_feed: produtos.length,
             descartados_sem_preco_ou_foto: vehicles.length - produtos.length,
