@@ -25,6 +25,7 @@ import ComparatorPage from './components/tools/ComparatorPage.tsx';
 import VeiculoDetailPage from './components/estoque/VeiculoDetailPage.tsx';
 import HomePage from './components/home/HomePage.tsx';
 import EstoquePage from './components/estoque/EstoquePage.tsx';
+import HavalPresentation from './components/HavalPresentation.tsx';
 
 import { useState, useEffect } from 'react';
 import { setupInstantLinkInterceptor, navigate } from './lib/router.ts';
@@ -60,6 +61,10 @@ function Router() {
 
   if (path === '/comparar') {
     return <ComparatorPage />;
+  }
+
+  if (path === '/haval-h6-gt' || path === '/haval-teste') {
+    return <HavalPresentation />;
   }
 
   if (path === '/financiamento') {
