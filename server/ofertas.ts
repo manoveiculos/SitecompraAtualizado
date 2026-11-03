@@ -522,12 +522,48 @@ function senhaValida(fornecida: string): boolean {
   return timingSafeEqual(ba, bb);
 }
 
+// Proteção contra força bruta em rotas administrativas (/api/ofertas/auth)
+const adminAuthRateMap = new Map<string, { count: number; resetAt: number }>();
+const ADMIN_AUTH_WINDOW_MS = 15 * 60 * 1000; // 15 min
+const ADMIN_AUTH_MAX_FAILS = 10;
+
+function checkAdminRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = adminAuthRateMap.get(ip);
+  if (!entry || now > entry.resetAt) return true;
+  return entry.count < ADMIN_AUTH_MAX_FAILS;
+}
+
+function recordAdminAuthFail(ip: string): void {
+  const now = Date.now();
+  const entry = adminAuthRateMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    adminAuthRateMap.set(ip, { count: 1, resetAt: now + ADMIN_AUTH_WINDOW_MS });
+  } else {
+    entry.count += 1;
+  }
+}
+
+function clearAdminAuthFail(ip: string): void {
+  adminAuthRateMap.delete(ip);
+}
+
 function exigirAdminOfertas(req: Request, res: Response, next: NextFunction): void {
+  const ip = String(req.ip || req.socket.remoteAddress || 'unknown');
+  if (!checkAdminRateLimit(ip)) {
+    res.status(429).json({
+      ok: false,
+      error: 'Muitas tentativas inválidas. Aguarde 15 minutos antes de tentar novamente.',
+    });
+    return;
+  }
   const chave = String(req.headers['x-ofertas-admin-key'] || '');
   if (!senhaValida(chave)) {
+    recordAdminAuthFail(ip);
     res.status(401).json({ ok: false, error: 'Não autorizado. Verifique a senha administrativa.' });
     return;
   }
+  clearAdminAuthFail(ip);
   next();
 }
 
@@ -773,12 +809,21 @@ function lerCookieSimples(req: Request, nome: string): string | undefined {
 // ---------------------------------------------------------------------------
 
 export function mountOfertasRoutes(app: Express): void {
-  // 1. Verificar credencial administrativa
+  // 1. Verificar credencial administrativa (com rate limiting por IP)
   app.post('/api/ofertas/auth', (req, res) => {
+    const ip = String(req.ip || req.socket.remoteAddress || 'unknown');
+    if (!checkAdminRateLimit(ip)) {
+      return res.status(429).json({
+        ok: false,
+        error: 'Muitas tentativas inválidas. Aguarde 15 minutos antes de tentar novamente.',
+      });
+    }
     const password = String(req.body?.password || req.headers['x-ofertas-admin-key'] || '');
     if (senhaValida(password)) {
+      clearAdminAuthFail(ip);
       return res.json({ ok: true });
     }
+    recordAdminAuthFail(ip);
     return res.status(401).json({ ok: false, error: 'Senha administrativa incorreta.' });
   });
 

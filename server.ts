@@ -190,8 +190,18 @@ async function startServer() {
   // sempre 127.0.0.1 — e o IP do visitante é um dos sinais que a Meta usa para
   // casar o evento do Conversions API com a pessoa certa.
   app.set("trust proxy", 1);
+  app.disable("x-powered-by");
 
-  app.use(express.json());
+  // Cabeçalhos de segurança HTTP padrão
+  app.use((_req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "SAMEORIGIN");
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    next();
+  });
+
+  app.use(express.json({ limit: "2mb" }));
 
   // AI Visit Radar — logs crawler hits + AI/search referrals (fire-and-forget)
   app.use(radarMiddleware);
@@ -453,8 +463,25 @@ async function startServer() {
 
 
   // Placa lookup (apiplacas/wdapi2). Token fica no servidor; nunca no client.
+  // Rate limit por IP para evitar exaustão de créditos da API externa por bots.
+  const placaRateMap = new Map<string, { count: number; resetAt: number }>();
+  const PLACA_WINDOW_MS = 10 * 60 * 1000; // 10 min
+  const PLACA_MAX_REQS = 20;
+
   app.get("/api/placa/:placa", async (req, res) => {
     try {
+      const ip = String(req.ip || req.socket.remoteAddress || "unknown");
+      const now = Date.now();
+      const rateEntry = placaRateMap.get(ip);
+      if (rateEntry && now <= rateEntry.resetAt) {
+        if (rateEntry.count >= PLACA_MAX_REQS) {
+          return res.status(429).json({ ok: false, error: "Limite de consultas atingido. Você pode seguir preenchendo manualmente." });
+        }
+        rateEntry.count += 1;
+      } else {
+        placaRateMap.set(ip, { count: 1, resetAt: now + PLACA_WINDOW_MS });
+      }
+
       const placa = String(req.params.placa || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 7);
       if (!/^[A-Z]{3}[0-9][0-9A-Z][0-9]{2}$/.test(placa)) {
         return res.status(200).json({ ok: false, error: "Placa inválida. Use o formato ABC1D23 ou ABC1234." });

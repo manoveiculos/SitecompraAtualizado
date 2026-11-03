@@ -112,7 +112,11 @@ export default function RepasseAdminPage() {
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === ADMIN_PASSWORD) {
+    if (!ADMIN_PASSWORD) {
+      setPasswordError('Senha administrativa não configurada no ambiente (defina VITE_REPASSE_ADMIN_PASSWORD).');
+      return;
+    }
+    if (password && password === ADMIN_PASSWORD) {
       setIsAuthenticated(true);
       setPasswordError('');
       try {

@@ -3,13 +3,14 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import {defineConfig, loadEnv} from 'vite';
 
-export default defineConfig(({mode}) => {
-  const env = loadEnv(mode, '.', '');
+export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
+    // SEGURANÇA: Nunca injetar chaves privadas do servidor (GEMINI_API_KEY / OPENAI_API_KEY)
+    // no bundle público do navegador.
     define: {
-      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY || env.VITE_GEMINI_API_KEY || ''),
-      'process.env.OPENAI_API_KEY': JSON.stringify(env.OPENAI_API_KEY || env.VITE_OPENAI_API_KEY || ''),
+      'process.env.GEMINI_API_KEY': JSON.stringify(''),
+      'process.env.OPENAI_API_KEY': JSON.stringify(''),
     },
     resolve: {
       alias: {
@@ -17,6 +18,7 @@ export default defineConfig(({mode}) => {
       },
     },
     build: {
+      target: 'es2022',
       chunkSizeWarningLimit: 1000,
       rollupOptions: {
         output: {
