@@ -1178,6 +1178,15 @@ async function startServer() {
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
+
+  if (PORT !== 3000) {
+    const mirrorServer = app.listen(3000, "0.0.0.0", () => {
+      console.log(`Server also listening on http://localhost:3000`);
+    });
+    mirrorServer.on("error", () => {
+      // Se a porta 3000 já estiver em uso, mantém a porta principal normalmente
+    });
+  }
 }
 
 startServer();

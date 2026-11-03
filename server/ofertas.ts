@@ -1803,4 +1803,206 @@ export function mountOfertasRoutes(app: Express): void {
     if (req.params.slug === 'admin') return next();
     return handleOfertaHtmlRoute(req, res, next);
   });
+
+  // 12. Rotas SSR de SEO / Open Graph para Páginas Individuais de Consultores
+  const CONSULTORES_SSR: Record<
+    string,
+    { slug: string; nome: string; nomeExibicao: string; telefone: string; whatsapp: string; foto: string }
+  > = {
+    wilsinho: {
+      slug: 'wilsinho',
+      nome: 'Wilsinho',
+      nomeExibicao: 'Consultor Wilsinho',
+      telefone: '(47) 99917-3286',
+      whatsapp: '5547999173286',
+      foto: '/consultores/wilsinho.png',
+    },
+    sergio: {
+      slug: 'sergio',
+      nome: 'Sérgio',
+      nomeExibicao: 'Consultor Sérgio',
+      telefone: '(47) 98914-1883',
+      whatsapp: '5547989141883',
+      foto: '/consultores/sergio.png',
+    },
+    ledra: {
+      slug: 'ledra',
+      nome: 'Ledra',
+      nomeExibicao: 'Consultor Ledra',
+      telefone: '(47) 9286-4987',
+      whatsapp: '554792864987',
+      foto: '/consultores/ledra.jpg',
+    },
+    victor: {
+      slug: 'victor',
+      nome: 'Victor',
+      nomeExibicao: 'Consultor Victor',
+      telefone: '(47) 8836-5499',
+      whatsapp: '554788365499',
+      foto: '/consultores/victor.jpg',
+    },
+    vitor: {
+      slug: 'victor',
+      nome: 'Victor',
+      nomeExibicao: 'Consultor Victor',
+      telefone: '(47) 8836-5499',
+      whatsapp: '554788365499',
+      foto: '/consultores/victor.jpg',
+    },
+    alexandre: {
+      slug: 'alexandre',
+      nome: 'Alexandre',
+      nomeExibicao: 'Consultor Alexandre',
+      telefone: '(47) 98846-7855',
+      whatsapp: '5547988467855',
+      foto: '/consultores/alexandre.jpg',
+    },
+  };
+
+  const handleConsultorHtmlRoute = async (req: Request, res: Response, next: NextFunction) => {
+    const rawKey = decodeURIComponent(String(req.params.consultor || 'wilsinho'))
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+    const consultor = CONSULTORES_SSR[rawKey];
+    if (!consultor) return next();
+    const consultorKey = consultor.slug;
+
+    const veiculoSlug = req.params.veiculoSlug ? String(req.params.veiculoSlug) : '';
+
+    try {
+      const templatePath =
+        process.env.NODE_ENV === 'production'
+          ? path.join(process.cwd(), 'dist', 'index.html')
+          : path.join(process.cwd(), 'index.html');
+
+      if (!existsSync(templatePath)) {
+        return next();
+      }
+
+      const ua = String(req.headers['user-agent'] || '').toLowerCase();
+      const isBotOrCrawler =
+        /whatsapp|facebookexternalhit|facebot|instagram|twitterbot|telegrambot|linkedinbot|slackbot|discordbot|googlebot|bingbot|perplexity|gptbot|claudebot/i.test(
+          ua,
+        ) || req.query.ssr_meta === '1';
+
+      if (process.env.NODE_ENV !== 'production' && !isBotOrCrawler) {
+        return next();
+      }
+
+      let meta: ReturnType<typeof buildOfertaMetaTags>;
+
+      if (veiculoSlug) {
+        const estoque = await getVehicles().catch(() => [] as FeedVehicle[]);
+        const match = estoque.find(
+          (v) =>
+            v.slug === veiculoSlug ||
+            v.id === veiculoSlug ||
+            veiculoSlug.endsWith(`-${v.id}`),
+        );
+
+        const title = match
+          ? `${match.title} (${match.year}) — ${match.priceFormatted} | ${consultor.nomeExibicao} • Manos Veículos`
+          : `${consultor.nomeExibicao} (${consultor.telefone}) — Estoque Completo | Manos Veículos`;
+
+        const description = match
+          ? `${match.title} (${match.year}) por ${match.priceFormatted} na Manos Veículos. Fale diretamente com o ${consultor.nomeExibicao} pelo WhatsApp ${consultor.telefone}.`
+          : `Confira o estoque completo da Manos Veículos e fale diretamente com o ${consultor.nomeExibicao} no WhatsApp ${consultor.telefone}.`;
+
+        const canonical = `${SITE_URL}/${consultorKey}/${veiculoSlug}`;
+        const ogImage =
+          match && match.images && match.images[0]
+            ? match.images[0]
+            : `${SITE_URL}${consultor.foto}`;
+
+        meta = {
+          title,
+          description,
+          canonical,
+          robots: 'index,follow,max-image-preview:large',
+          ogImage,
+          preloadImage: ogImage,
+          jsonLd: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'Car',
+            name: match ? match.title : title,
+            url: canonical,
+            offers: match
+              ? {
+                  '@type': 'Offer',
+                  priceCurrency: 'BRL',
+                  price: match.price,
+                  availability: 'https://schema.org/InStock',
+                  seller: {
+                    '@type': 'AutoDealer',
+                    name: `${DEALER.name} — ${consultor.nomeExibicao}`,
+                    telephone: `+${consultor.whatsapp}`,
+                  },
+                }
+              : undefined,
+          }).replace(/</g, '\\u003c'),
+        };
+      } else {
+        const canonical = `${SITE_URL}/${consultorKey}`;
+        const title = `${consultor.nomeExibicao} (${consultor.telefone}) — Estoque Completo | Manos Veículos`;
+        const description = `Atendimento direto com o ${consultor.nomeExibicao} pelo WhatsApp ${consultor.telefone}. Confira todo o estoque de seminovos revisados da Manos Veículos, avalie seu carro na troca e simule financiamento.`;
+        const ogImage = `${SITE_URL}${consultor.foto}`;
+
+        meta = {
+          title,
+          description,
+          canonical,
+          robots: 'index,follow,max-image-preview:large',
+          ogImage,
+          preloadImage: ogImage,
+          jsonLd: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'ProfilePage',
+            name: title,
+            description,
+            url: canonical,
+            mainEntity: {
+              '@type': 'Person',
+              name: consultor.nomeExibicao,
+              jobTitle: 'Consultor Comercial',
+              telephone: `+${consultor.whatsapp}`,
+              image: ogImage,
+              worksFor: {
+                '@type': 'AutoDealer',
+                name: DEALER.name,
+                url: SITE_URL,
+              },
+            },
+          }).replace(/</g, '\\u003c'),
+        };
+      }
+
+      const rawHtml = readFileSync(templatePath, 'utf8');
+      const enrichedHtml = injectMetaIntoHtml(rawHtml, meta);
+      res
+        .status(200)
+        .set('Content-Type', 'text/html; charset=utf-8')
+        .set('Cache-Control', 'no-cache')
+        .send(enrichedHtml);
+    } catch (err) {
+      console.error('[consultor] falha ao injetar SSR meta:', err);
+      next();
+    }
+  };
+
+  for (const key of Object.keys(CONSULTORES_SSR)) {
+    app.get(`/${key}`, (req, res, next) => {
+      req.params.consultor = key;
+      return handleConsultorHtmlRoute(req, res, next);
+    });
+    app.get(`/${key}/:veiculoSlug`, (req, res, next) => {
+      req.params.consultor = key;
+      return handleConsultorHtmlRoute(req, res, next);
+    });
+  }
+  app.get('/consultor/:consultor', handleConsultorHtmlRoute);
+  app.get('/consultor/:consultor/:veiculoSlug', handleConsultorHtmlRoute);
+  app.get('/consultores/:consultor', handleConsultorHtmlRoute);
+  app.get('/consultores/:consultor/:veiculoSlug', handleConsultorHtmlRoute);
 }

@@ -26,6 +26,10 @@ import HavalPresentation from './components/HavalPresentation.tsx';
 import OfertasIndexPage from './components/ofertas/OfertasIndexPage.tsx';
 import OfertaLandingPage from './components/ofertas/OfertaLandingPage.tsx';
 import OfertasAdminPage from './components/ofertas/OfertasAdminPage.tsx';
+import ConsultorLandingPage from './components/consultores/ConsultorLandingPage.tsx';
+import ConsultorVeiculoPage from './components/consultores/ConsultorVeiculoPage.tsx';
+import ConsultoresIndexPage from './components/consultores/ConsultoresIndexPage.tsx';
+import { obterConsultorPorSlug } from './lib/consultores.ts';
 
 import { useState, useEffect } from 'react';
 import { setupInstantLinkInterceptor, navigate } from './lib/router.ts';
@@ -130,6 +134,37 @@ function Router() {
     const slug = path.replace(/^\/ofertas\//, '');
     if (slug) {
       return <OfertaLandingPage slug={slug} />;
+    }
+  }
+
+  // Central de Consultores (/consultores ou /consultor)
+  if (path === '/consultores' || path === '/consultor') {
+    return <ConsultoresIndexPage />;
+  }
+
+  // Rotas de Páginas Individuais de Consultores (/wilsinho, /wilsinho/:veiculo, /consultor/:nome, /consultor/:nome/:veiculo)
+  if (path.startsWith('/consultor/') || path.startsWith('/consultores/')) {
+    const partes = path.replace(/^\/(consultor|consultores)\//, '').split('/').filter(Boolean);
+    const consultorObj = obterConsultorPorSlug(partes[0]);
+    const veiculoSlug = partes[1];
+    if (consultorObj) {
+      if (veiculoSlug) {
+        return <ConsultorVeiculoPage consultorSlug={consultorObj.slug} vehicleSlug={veiculoSlug} />;
+      }
+      return <ConsultorLandingPage consultorSlug={consultorObj.slug} />;
+    }
+  }
+
+  // Rota direta curta na raiz para consultores cadastrados (ex: /wilsinho, /sergio, /ledra, /victor, /alexandre)
+  const rootSegments = path.replace(/^\//, '').split('/').filter(Boolean);
+  if (rootSegments.length >= 1) {
+    const consultorObj = obterConsultorPorSlug(rootSegments[0]);
+    if (consultorObj) {
+      const veiculoSlug = rootSegments[1];
+      if (veiculoSlug) {
+        return <ConsultorVeiculoPage consultorSlug={consultorObj.slug} vehicleSlug={veiculoSlug} />;
+      }
+      return <ConsultorLandingPage consultorSlug={consultorObj.slug} />;
     }
   }
 
