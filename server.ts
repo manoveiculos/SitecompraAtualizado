@@ -41,6 +41,7 @@ import {
   veiculosParaCsv,
 } from "./server/metaFeed";
 import { processConsultorMessage } from "./server/consultor";
+import { mountOfertasRoutes, getPublishedOfertasSlugs } from "./server/ofertas";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -392,82 +393,9 @@ async function startServer() {
     }
   });
 
-  // API Proxy for n8n Webhooks to avoid CORS.
-  // Generates the WhatsApp verification code server-side and forwards it to n8n
-  // (field `codigo`) so it can be delivered via WhatsApp. The code is NOT
-  // returned to the browser.
-  app.post("/api/bolao/lead", async (req, res) => {
-    try {
-      const phone = normalizePhone(req.body?.whatsapp ?? req.body?.telefone ?? "");
-      const codigo = generateOtp();
-      if (phone) {
-        otpStore.set(phone, { code: codigo, expiresAt: Date.now() + OTP_TTL_MS, attempts: 0 });
-      }
-
-      const response = await fetch("https://n8n.drivvoo.com/webhook/f3f66db5-444d-4ba0-a403-3584c432cf23", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...req.body, codigo }),
-      });
-      // Never echo the code (or n8n's body) back to the client
-      res.status(response.ok ? 200 : response.status).json({ ok: response.ok });
-    } catch (error) {
-      console.error("Webhook lead proxy error:", error);
-      res.status(500).json({ error: "Failed to forward lead to webhook" });
-    }
-  });
-
-  // Verifies the WhatsApp code. Only the code generated above (and delivered
-  // via WhatsApp) is accepted; the code is consumed on success.
-  app.post("/api/bolao/verify", (req, res) => {
-    const phone = normalizePhone(req.body?.whatsapp ?? req.body?.telefone ?? "");
-    const codigo = String(req.body?.codigo ?? "").replace(/\D/g, "");
-    const entry = otpStore.get(phone);
-
-    if (!entry || Date.now() > entry.expiresAt) {
-      otpStore.delete(phone);
-      return res.status(400).json({ valid: false, error: "expired" });
-    }
-    entry.attempts += 1;
-    if (entry.attempts > OTP_MAX_ATTEMPTS) {
-      otpStore.delete(phone);
-      return res.status(429).json({ valid: false, error: "too_many_attempts" });
-    }
-    if (codigo && codigo === entry.code) {
-      otpStore.delete(phone);
-      return res.json({ valid: true });
-    }
-    return res.status(400).json({ valid: false, error: "invalid" });
-  });
-
-  app.post("/api/bolao/palpite", async (req, res) => {
-    try {
-      const response = await fetch("https://n8n.drivvoo.com/webhook/2ed8336e-1a2a-4681-bf68-3c844c665f2d", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(req.body),
-      });
-      const data = await response.text();
-      res.status(response.status).send(data);
-    } catch (error) {
-      console.error("Webhook palpite proxy error:", error);
-      res.status(500).json({ error: "Failed to forward palpite to webhook" });
-    }
-  });
-
-  app.post("/api/bolao/finalizar", async (req, res) => {
-    try {
-      const response = await fetch("https://n8n.drivvoo.com/webhook/2196b31c-775d-4d8d-861d-ea65faf321f6", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(req.body),
-      });
-      const data = await response.text();
-      res.status(response.status).send(data);
-    } catch (error) {
-      console.error("Webhook finalizar proxy error:", error);
-      res.status(500).json({ error: "Failed to forward finalizar to webhook" });
-    }
+  // Rotas do Bolão (/api/bolao/*) desativadas
+  app.all("/api/bolao/*", (_req, res) => {
+    res.status(410).json({ ok: false, error: "Módulo Bolão desativado." });
   });
 
   // -------------------------------------------------------------------------
@@ -667,8 +595,21 @@ async function startServer() {
 
   app.get("/sitemap.xml", async (_req, res) => {
     try {
-      const vehicles = await getVehicles();
-      res.set("Content-Type", "application/xml").send(renderSitemap(vehicles));
+      const [vehicles, ofertasSlugs] = await Promise.all([
+        getVehicles(),
+        getPublishedOfertasSlugs().catch(() => [] as string[]),
+      ]);
+      const baseXml = renderSitemap(vehicles);
+      const today = new Date().toISOString().slice(0, 10);
+      const ofertasUrlsXml = [
+        `  <url><loc>${SITE_URL}/ofertas</loc><lastmod>${today}</lastmod><priority>0.8</priority></url>`,
+        ...ofertasSlugs.map(
+          (slug) =>
+            `  <url><loc>${SITE_URL}/ofertas/${slug}</loc><lastmod>${today}</lastmod><priority>0.8</priority></url>`,
+        ),
+      ].join("\n");
+      const fullXml = baseXml.replace("</urlset>", `${ofertasUrlsXml}\n</urlset>`);
+      res.set("Content-Type", "application/xml").send(fullXml);
     } catch (err) {
       console.error("sitemap error:", err);
       res.status(500).send("error");
@@ -1184,6 +1125,9 @@ async function startServer() {
       res.status(500).send("error");
     }
   });
+
+  // Módulo Independente de Ofertas Individuais (/ofertas, /ofertas/:slug, /api/ofertas/*)
+  mountOfertasRoutes(app);
 
   // Vite middleware for development.
   // Imported dynamically so production (npm ci --omit=dev, no vite) doesn't

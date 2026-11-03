@@ -1,9 +1,6 @@
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
-import BolaoPage from './components/bolao/BolaoPage.tsx';
-import BolaoAdminPage from './components/bolao/BolaoAdminPage.tsx';
-import TransparenciaPage from './components/bolao/TransparenciaPage.tsx';
 import RadarPage from './components/bolao/RadarPage.tsx';
 import VendasRapidasPage from './components/vendas/VendasRapidasPage.tsx';
 import ConsignacaoPage from './components/consignacao/ConsignacaoPage.tsx';
@@ -26,6 +23,9 @@ import VeiculoDetailPage from './components/estoque/VeiculoDetailPage.tsx';
 import HomePage from './components/home/HomePage.tsx';
 import EstoquePage from './components/estoque/EstoquePage.tsx';
 import HavalPresentation from './components/HavalPresentation.tsx';
+import OfertasIndexPage from './components/ofertas/OfertasIndexPage.tsx';
+import OfertaLandingPage from './components/ofertas/OfertaLandingPage.tsx';
+import OfertasAdminPage from './components/ofertas/OfertasAdminPage.tsx';
 
 import { useState, useEffect } from 'react';
 import { setupInstantLinkInterceptor, navigate } from './lib/router.ts';
@@ -91,17 +91,7 @@ function Router() {
     return <PoliticaPrivacidadePage />;
   }
 
-  if (path === '/bolao') {
-    return <BolaoPage />;
-  }
-
-  if (path === '/bolao-admin-manos') {
-    return <BolaoAdminPage />;
-  }
-
-  if (path === '/bolao-transparencia') {
-    return <TransparenciaPage />;
-  }
+  // Rotas do Bolão desativadas (/bolao, /bolao-admin-manos, /bolao-transparencia)
 
   if (path === '/radar-manos') {
     return <RadarPage />;
@@ -126,6 +116,21 @@ function Router() {
 
   if (path === '/repasse' || path === '/repasses' || path === '/veiculos-repasse') {
     return <RepassePage />;
+  }
+
+  if (path === '/ofertas-admin' || path === '/ofertas/admin') {
+    return <OfertasAdminPage />;
+  }
+
+  if (path === '/ofertas') {
+    return <OfertasIndexPage />;
+  }
+
+  if (path.startsWith('/ofertas/')) {
+    const slug = path.replace(/^\/ofertas\//, '');
+    if (slug) {
+      return <OfertaLandingPage slug={slug} />;
+    }
   }
 
   if (path === '/') {
