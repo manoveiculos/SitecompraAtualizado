@@ -498,6 +498,86 @@ export async function fetchOfertasPublicadas(): Promise<VeiculoOferta[]> {
   return SEED_VEICULOS_OFERTAS.filter((v) => v.status === 'publicado');
 }
 
+export interface CrmVeiculoExportavel {
+  crm_id: string;
+  origem: 'crm_estoque' | 'supabase_crm';
+  placa: string;
+  marca: string;
+  modelo: string;
+  versao: string;
+  ano_fabricacao: number | null;
+  ano_modelo: number | null;
+  titulo_personalizado: string;
+  slug_sugerido: string;
+  preco_venda: number;
+  quilometragem: number | null;
+  cambio: string;
+  motorizacao: string;
+  combustivel: string;
+  cor: string;
+  portas: number | null;
+  observacoes_comerciais: string;
+  diferenciais: string[];
+  foto_principal: string;
+  fotos: string[];
+  ja_exportado: boolean;
+  oferta_existente_slug?: string | null;
+  oferta_existente_id?: number | string | null;
+  oferta_existente_status?: OfertaStatus | null;
+}
+
+export async function fetchEstoqueCrmAdmin(): Promise<CrmVeiculoExportavel[]> {
+  const adminKey = getSavedAdminKey();
+  try {
+    const res = await fetch('/api/ofertas/crm-estoque', {
+      headers: { 'x-ofertas-admin-key': adminKey },
+    });
+    if (res.ok) {
+      const json = await res.json();
+      if (Array.isArray(json.veiculos)) {
+        return json.veiculos;
+      }
+    }
+  } catch {
+    /* fallback para /api/stock */
+  }
+  return [];
+}
+
+export async function exportarVeiculoDoCrmAdmin(params: {
+  crm_id?: string;
+  placa?: string;
+  status?: OfertaStatus;
+  dados?: Partial<CrmVeiculoExportavel>;
+}): Promise<{ ok: boolean; veiculo?: VeiculoOferta; url?: string; error?: string }> {
+  const adminKey = getSavedAdminKey();
+  try {
+    const res = await fetch('/api/ofertas/exportar-crm', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-ofertas-admin-key': adminKey,
+      },
+      body: JSON.stringify({
+        crm_id: params.crm_id,
+        placa: params.placa,
+        status: params.status || 'publicado',
+        ...(params.dados || {}),
+      }),
+    });
+    const json = await res.json();
+    if (res.ok && json.veiculo) {
+      const criado = normalizeOferta(json.veiculo);
+      const cache = getLocalVeiculosCache().filter((v) => v.slug !== criado.slug);
+      saveLocalVeiculosCache([criado, ...cache]);
+      return { ok: true, veiculo: criado, url: json.url };
+    }
+    return { ok: false, error: json.error || 'Erro ao exportar veículo do CRM.' };
+  } catch (err: any) {
+    return { ok: false, error: err?.message || 'Falha de conexão ao exportar do CRM.' };
+  }
+}
+
 export async function fetchTodasOfertasAdmin(): Promise<VeiculoOferta[]> {
   const adminKey = getSavedAdminKey();
   try {

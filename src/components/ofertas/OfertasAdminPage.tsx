@@ -28,12 +28,16 @@ import {
   X,
   RefreshCw,
   Tag,
+  Download,
+  Database,
 } from 'lucide-react';
 import {
   autenticarAdminOfertas,
   getSavedAdminKey,
   clearAdminKey,
   fetchTodasOfertasAdmin,
+  fetchEstoqueCrmAdmin,
+  exportarVeiculoDoCrmAdmin,
   criarOfertaVeiculo,
   atualizarOfertaVeiculo,
   excluirOfertaVeiculo,
@@ -49,6 +53,7 @@ import {
   gerarMensagemWhatsAppOferta,
   VENDEDOR_PADRAO_OFERTAS,
   type VeiculoOferta,
+  type CrmVeiculoExportavel,
   type OfertaStatus,
   type OfertaMetrica,
   type OfertasTrackingConfig,
@@ -116,7 +121,17 @@ export default function OfertasAdminPage() {
   const [autenticando, setAutenticando] = useState(false);
 
   // Navegação principal do Admin
-  const [abaAtiva, setAbaAtiva] = useState<'anuncios' | 'metricas' | 'config'>('anuncios');
+  const [abaAtiva, setAbaAtiva] = useState<'anuncios' | 'crm' | 'metricas' | 'config'>(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('aba') === 'crm' || params.get('placa') || params.get('import_crm')) {
+        return 'crm';
+      }
+    } catch {
+      /* noop */
+    }
+    return 'anuncios';
+  });
 
   // Lista de anúncios
   const [veiculos, setVeiculos] = useState<VeiculoOferta[]>([]);
@@ -124,6 +139,20 @@ export default function OfertasAdminPage() {
   const [busca, setBusca] = useState('');
   const [filtroStatus, setFiltroStatus] = useState<'todos' | OfertaStatus>('todos');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Estoque do CRM / Altimus para Exportação Direta
+  const [crmVeiculos, setCrmVeiculos] = useState<CrmVeiculoExportavel[]>([]);
+  const [carregandoCrm, setCarregandoCrm] = useState(false);
+  const [buscaCrm, setBuscaCrm] = useState<string>(() => {
+    try {
+      return new URLSearchParams(window.location.search).get('placa') || '';
+    } catch {
+      return '';
+    }
+  });
+  const [filtroCrm, setFiltroCrm] = useState<'todos' | 'nao_exportados' | 'exportados'>('todos');
+  const [exportandoCrmId, setExportandoCrmId] = useState<string | null>(null);
+  const [erroCrm, setErroCrm] = useState('');
 
   // Modal de Cadastro / Edição / Prévia
   const [modalAberto, setModalAberto] = useState(false);
@@ -167,10 +196,23 @@ export default function OfertasAdminPage() {
 
   const carregarTudo = async () => {
     setCarregandoVeiculos(true);
-    const [lista, cfg] = await Promise.all([fetchTodasOfertasAdmin(), fetchConfigOfertas()]);
+    const [lista, cfg, estoqueCrm] = await Promise.all([
+      fetchTodasOfertasAdmin(),
+      fetchConfigOfertas(),
+      fetchEstoqueCrmAdmin(),
+    ]);
     setVeiculos(lista);
     setConfig(cfg);
+    setCrmVeiculos(estoqueCrm);
     setCarregandoVeiculos(false);
+  };
+
+  const carregarEstoqueCrm = async () => {
+    setCarregandoCrm(true);
+    setErroCrm('');
+    const dados = await fetchEstoqueCrmAdmin();
+    setCrmVeiculos(dados);
+    setCarregandoCrm(false);
   };
 
   const carregarMetricas = async () => {
@@ -184,7 +226,66 @@ export default function OfertasAdminPage() {
     if (autenticado && abaAtiva === 'metricas') {
       carregarMetricas();
     }
+    if (autenticado && abaAtiva === 'crm' && crmVeiculos.length === 0) {
+      carregarEstoqueCrm();
+    }
   }, [autenticado, abaAtiva]);
+
+  // Exporta e publica em 1 clique direto do CRM para /ofertas/:slug
+  const handleExportarDiretoDoCrm = async (item: CrmVeiculoExportavel) => {
+    setExportandoCrmId(item.crm_id);
+    setErroCrm('');
+    const res = await exportarVeiculoDoCrmAdmin({
+      crm_id: item.crm_id,
+      placa: item.placa,
+      status: 'publicado',
+      dados: item,
+    });
+    setExportandoCrmId(null);
+
+    if (!res.ok || !res.veiculo) {
+      setErroCrm(res.error || 'Não foi possível exportar o veículo do CRM.');
+      return;
+    }
+
+    await carregarTudo();
+    setUtmCampaignGen(res.veiculo.slug.replace(/-/g, '_'));
+    setUtmContentGen('criativo_01');
+    setAnuncioRecemPublicado(res.veiculo);
+  };
+
+  // Abre o editor pré-preenchido com todos os dados e fotos do CRM para revisão antes de publicar
+  const handlePersonalizarDoCrmAntesDePublicar = (item: CrmVeiculoExportavel) => {
+    setEditandoId(item.oferta_existente_id ?? null);
+    setErroForm('');
+    setModoPreviaNoModal(false);
+    setForm({
+      marca: item.marca,
+      modelo: item.modelo,
+      versao: item.versao || '',
+      ano_fabricacao: item.ano_fabricacao ? String(item.ano_fabricacao) : '',
+      ano_modelo: item.ano_modelo ? String(item.ano_modelo) : '',
+      titulo_personalizado: item.titulo_personalizado || '',
+      slug: item.oferta_existente_slug || item.slug_sugerido,
+      slugEditadoManualmente: false,
+      preco_venda: item.preco_venda ? String(item.preco_venda) : '',
+      quilometragem: item.quilometragem !== null ? String(item.quilometragem) : '',
+      cambio: item.cambio || 'Automático',
+      motorizacao: item.motorizacao || '',
+      combustivel: item.combustivel || 'Flex',
+      cor: item.cor || '',
+      portas: item.portas !== null ? String(item.portas) : '4',
+      observacoes_comerciais: item.observacoes_comerciais || '',
+      diferenciaisTexto: Array.isArray(item.diferenciais) ? item.diferenciais.join('\n') : '',
+      foto_principal: item.foto_principal || item.fotos[0] || '',
+      fotos: Array.isArray(item.fotos) ? [...item.fotos] : [],
+      localizacao: VENDEDOR_PADRAO_OFERTAS.localizacao,
+      vendedor_nome: config.vendedor_padrao_nome || VENDEDOR_PADRAO_OFERTAS.nome,
+      vendedor_whatsapp: config.vendedor_padrao_whatsapp || VENDEDOR_PADRAO_OFERTAS.whatsapp,
+      status: 'publicado',
+    });
+    setModalAberto(true);
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -684,6 +785,15 @@ export default function OfertasAdminPage() {
 
             <button
               type="button"
+              onClick={() => setAbaAtiva('crm')}
+              className="px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs uppercase tracking-wider inline-flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition-all cursor-pointer"
+            >
+              <Download className="w-4 h-4" />
+              <span>EXPORTAR DO CRM</span>
+            </button>
+
+            <button
+              type="button"
               onClick={abrirModalNovo}
               className="px-4 py-2.5 rounded-xl bg-[#E50914] hover:bg-[#c40710] text-white font-extrabold text-xs uppercase tracking-wider inline-flex items-center gap-2 shadow-lg shadow-[#E50914]/25 transition-all cursor-pointer"
             >
@@ -715,6 +825,19 @@ export default function OfertasAdminPage() {
           >
             <Car className="w-4 h-4" />
             <span>Anúncios ({veiculos.length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setAbaAtiva('crm')}
+            className={`px-4 py-2 rounded-lg text-xs font-extrabold uppercase tracking-wider inline-flex items-center gap-2 transition-colors cursor-pointer ${
+              abaAtiva === 'crm'
+                ? 'bg-[#E50914] text-white'
+                : 'text-emerald-400 hover:text-white hover:bg-white/5 border border-emerald-500/20'
+            }`}
+          >
+            <Database className="w-4 h-4" />
+            <span>Exportar Direto do CRM ({crmVeiculos.length})</span>
           </button>
 
           <button
@@ -1004,6 +1127,263 @@ export default function OfertasAdminPage() {
                   );
                 })}
               </div>
+            )}
+          </div>
+        )}
+
+        {/* ===================================================================
+            ABA CRM: EXPORTAR ANÚNCIO DIRETO DO ESTOQUE DO CRM / ALTIMUS (1 CLIQUE)
+           =================================================================== */}
+        {abaAtiva === 'crm' && (
+          <div className="space-y-6">
+            <div className="rounded-3xl bg-gradient-to-r from-[#121216] via-[#15151b] to-[#121216] border border-white/10 p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-1.5">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[11px] font-extrabold uppercase tracking-wider">
+                  <Database className="w-3.5 h-3.5" />
+                  <span>Sincronizado com o CRM & Estoque Manos Veículos</span>
+                </div>
+                <h2 className="text-xl sm:text-2xl font-black text-white">
+                  Exportar Anúncio Direto do CRM para Landing Page (/ofertas)
+                </h2>
+                <p className="text-xs text-zinc-400 max-w-2xl">
+                  Selecione qualquer veículo do estoque do CRM abaixo. Com <strong>1 clique</strong>, o sistema puxa todas as fotos em alta qualidade, preço, KM, ano, opcionais e gera a Landing Page individual pronta para o Facebook Ads / Instagram Ads com o WhatsApp do <strong>Alexandre</strong>.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={carregarEstoqueCrm}
+                disabled={carregandoCrm}
+                className="px-4 py-3 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 text-xs font-extrabold uppercase tracking-wider text-white inline-flex items-center gap-2 cursor-pointer shrink-0"
+              >
+                <RefreshCw className={`w-4 h-4 ${carregandoCrm ? 'animate-spin text-[#E50914]' : ''}`} />
+                <span>Atualizar Estoque CRM</span>
+              </button>
+            </div>
+
+            {erroCrm && (
+              <div className="p-4 rounded-2xl bg-[#E50914]/15 border border-[#E50914]/30 text-xs font-bold text-red-200 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-[#E50914] shrink-0" />
+                <span>{erroCrm}</span>
+              </div>
+            )}
+
+            {/* Barra de Busca e Filtro do Estoque CRM */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-[#121216] border border-white/10 rounded-2xl p-4">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={buscaCrm}
+                  onChange={(e) => setBuscaCrm(e.target.value)}
+                  placeholder="Buscar no CRM por modelo, marca, versão ou placa (ex: Polo, Onix, Creta, RXL...)"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-[#0A0A0B] border border-white/10 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-[#E50914]"
+                />
+              </div>
+
+              <div className="flex items-center gap-1.5 overflow-x-auto">
+                {(
+                  [
+                    { id: 'todos', label: `Todos no CRM (${crmVeiculos.length})` },
+                    {
+                      id: 'nao_exportados',
+                      label: `Disponíveis p/ Exportar (${crmVeiculos.filter((c) => !c.ja_exportado).length})`,
+                    },
+                    {
+                      id: 'exportados',
+                      label: `Já em /ofertas (${crmVeiculos.filter((c) => c.ja_exportado).length})`,
+                    },
+                  ] as const
+                ).map((st) => (
+                  <button
+                    key={st.id}
+                    type="button"
+                    onClick={() => setFiltroCrm(st.id)}
+                    className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-colors cursor-pointer ${
+                      filtroCrm === st.id
+                        ? 'bg-[#E50914] text-white'
+                        : 'bg-[#0A0A0B] text-zinc-400 hover:text-white border border-white/10'
+                    }`}
+                  >
+                    {st.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Lista de Veículos do CRM */}
+            {carregandoCrm ? (
+              <div className="py-20 text-center space-y-3">
+                <Loader2 className="w-8 h-8 text-[#E50914] animate-spin mx-auto" />
+                <p className="text-sm text-zinc-400">Buscando estoque atualizado no CRM...</p>
+              </div>
+            ) : (
+              (() => {
+                const termo = buscaCrm.trim().toLowerCase();
+                const filtradosCrm = crmVeiculos.filter((c) => {
+                  if (filtroCrm === 'nao_exportados' && c.ja_exportado) return false;
+                  if (filtroCrm === 'exportados' && !c.ja_exportado) return false;
+                  if (!termo) return true;
+                  return (
+                    c.titulo_personalizado.toLowerCase().includes(termo) ||
+                    c.marca.toLowerCase().includes(termo) ||
+                    c.modelo.toLowerCase().includes(termo) ||
+                    c.versao.toLowerCase().includes(termo) ||
+                    (c.placa && c.placa.toLowerCase().includes(termo)) ||
+                    String(c.ano_modelo || '').includes(termo)
+                  );
+                });
+
+                if (filtradosCrm.length === 0) {
+                  return (
+                    <div className="rounded-3xl bg-[#121216] border border-white/10 p-12 text-center space-y-3">
+                      <Car className="w-10 h-10 text-zinc-600 mx-auto" />
+                      <h3 className="text-lg font-extrabold text-white">
+                        Nenhum veículo encontrado no filtro atual
+                      </h3>
+                      <p className="text-xs text-zinc-400">
+                        Limpe a busca ou clique em "Atualizar Estoque CRM".
+                      </p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {filtradosCrm.map((item) => {
+                      const estaExportando = exportandoCrmId === item.crm_id;
+                      const slugLink = item.oferta_existente_slug || item.slug_sugerido;
+                      return (
+                        <div
+                          key={item.crm_id}
+                          className="rounded-2xl bg-[#121216] border border-white/10 hover:border-white/20 p-4 flex flex-col justify-between gap-4 transition-all"
+                        >
+                          <div className="flex items-start gap-4">
+                            <div className="w-32 h-24 rounded-xl bg-black overflow-hidden border border-white/10 shrink-0 relative">
+                              {item.foto_principal ? (
+                                <img
+                                  src={item.foto_principal}
+                                  alt={item.titulo_personalizado}
+                                  className="w-full h-full object-cover"
+                                  loading="lazy"
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-zinc-600">
+                                  <Car className="w-6 h-6" />
+                                </div>
+                              )}
+                              <span className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded bg-black/80 text-[10px] font-bold text-zinc-200">
+                                {item.fotos.length} foto{item.fotos.length === 1 ? '' : 's'}
+                              </span>
+                            </div>
+
+                            <div className="min-w-0 flex-1 space-y-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {item.ja_exportado ? (
+                                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[10px] font-extrabold uppercase tracking-wider">
+                                    ✓ Já em /ofertas
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded-full bg-white/10 text-zinc-300 text-[10px] font-bold uppercase tracking-wider">
+                                    Estoque CRM
+                                  </span>
+                                )}
+                                {item.placa && (
+                                  <span className="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-[10px] font-mono text-zinc-300">
+                                    Placa: {item.placa}
+                                  </span>
+                                )}
+                              </div>
+
+                              <h3 className="text-sm font-black text-white leading-snug line-clamp-2">
+                                {item.titulo_personalizado}
+                              </h3>
+
+                              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-400">
+                                <span className="font-black text-[#E50914] text-sm">
+                                  {formatarMoedaBRL(item.preco_venda)}
+                                </span>
+                                {item.ano_modelo && <span>• Ano {item.ano_modelo}</span>}
+                                {item.quilometragem !== null && (
+                                  <span>• {formatarQuilometragem(item.quilometragem)}</span>
+                                )}
+                                {item.cambio && <span>• {item.cambio}</span>}
+                              </div>
+
+                              <p className="text-[11px] text-zinc-500 font-mono truncate">
+                                URL destino: /ofertas/{slugLink}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-white/5">
+                            {/* Botão Principal: Exportar e Publicar em 1 Clique */}
+                            <button
+                              type="button"
+                              disabled={estaExportando}
+                              onClick={() => handleExportarDiretoDoCrm(item)}
+                              className="flex-1 py-2.5 px-3 rounded-xl bg-[#E50914] hover:bg-[#c40710] text-white text-xs font-extrabold uppercase tracking-wider inline-flex items-center justify-center gap-1.5 shadow-lg shadow-[#E50914]/20 transition-all cursor-pointer disabled:opacity-50"
+                            >
+                              {estaExportando ? (
+                                <>
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  <span>Exportando...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Download className="w-3.5 h-3.5" />
+                                  <span>
+                                    {item.ja_exportado
+                                      ? 'Sincronizar & Gerar Link'
+                                      : 'Exportar & Publicar (1 Clique)'}
+                                  </span>
+                                </>
+                              )}
+                            </button>
+
+                            {/* Botão Secundário: Personalizar no Editor antes de Publicar */}
+                            <button
+                              type="button"
+                              onClick={() => handlePersonalizarDoCrmAntesDePublicar(item)}
+                              className="py-2.5 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-200 text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                              title="Revisar e editar informações antes de publicar"
+                            >
+                              <Edit className="w-3.5 h-3.5" />
+                              <span>Revisar / Editar</span>
+                            </button>
+
+                            {/* Se já exportado, botão rápido de Copiar Link */}
+                            {item.ja_exportado && item.oferta_existente_slug && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  copiarLinkAnuncio(
+                                    item.oferta_existente_slug!,
+                                    `crm_${item.crm_id}`,
+                                  )
+                                }
+                                className="py-2.5 px-3 rounded-xl bg-[#25D366]/15 hover:bg-[#25D366]/25 border border-[#25D366]/30 text-[#25D366] text-xs font-extrabold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                              >
+                                {copiedId === `crm_${item.crm_id}` ? (
+                                  <>
+                                    <Check className="w-3.5 h-3.5" />
+                                    <span>Copiado!</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="w-3.5 h-3.5" />
+                                    <span>Copiar Link</span>
+                                  </>
+                                )}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()
             )}
           </div>
         )}
@@ -1324,6 +1704,41 @@ export default function OfertasAdminPage() {
                     <div className="p-4 rounded-xl bg-[#E50914]/15 border border-[#E50914]/40 text-sm font-bold text-red-200 flex items-center gap-3">
                       <AlertCircle className="w-5 h-5 text-[#E50914] flex-shrink-0" />
                       <span>{erroForm}</span>
+                    </div>
+                  )}
+
+                  {/* BARRA RÁPIDA: PUXAR VEÍCULO DIRETO DO CRM */}
+                  {crmVeiculos.length > 0 && (
+                    <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="space-y-0.5">
+                        <span className="text-xs font-extrabold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+                          <Database className="w-3.5 h-3.5" />
+                          <span>Preencher Automaticamente do CRM ({crmVeiculos.length} veículos em estoque)</span>
+                        </span>
+                        <p className="text-[11px] text-zinc-300">
+                          Selecione um veículo do CRM para puxar todas as fotos, preço, KM, opcionais e ficha técnica automaticamente:
+                        </p>
+                      </div>
+                      <select
+                        defaultValue=""
+                        onChange={(e) => {
+                          const selecionado = crmVeiculos.find((c) => c.crm_id === e.target.value);
+                          if (selecionado) {
+                            handlePersonalizarDoCrmAntesDePublicar(selecionado);
+                          }
+                        }}
+                        className="px-3.5 py-2.5 rounded-xl bg-[#0A0A0B] border border-emerald-500/40 text-xs font-bold text-white max-w-full sm:max-w-xs cursor-pointer"
+                      >
+                        <option value="" disabled>
+                          Selecionar veículo do CRM...
+                        </option>
+                        {crmVeiculos.map((c) => (
+                          <option key={c.crm_id} value={c.crm_id}>
+                            {c.titulo_personalizado} — {formatarMoedaBRL(c.preco_venda)}
+                            {c.placa ? ` (${c.placa})` : ''}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   )}
 

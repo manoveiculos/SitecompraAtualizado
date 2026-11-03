@@ -18,8 +18,36 @@ import { createClient } from '@supabase/supabase-js';
 import { createHash, timingSafeEqual } from 'crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import path from 'path';
-import { SITE_URL, DEALER } from './catalog';
+import { SITE_URL, DEALER, getVehicles, type FeedVehicle } from './catalog';
 import { enviarEventoCapi } from './meta';
+
+export interface CrmVeiculoExportavel {
+  crm_id: string;
+  origem: 'crm_estoque' | 'supabase_crm';
+  placa: string;
+  marca: string;
+  modelo: string;
+  versao: string;
+  ano_fabricacao: number | null;
+  ano_modelo: number | null;
+  titulo_personalizado: string;
+  slug_sugerido: string;
+  preco_venda: number;
+  quilometragem: number | null;
+  cambio: string;
+  motorizacao: string;
+  combustivel: string;
+  cor: string;
+  portas: number | null;
+  observacoes_comerciais: string;
+  diferenciais: string[];
+  foto_principal: string;
+  fotos: string[];
+  ja_exportado: boolean;
+  oferta_existente_slug?: string | null;
+  oferta_existente_id?: number | string | null;
+  oferta_existente_status?: OfertaStatus | null;
+}
 
 export type OfertaStatus = 'rascunho' | 'publicado' | 'vendido' | 'pausado';
 
@@ -499,6 +527,277 @@ export async function getPublishedOfertasSlugs(): Promise<string[]> {
 }
 
 // ---------------------------------------------------------------------------
+// Integração Direta com Estoque do CRM / Altimus para Exportação 1-Clique
+// ---------------------------------------------------------------------------
+
+const MARCAS_FORMATADAS: Record<string, string> = {
+  VOLKSWAGEN: 'Volkswagen',
+  VW: 'Volkswagen',
+  CHEVROLET: 'Chevrolet',
+  GM: 'Chevrolet',
+  HYUNDAI: 'Hyundai',
+  FIAT: 'Fiat',
+  TOYOTA: 'Toyota',
+  HONDA: 'Honda',
+  JEEP: 'Jeep',
+  RENAULT: 'Renault',
+  NISSAN: 'Nissan',
+  FORD: 'Ford',
+  PEUGEOT: 'Peugeot',
+  CITROEN: 'Citroën',
+  CITROËN: 'Citroën',
+  MITSUBISHI: 'Mitsubishi',
+  BMW: 'BMW',
+  MERCEDES: 'Mercedes-Benz',
+  'MERCEDES-BENZ': 'Mercedes-Benz',
+  AUDI: 'Audi',
+  PORSCHE: 'Porsche',
+  VOLVO: 'Volvo',
+  KIA: 'Kia',
+  BYD: 'BYD',
+  GWM: 'GWM',
+  HAVAL: 'GWM Haval',
+  CAOA: 'CAOA Chery',
+  CHERY: 'CAOA Chery',
+  RAM: 'RAM',
+  LAND: 'Land Rover',
+  YAMAHA: 'Yamaha',
+};
+
+function formatarCapitalizacao(texto: string): string {
+  if (!texto) return '';
+  const siglas = new Set([
+    'TSI', 'TFSI', 'TDI', 'CVT', 'AT', 'MT', 'LT', 'LTZ', 'LS', 'RS', 'GT',
+    'GTI', 'GTS', 'GLI', 'EX', 'EXL', 'LX', 'LXL', 'DX', 'WRX', 'STI', 'AMG',
+    'BMW', 'BYD', 'GWM', 'RAM', 'SW4', 'HR-V', 'WR-V', 'CR-V', 'HB20', 'HB20S',
+    'IX35', '4X4', '4X2', 'AWD', 'FWD', '16V', '8V', '20V', 'V6', 'V8', 'T200',
+    'T270', 'TD350', 'TD380', 'XEI', 'GLI', 'XRE', 'CG', 'PCX', 'NMAX', 'SUV',
+  ]);
+  return texto
+    .trim()
+    .split(/\s+/)
+    .map((palavra) => {
+      const upper = palavra.toUpperCase();
+      if (siglas.has(upper)) return upper;
+      if (/^\d+(\.\d+)?[A-Z]*$/i.test(palavra)) return upper;
+      return palavra.charAt(0).toUpperCase() + palavra.slice(1).toLowerCase();
+    })
+    .join(' ');
+}
+
+function extrairAnos(anoStr: string): { anoFab: number | null; anoMod: number | null } {
+  const matches = String(anoStr || '').match(/\b(19\d{2}|20\d{2})\b/g);
+  if (!matches || matches.length === 0) {
+    return { anoFab: null, anoMod: null };
+  }
+  if (matches.length >= 2) {
+    return { anoFab: Number(matches[0]), anoMod: Number(matches[1]) };
+  }
+  const unico = Number(matches[0]);
+  return { anoFab: unico, anoMod: unico };
+}
+
+function extrairMotorizacao(texto: string): string {
+  const m = String(texto || '').match(
+    /\b(\d\.\d(?:\s*(?:200\s*TSI|250\s*TSI|350\s*TSI|TSI|TFSI|TDI|T200|T270|TD350|TD380|Turbo|16V|8V|V6|V8|Hybrid|Híbrido))?)\b/i,
+  );
+  if (m) return formatarCapitalizacao(m[1]);
+  if (/\bel[eé]tric/i.test(texto)) return 'Elétrico';
+  if (/\bh[ií]brid/i.test(texto)) return 'Híbrido';
+  return '';
+}
+
+export function converterFeedParaOferta(
+  v: FeedVehicle,
+  ofertasExistentes: VeiculoOferta[],
+): CrmVeiculoExportavel {
+  const tokens = (v.title || '').trim().split(/\s+/).filter(Boolean);
+  const rawBrand = (tokens[0] || v.brand || 'Manos').toUpperCase();
+  const marca = MARCAS_FORMATADAS[rawBrand] || formatarCapitalizacao(rawBrand);
+
+  // Detecta modelos compostos comuns (ex: Corolla Cross, Hilux SW4, Grand Siena, Serie 3, Haval H6)
+  let restoTokens = tokens.slice(1);
+  if (rawBrand === 'LAND' && restoTokens[0]?.toUpperCase() === 'ROVER') {
+    restoTokens = restoTokens.slice(1);
+  } else if (rawBrand === 'CAOA' && restoTokens[0]?.toUpperCase() === 'CHERY') {
+    restoTokens = restoTokens.slice(1);
+  }
+
+  let modeloTokensCount = 1;
+  const t0 = (restoTokens[0] || '').toUpperCase();
+  const t1 = (restoTokens[1] || '').toUpperCase();
+  if (
+    (t0 === 'COROLLA' && t1 === 'CROSS') ||
+    (t0 === 'HILUX' && t1 === 'SW4') ||
+    (t0 === 'GRAND' && t1 === 'SIENA') ||
+    (t0 === 'SERIE' || t0 === 'SÉRIE' || t0 === 'CLASSE') ||
+    (t0 === 'HAVAL' && t1.startsWith('H')) ||
+    (t0 === 'TIGGO' && /^\d/.test(t1)) ||
+    (t0 === 'SONG' && t1 === 'PLUS') ||
+    (t0 === 'PAJERO' && (t1 === 'SPORT' || t1 === 'FULL' || t1 === 'DAKAR' || t1 === 'TR4')) ||
+    (t0 === 'RANGE' && t1 === 'ROVER')
+  ) {
+    modeloTokensCount = 2;
+  }
+
+  const modelo = formatarCapitalizacao(restoTokens.slice(0, modeloTokensCount).join(' ')) || 'Veículo';
+  const versao = formatarCapitalizacao(restoTokens.slice(modeloTokensCount).join(' '));
+  const { anoFab, anoMod } = extrairAnos(v.year);
+  const motorizacao = extrairMotorizacao(v.title);
+  const cambio = v.transmission || 'Automático';
+  const combustivel = formatarCapitalizacao(v.fuel || 'Flex') || 'Flex';
+  const cor = formatarCapitalizacao(v.color || '');
+  const portas = v.tipo === '4' ? null : 4;
+
+  const tituloPersonalizado = [marca, modelo, versao, anoMod || anoFab]
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const slugBase = gerarSlugOferta(`${marca}-${modelo}-${anoMod || anoFab || v.id}`);
+
+  // Verifica se já foi exportado para /ofertas (por slug base, título ou foto principal)
+  const foto0 = v.images[0] || '';
+  const matchOferta = ofertasExistentes.find(
+    (of) =>
+      of.slug === slugBase ||
+      (foto0 && of.foto_principal === foto0) ||
+      (of.marca.toLowerCase() === marca.toLowerCase() &&
+        of.modelo.toLowerCase() === modelo.toLowerCase() &&
+        of.preco_venda === v.price &&
+        of.quilometragem === v.kmNumber),
+  );
+
+  const diferenciais = Array.isArray(v.options)
+    ? v.options.map((op) => op.trim()).filter(Boolean)
+    : [];
+
+  const resumoAtributos = [
+    anoMod ? `Ano ${anoFab && anoFab !== anoMod ? `${anoFab}/${anoMod}` : anoMod}` : '',
+    v.kmNumber != null ? `${v.kmNumber.toLocaleString('pt-BR')} km` : '',
+    cambio ? `Câmbio ${cambio}` : '',
+    combustivel || '',
+    cor ? `Cor ${cor}` : '',
+  ]
+    .filter(Boolean)
+    .join(' • ');
+
+  const observacoes = [
+    `${tituloPersonalizado} disponível em Itapema/SC na Manos Veículos.`,
+    resumoAtributos ? `Especificações: ${resumoAtributos}.` : '',
+    diferenciais.length > 0
+      ? `Principais equipamentos registrados no CRM: ${diferenciais.slice(0, 6).join(', ')}.`
+      : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  return {
+    crm_id: String(v.id),
+    origem: 'crm_estoque',
+    placa: v.placa || '',
+    marca,
+    modelo,
+    versao,
+    ano_fabricacao: anoFab,
+    ano_modelo: anoMod,
+    titulo_personalizado: tituloPersonalizado,
+    slug_sugerido: slugBase,
+    preco_venda: Number(v.price) || 0,
+    quilometragem: Number.isFinite(v.kmNumber) ? v.kmNumber : null,
+    cambio,
+    motorizacao,
+    combustivel,
+    cor,
+    portas,
+    observacoes_comerciais: observacoes,
+    diferenciais,
+    foto_principal: foto0,
+    fotos: v.images || [],
+    ja_exportado: Boolean(matchOferta),
+    oferta_existente_slug: matchOferta?.slug || null,
+    oferta_existente_id: matchOferta?.id || null,
+    oferta_existente_status: matchOferta?.status || null,
+  };
+}
+
+export async function listarVeiculosDoCrmParaExportar(): Promise<CrmVeiculoExportavel[]> {
+  const [feedVehicles, ofertasExistentes] = await Promise.all([
+    getVehicles().catch(() => [] as FeedVehicle[]),
+    listarVeiculosOfertas(true).catch(() => [] as VeiculoOferta[]),
+  ]);
+
+  const lista = feedVehicles.map((v) => converterFeedParaOferta(v, ofertasExistentes));
+
+  // Também consulta tabela `inventory` do Supabase CRM (caso existam veículos exclusivos lá)
+  try {
+    const { data: crmRows } = await supabaseServer
+      .from('inventory')
+      .select('*')
+      .limit(200);
+
+    if (Array.isArray(crmRows) && crmRows.length > 0) {
+      const placasExistentes = new Set(lista.map((i) => i.placa.toUpperCase()).filter(Boolean));
+      for (const row of crmRows) {
+        const placa = String(row.plate || row.placa || '').toUpperCase().trim();
+        if (placa && placasExistentes.has(placa)) continue;
+
+        const marca = formatarCapitalizacao(String(row.brand || row.marca || ''));
+        const modelo = formatarCapitalizacao(String(row.model || row.modelo || ''));
+        if (!marca || !modelo) continue;
+
+        const versao = formatarCapitalizacao(String(row.version || row.versao || ''));
+        const { anoFab, anoMod } = extrairAnos(String(row.year || row.ano || ''));
+        const preco = Number(row.price || row.preco || row.valor || 0);
+        const km = row.km != null ? Number(row.km) : null;
+        const fotos: string[] = Array.isArray(row.images || row.fotos)
+          ? (row.images || row.fotos)
+          : row.image_url || row.foto_principal
+            ? [String(row.image_url || row.foto_principal)]
+            : [];
+        const slugBase = gerarSlugOferta(`${marca}-${modelo}-${anoMod || anoFab || row.id}`);
+        const matchOferta = ofertasExistentes.find((o) => o.slug === slugBase);
+
+        lista.push({
+          crm_id: `sup_${row.id}`,
+          origem: 'supabase_crm',
+          placa,
+          marca,
+          modelo,
+          versao,
+          ano_fabricacao: anoFab,
+          ano_modelo: anoMod,
+          titulo_personalizado: [marca, modelo, versao, anoMod].filter(Boolean).join(' '),
+          slug_sugerido: slugBase,
+          preco_venda: preco,
+          quilometragem: km,
+          cambio: String(row.transmission || row.cambio || 'Automático'),
+          motorizacao: extrairMotorizacao(versao),
+          combustivel: String(row.fuel || row.combustivel || 'Flex'),
+          cor: formatarCapitalizacao(String(row.color || row.cor || '')),
+          portas: 4,
+          observacoes_comerciais: String(
+            row.description || row.observacoes || `${marca} ${modelo} disponível em Itapema/SC na Manos Veículos.`,
+          ),
+          diferenciais: Array.isArray(row.features || row.opcionais) ? (row.features || row.opcionais) : [],
+          foto_principal: fotos[0] || '',
+          fotos,
+          ja_exportado: Boolean(matchOferta),
+          oferta_existente_slug: matchOferta?.slug || null,
+          oferta_existente_id: matchOferta?.id || null,
+          oferta_existente_status: matchOferta?.status || null,
+        });
+      }
+    }
+  } catch {
+    /* tabela inventory opcional */
+  }
+
+  return lista;
+}
+
+// ---------------------------------------------------------------------------
 // Segurança Administrativa
 // ---------------------------------------------------------------------------
 
@@ -887,6 +1186,161 @@ export function mountOfertasRoutes(app: Express): void {
     }
 
     res.json({ ok: true, config: novaConfig });
+  });
+
+  // 3.1. Listar estoque do CRM / Altimus pronto para exportação 1-clique em /ofertas (Admin)
+  app.get('/api/ofertas/crm-estoque', exigirAdminOfertas, async (_req, res) => {
+    try {
+      const crmVeiculos = await listarVeiculosDoCrmParaExportar();
+      return res.set('Cache-Control', 'no-store').json({
+        ok: true,
+        total: crmVeiculos.length,
+        veiculos: crmVeiculos,
+      });
+    } catch (err) {
+      console.error('[ofertas] erro em GET /api/ofertas/crm-estoque:', err);
+      return res.status(500).json({ ok: false, error: 'Erro ao carregar estoque do CRM.' });
+    }
+  });
+
+  // 3.2. Exportar veículo direto do CRM para /ofertas (1-clique ou via webhook do CRM)
+  app.post('/api/ofertas/exportar-crm', exigirAdminOfertas, async (req, res) => {
+    try {
+      const body = req.body ?? {};
+      const crmId = String(body.crm_id || '').trim();
+      const placa = String(body.placa || '').toUpperCase().trim();
+      const statusPublicacao: OfertaStatus = ['rascunho', 'publicado', 'vendido', 'pausado'].includes(
+        body.status,
+      )
+        ? body.status
+        : 'publicado';
+
+      const crmLista = await listarVeiculosDoCrmParaExportar();
+      const candidato = crmLista.find(
+        (c) =>
+          (crmId && c.crm_id === crmId) ||
+          (placa && c.placa.toUpperCase() === placa),
+      );
+
+      const dadosBase = candidato
+        ? {
+            marca: candidato.marca,
+            modelo: candidato.modelo,
+            versao: candidato.versao,
+            ano_fabricacao: candidato.ano_fabricacao,
+            ano_modelo: candidato.ano_modelo,
+            titulo_personalizado: candidato.titulo_personalizado,
+            slug: candidato.slug_sugerido,
+            preco_venda: candidato.preco_venda,
+            quilometragem: candidato.quilometragem,
+            cambio: candidato.cambio,
+            motorizacao: candidato.motorizacao,
+            combustivel: candidato.combustivel,
+            cor: candidato.cor,
+            portas: candidato.portas,
+            observacoes_comerciais: candidato.observacoes_comerciais,
+            diferenciais: candidato.diferenciais,
+            foto_principal: candidato.foto_principal,
+            fotos: candidato.fotos,
+          }
+        : body;
+
+      const marca = String(dadosBase.marca || '').trim();
+      const modelo = String(dadosBase.modelo || '').trim();
+      const precoVenda = Number(dadosBase.preco_venda) || 0;
+
+      if (!marca || !modelo || precoVenda <= 0) {
+        return res.status(400).json({
+          ok: false,
+          error: 'Veículo do CRM sem Marca, Modelo ou Preço válido para exportação.',
+        });
+      }
+
+      const existentes = await listarVeiculosOfertas(true);
+      const anoRef = dadosBase.ano_modelo || dadosBase.ano_fabricacao || new Date().getFullYear();
+      let slugDesejado = gerarSlugOferta(dadosBase.slug || `${marca}-${modelo}-${anoRef}`);
+      if (!slugDesejado) slugDesejado = `veiculo-${Date.now()}`;
+
+      // Se já existir oferta para este mesmo veículo (por oferta_existente_slug), atualiza;
+      // caso contrário garante slug único.
+      let slugFinal = slugDesejado;
+      if (!candidato?.ja_exportado) {
+        let sufixo = 2;
+        while (existentes.some((v) => v.slug === slugFinal)) {
+          slugFinal = `${slugDesejado}-${sufixo}`;
+          sufixo++;
+        }
+      } else if (candidato.oferta_existente_slug) {
+        slugFinal = candidato.oferta_existente_slug;
+      }
+
+      const agora = new Date().toISOString();
+      const exportado = normalizeVeiculoRow({
+        ...dadosBase,
+        id: candidato?.oferta_existente_id || Date.now(),
+        slug: slugFinal,
+        localizacao: body.localizacao || ALEXANDRE_PADRAO.localizacao,
+        vendedor_nome: body.vendedor_nome || ALEXANDRE_PADRAO.nome,
+        vendedor_whatsapp: body.vendedor_whatsapp || ALEXANDRE_PADRAO.whatsapp,
+        status: statusPublicacao,
+        created_at: agora,
+        updated_at: agora,
+      });
+
+      const store = readServerStore();
+      store.deletedSlugs = store.deletedSlugs.filter((s) => s !== exportado.slug);
+      const idxExistente = store.veiculos.findIndex((v) => v.slug === exportado.slug);
+      if (idxExistente !== -1) {
+        store.veiculos[idxExistente] = exportado;
+      } else {
+        store.veiculos.unshift(exportado);
+      }
+      writeServerStore(store);
+
+      try {
+        await supabaseServer.from('veiculos_ofertas').upsert(
+          [
+            {
+              marca: exportado.marca,
+              modelo: exportado.modelo,
+              versao: exportado.versao,
+              ano_fabricacao: exportado.ano_fabricacao,
+              ano_modelo: exportado.ano_modelo,
+              titulo_personalizado: exportado.titulo_personalizado,
+              slug: exportado.slug,
+              preco_venda: exportado.preco_venda,
+              quilometragem: exportado.quilometragem,
+              cambio: exportado.cambio,
+              motorizacao: exportado.motorizacao,
+              combustivel: exportado.combustivel,
+              cor: exportado.cor,
+              portas: exportado.portas,
+              observacoes_comerciais: exportado.observacoes_comerciais,
+              diferenciais: exportado.diferenciais,
+              foto_principal: exportado.foto_principal,
+              fotos: exportado.fotos,
+              localizacao: exportado.localizacao,
+              vendedor_nome: exportado.vendedor_nome,
+              vendedor_whatsapp: exportado.vendedor_whatsapp,
+              status: exportado.status,
+              updated_at: exportado.updated_at,
+            },
+          ],
+          { onConflict: 'slug' },
+        );
+      } catch {
+        /* já persistido no store local */
+      }
+
+      return res.status(201).json({
+        ok: true,
+        veiculo: exportado,
+        url: `${SITE_URL}/ofertas/${exportado.slug}`,
+      });
+    } catch (err) {
+      console.error('[ofertas] erro ao exportar veículo do CRM:', err);
+      return res.status(500).json({ ok: false, error: 'Erro ao exportar veículo do CRM.' });
+    }
   });
 
   // 4. Listar veículos (público retorna apenas publicados; ?all=1 com header admin retorna todos)
