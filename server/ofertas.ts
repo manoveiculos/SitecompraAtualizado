@@ -20,6 +20,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import path from 'path';
 import { SITE_URL, DEALER, getVehicles, type FeedVehicle } from './catalog';
 import { enviarEventoCapi } from './meta';
+import { enviarEventoOpenAiAds } from './openaiAds';
 
 export interface CrmVeiculoExportavel {
   crm_id: string;
@@ -1686,7 +1687,7 @@ export function mountOfertasRoutes(app: Express): void {
         }
       })();
 
-      // Espelhamento para Meta Conversions API (apenas ViewContent e Contact, NUNCA Purchase)
+      // Espelhamento para Meta Conversions API e OpenAI Ads CAPI (apenas ViewContent e Contact, NUNCA Purchase)
       if (!isLocalhostReq(req) && (evento === 'ViewContent' || evento === 'Contact')) {
         const fbp = lerCookieSimples(req, '_fbp');
         let fbc = lerCookieSimples(req, '_fbc');
@@ -1694,6 +1695,9 @@ export function mountOfertasRoutes(app: Express): void {
           fbc = `fb.1.${Date.now()}.${metrica.fbclid}`;
         }
         const externalId = lerCookieSimples(req, 'manos_vid');
+        const obref = lerCookieSimples(req, '__obref') || atribuicao.obref || null;
+        const oppref = atribuicao.oppref || lerCookieSimples(req, '__oppref') || null;
+        const sourceUrl = metrica.page_url || `${SITE_URL}/ofertas/${metrica.veiculo_slug || ''}`;
 
         void enviarEventoCapi({
           eventName: evento,
@@ -1707,8 +1711,49 @@ export function mountOfertasRoutes(app: Express): void {
           currency: 'BRL',
           contentIds: metrica.veiculo_id ? [metrica.veiculo_id] : undefined,
           contentName: metrica.veiculo_nome || undefined,
-          sourceUrl: metrica.page_url || `${SITE_URL}/ofertas/${metrica.veiculo_slug || ''}`,
+          sourceUrl,
         });
+
+        const contentsOpenAi = metrica.veiculo_id
+          ? [
+              {
+                id: String(metrica.veiculo_id),
+                name: metrica.veiculo_nome || undefined,
+                content_type: 'product',
+                quantity: 1,
+                amount: metrica.valor_veiculo || undefined,
+              },
+            ]
+          : undefined;
+
+        if (evento === 'ViewContent' && metrica.veiculo_id) {
+          void enviarEventoOpenAiAds({
+            eventName: 'contents_viewed',
+            eventId,
+            clientIp: req.ip,
+            userAgent: String(req.headers['user-agent'] || ''),
+            externalId,
+            obref,
+            oppref,
+            value: metrica.valor_veiculo || undefined,
+            contents: contentsOpenAi,
+            sourceUrl,
+          });
+        } else if (evento === 'Contact') {
+          void enviarEventoOpenAiAds({
+            eventName: 'custom',
+            customEventName: 'whatsapp',
+            eventId,
+            clientIp: req.ip,
+            userAgent: String(req.headers['user-agent'] || ''),
+            externalId,
+            obref,
+            oppref,
+            value: metrica.valor_veiculo || undefined,
+            contents: contentsOpenAi,
+            sourceUrl,
+          });
+        }
       }
 
       return res.status(204).end();

@@ -73,7 +73,12 @@ export default function VeiculoDetailPage({ slug }: { slug: string }) {
       if (found) {
         setVehicle(found);
         setFav(isFavorite(found.id));
-        track('view_vehicle_detail', { vehicleId: found.id, name: found.description });
+        track('view_vehicle_detail', {
+          id: found.id,
+          vehicleId: found.id,
+          name: found.description,
+          price: found.price,
+        });
 
         // Find 3 similar vehicles by price range
         const others = list.filter((v) => v.id !== found.id);

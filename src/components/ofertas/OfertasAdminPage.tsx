@@ -30,6 +30,7 @@ import {
   Tag,
   Download,
   Database,
+  TrendingUp,
 } from 'lucide-react';
 import {
   autenticarAdminOfertas,
@@ -59,6 +60,7 @@ import {
   type OfertasTrackingConfig,
 } from '../../services/ofertasService';
 import OfertaLandingPage from './OfertaLandingPage';
+import TrafegoRoiPanel from '../admin/TrafegoRoiPanel';
 
 const LOGO_MANOS = 'https://manosveiculos.com.br/wp-content/uploads/2024/02/LogoManos.png';
 
@@ -121,11 +123,21 @@ export default function OfertasAdminPage() {
   const [autenticando, setAutenticando] = useState(false);
 
   // Navegação principal do Admin
-  const [abaAtiva, setAbaAtiva] = useState<'anuncios' | 'crm' | 'metricas' | 'config'>(() => {
+  const [abaAtiva, setAbaAtiva] = useState<'anuncios' | 'crm' | 'trafego' | 'metricas' | 'config'>(() => {
     try {
       const params = new URLSearchParams(window.location.search);
-      if (params.get('aba') === 'crm' || params.get('placa') || params.get('import_crm')) {
+      const abaParam = params.get('aba');
+      if (abaParam === 'trafego' || abaParam === 'ads' || abaParam === 'roi') {
+        return 'trafego';
+      }
+      if (abaParam === 'crm' || params.get('placa') || params.get('import_crm')) {
         return 'crm';
+      }
+      if (abaParam === 'metricas') {
+        return 'metricas';
+      }
+      if (abaParam === 'config') {
+        return 'config';
       }
     } catch {
       /* noop */
@@ -842,6 +854,19 @@ export default function OfertasAdminPage() {
 
           <button
             type="button"
+            onClick={() => setAbaAtiva('trafego')}
+            className={`px-4 py-2 rounded-lg text-xs font-extrabold uppercase tracking-wider inline-flex items-center gap-2 transition-colors cursor-pointer ${
+              abaAtiva === 'trafego'
+                ? 'bg-[#E50914] text-white shadow-lg shadow-[#E50914]/30'
+                : 'text-amber-300 hover:text-white hover:bg-white/5 border border-amber-500/30 bg-amber-500/10'
+            }`}
+          >
+            <TrendingUp className="w-4 h-4" />
+            <span>Tráfego Pago & ROI (Google / Meta / OpenAI)</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setAbaAtiva('metricas')}
             className={`px-4 py-2 rounded-lg text-xs font-extrabold uppercase tracking-wider inline-flex items-center gap-2 transition-colors cursor-pointer ${
               abaAtiva === 'metricas'
@@ -1387,6 +1412,11 @@ export default function OfertasAdminPage() {
             )}
           </div>
         )}
+
+        {/* ===================================================================
+            ABA TRÁFEGO PAGO, COMPORTAMENTO DO VISITANTE & ROI DE VERBA (ADS)
+           =================================================================== */}
+        {abaAtiva === 'trafego' && <TrafegoRoiPanel standalone={false} />}
 
         {/* ===================================================================
             ABA 2: MÉTRICAS E ORIGEM DOS ANÚNCIOS (UTM / CAMPANHAS)

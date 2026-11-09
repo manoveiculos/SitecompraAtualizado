@@ -59,15 +59,17 @@ function sanitize<T>(obj: T): T {
  * oferecer o WhatsApp como saída em vez de fingir sucesso.
  */
 export async function createLead(input: LeadInput): Promise<string> {
-  // O pixel passa a mandar nome/telefone no advanced matching a partir daqui, e
-  // o external_id segue no payload para o CRM guardar: é ele que vai identificar
-  // esta pessoa no evento de venda, semanas depois.
-  identificarVisitante({ nome: input.name, telefone: input.phone });
+  // O pixel passa a mandar nome/telefone/cidade no advanced matching a partir
+  // daqui (Meta `fbq` + OpenAI `oaiq`), e o external_id segue no payload para o
+  // CRM guardar: é ele que vai identificar esta pessoa no evento de venda.
+  const cidade = typeof input.details?.cidade === 'string' ? input.details.cidade : undefined;
+  identificarVisitante({ nome: input.name, telefone: input.phone, cidade });
 
   const payload = sanitize({
     ...input,
     status: 'new',
     source: 'Qualificador Manos Web App',
+    source_url: typeof window !== 'undefined' ? window.location.origin + window.location.pathname : undefined,
     atribuicao: getAttribution(),
     external_id: idDoVisitante(),
     timestamp: new Date().toISOString(),

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Shield, Lock, Check } from 'lucide-react';
 import { track } from '../../lib/track';
+import { atualizarConsentimentoMarketing } from '../../lib/tracking';
 
 const LGPD_KEY = 'manos_lgpd_consent_v1';
 
@@ -41,6 +42,7 @@ export default function LGPDBanner() {
     }
 
     setVisible(false);
+    atualizarConsentimentoMarketing(prefs.marketing);
     track('lgpd_consent_save', prefs);
   };
 

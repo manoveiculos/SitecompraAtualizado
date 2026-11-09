@@ -26,10 +26,12 @@ import HavalPresentation from './components/HavalPresentation.tsx';
 import OfertasIndexPage from './components/ofertas/OfertasIndexPage.tsx';
 import OfertaLandingPage from './components/ofertas/OfertaLandingPage.tsx';
 import OfertasAdminPage from './components/ofertas/OfertasAdminPage.tsx';
+import TrafegoRoiPanel from './components/admin/TrafegoRoiPanel.tsx';
 import ConsultorLandingPage from './components/consultores/ConsultorLandingPage.tsx';
 import ConsultorVeiculoPage from './components/consultores/ConsultorVeiculoPage.tsx';
 import ConsultoresIndexPage from './components/consultores/ConsultoresIndexPage.tsx';
 import { obterConsultorPorSlug } from './lib/consultores.ts';
+import { registrarPageViewJornada } from './lib/tracking.ts';
 
 import { useState, useEffect } from 'react';
 import { setupInstantLinkInterceptor, navigate } from './lib/router.ts';
@@ -53,6 +55,11 @@ function Router() {
     window.addEventListener('popstate', handleLocationChange);
     return () => window.removeEventListener('popstate', handleLocationChange);
   }, []);
+
+  // Registra a visita na telemetria de Tráfego Pago vs Orgânico (Google Ads, Facebook Ads, OpenAI Ads, Orgânico)
+  useEffect(() => {
+    registrarPageViewJornada(currentPath);
+  }, [currentPath]);
 
   const path = currentPath;
 
@@ -124,6 +131,15 @@ function Router() {
 
   if (path === '/ofertas-admin' || path === '/ofertas/admin') {
     return <OfertasAdminPage />;
+  }
+
+  if (
+    path === '/admin/trafego' ||
+    path === '/trafego-admin' ||
+    path === '/midia-admin' ||
+    path === '/ads-admin'
+  ) {
+    return <TrafegoRoiPanel standalone={true} />;
   }
 
   if (path === '/ofertas') {

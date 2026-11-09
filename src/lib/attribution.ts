@@ -12,6 +12,8 @@
 // A plataforma de anúncio otimiza pelo last touch; a leitura de negócio costuma
 // querer o first touch. Mandamos os dois.
 
+import { obterObref, obterOpprefCookie } from './visitante';
+
 const FIRST_TOUCH_KEY = 'manos_attr_first_v1';
 const LAST_TOUCH_KEY = 'manos_attr_last_v1';
 
@@ -59,6 +61,7 @@ export interface Attribution {
   twclid?: string;
   li_fat_id?: string;
   oppref?: string;
+  obref?: string;
   /** Canal inferido quando não há utm_source — ex.: "google_organico", "chatgpt". */
   canal: string;
   referrer: string | null;
@@ -140,11 +143,22 @@ function readFromUrl(): Attribution {
     if (value) attr[key] = value.slice(0, 400);
   }
 
+  // Se o visitante clicou num anúncio da OpenAI dias atrás (janela de 30 dias),
+  // o pixel `oaiq` mantém o `oppref` no cookie `__oppref`.
+  if (!attr.oppref) {
+    const cookieOppref = obterOpprefCookie();
+    if (cookieOppref) attr.oppref = cookieOppref.slice(0, 400);
+  }
+
+  const cookieObref = obterObref();
+  if (cookieObref) attr.obref = cookieObref.slice(0, 400);
+
   return attr;
 }
 
 /** True quando a URL atual carrega algum sinal de campanha (não só navegação interna). */
 function hasCampaignSignal(attr: Attribution): boolean {
+  const params = new URLSearchParams(window.location.search);
   return Boolean(
     attr.utm_source ||
       attr.gclid ||
@@ -154,7 +168,7 @@ function hasCampaignSignal(attr: Attribution): boolean {
       attr.ttclid ||
       attr.msclkid ||
       attr.twclid ||
-      attr.oppref,
+      params.get('oppref'),
   );
 }
 
@@ -185,17 +199,30 @@ export function initAttribution(): void {
 /**
  * Objeto pronto para anexar ao payload do lead. Achatado no last touch (o que
  * as plataformas usam) com o first touch aninhado para leitura de negócio.
+ * Inclui sempre o `oppref` e o `obref` mais recentes (URL, sessão, first touch
+ * ou cookies `__oppref`/`__obref` do pixel `oaiq`).
  */
 export function getAttribution(): Record<string, unknown> {
   if (!cached) initAttribution();
   if (!cached) return {};
 
   const { first, last } = cached;
+  const oppref = last.oppref || first?.oppref || obterOpprefCookie() || undefined;
+  const obref = obterObref() || last.obref || first?.obref || undefined;
+
   return {
     ...last,
+    ...(oppref ? { oppref } : {}),
+    ...(obref ? { obref } : {}),
     first_touch:
       first && first.captured_at !== last.captured_at
-        ? { canal: first.canal, utm_source: first.utm_source, utm_campaign: first.utm_campaign, captured_at: first.captured_at }
+        ? {
+            canal: first.canal,
+            utm_source: first.utm_source,
+            utm_campaign: first.utm_campaign,
+            oppref: first.oppref,
+            captured_at: first.captured_at,
+          }
         : null,
   };
 }

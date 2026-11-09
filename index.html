@@ -71,6 +71,7 @@
          mesmo conjunto de dados — trocar só uma das duas variáveis é um erro
          que não dá sintoma nenhum na tela. -->
     <meta name="manos:meta-pixel" content="%VITE_META_PIXEL_ID%" />
+    <meta name="manos:openai-pixel" content="%VITE_OPENAI_ADS_PIXEL_ID%" />
     <!-- Meta Pixel Code -->
     <script>
     if (window.__medirEmProducao) {
@@ -99,6 +100,7 @@
     <script>
       (function (w, d, s, u, id) {
         if (!id || id.charAt(0) === "%") return;
+        w.__manosOpenAiPixelId = id;
         if (!w.__medirEmProducao) return;
         if (!w.oaiq) {
           var q = function () { q.q.push(arguments) };
@@ -107,7 +109,18 @@
           var f = d.getElementsByTagName(s)[0];
           f.parentNode.insertBefore(j, f);
         }
-        w.oaiq("init", { pixelId: id, debug: false });
+        try {
+          var lgpd = localStorage.getItem("manos_lgpd_consent_v1");
+          if (lgpd) {
+            var prefs = JSON.parse(lgpd);
+            if (prefs && prefs.marketing === false) w.oaiq("consent", false);
+          }
+        } catch (e) {}
+        w.oaiq("init", {
+          pixelId: id,
+          debug: false,
+          user: { country: "BR", region: "SC" }
+        });
       })(window, document, "script", "https://bzrcdn.openai.com/sdk/oaiq.min.js", "%VITE_OPENAI_ADS_PIXEL_ID%");
     </script>
     <!-- End OpenAI Ads Pixel -->
@@ -149,4 +162,3 @@
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

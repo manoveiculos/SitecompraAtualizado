@@ -42,6 +42,7 @@ import {
 } from "./server/metaFeed";
 import { processConsultorMessage } from "./server/consultor";
 import { mountOfertasRoutes, getPublishedOfertasSlugs } from "./server/ofertas";
+import { mountTrafegoRoutes } from "./server/trafego";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -118,6 +119,20 @@ function pixelDoFunil(): string | null {
   return pixelDoFunilCache;
 }
 
+let pixelOpenAiDoFunilCache: string | null | undefined;
+function pixelOpenAiDoFunil(): string | null {
+  if (pixelOpenAiDoFunilCache !== undefined) return pixelOpenAiDoFunilCache;
+  try {
+    const html = readFileSync(path.join(__dirname, "dist", "index.html"), "utf8");
+    const achado = html.match(/name="manos:openai-pixel"\s+content="([^"]*)"/);
+    const valor = achado?.[1] ?? "";
+    pixelOpenAiDoFunilCache = !valor || valor.charAt(0) === "%" ? "" : valor;
+  } catch {
+    pixelOpenAiDoFunilCache = null; // sem build (desenvolvimento)
+  }
+  return pixelOpenAiDoFunilCache;
+}
+
 /**
  * Requisição veio de ambiente de desenvolvimento?
  *
@@ -180,6 +195,34 @@ function cookiesMeta(
   // como external_id, então navegador e servidor descrevem a mesma pessoa.
   const externalId = lerCookie(req, "manos_vid");
   return { fbp, fbc, externalId };
+}
+
+/**
+ * Sinais de correspondência e atribuição do OpenAI Ads (pixel `oaiq` + CAPI).
+ *
+ * Lê os cookies primários gravados pelo SDK `oaiq` no nosso domínio:
+ *   - `__obref` (365 dias): opaque browser reference, enviado cru em `user.obref`.
+ *   - `__oppref` (30 dias): click reference do anúncio no ChatGPT, enviado cru em `events[].oppref`.
+ *   - `manos_vid` (2 anos): id anônimo da visita, enviado hasheado em `user.external_ids_sha256`.
+ */
+function cookiesOpenAi(
+  req: express.Request,
+  atribuicao: Record<string, any>,
+  bodyExternalId?: unknown,
+): { obref: string | null; oppref: string | null; externalId?: string } {
+  const obref =
+    lerCookie(req, "__obref") ||
+    (typeof atribuicao?.obref === "string" ? atribuicao.obref : null) ||
+    null;
+  const oppref =
+    (typeof atribuicao?.oppref === "string" ? atribuicao.oppref : null) ||
+    (typeof atribuicao?.first_touch?.oppref === "string" ? atribuicao.first_touch.oppref : null) ||
+    lerCookie(req, "__oppref") ||
+    null;
+  const externalId =
+    lerCookie(req, "manos_vid") ||
+    (typeof bodyExternalId === "string" && bodyExternalId.trim() ? bodyExternalId.trim() : undefined);
+  return { obref, oppref, externalId };
 }
 
 async function startServer() {
@@ -250,11 +293,47 @@ async function startServer() {
   app.post("/api/consultor/lead", async (req, res) => {
     try {
       const body = req.body ?? {};
+      const atribuicao = (body.atribuicao ?? {}) as Record<string, string | undefined>;
       const response = await fetch("https://n8n.drivvoo.com/webhook/49702c93-f827-4fbe-9e7f-ac2200cae3bc", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
+
+      if (body.event_id && !ambienteDeTeste(req)) {
+        const nome = String(body.nome || body.name || "").trim();
+        const telefone = normalizePhone(String(body.telefone || body.phone || ""));
+        const cidade = String(body.cidade || body.city || "");
+        const valor = Number(body.valor_veiculo || body.value || 0) || undefined;
+
+        void enviarEventoCapi({
+          eventName: "Lead",
+          eventId: String(body.event_id),
+          phone: telefone,
+          firstName: nome,
+          city: cidade,
+          clientIp: req.ip,
+          userAgent: String(req.headers["user-agent"] || ""),
+          ...cookiesMeta(req, atribuicao),
+          value: valor,
+          contentIds: body.id_veiculo ? [String(body.id_veiculo)] : undefined,
+          contentName: body.nome_veiculo ? String(body.nome_veiculo) : "Consultor Manos",
+        });
+
+        void enviarEventoOpenAiAds({
+          eventName: "lead_created",
+          eventId: String(body.event_id),
+          name: nome,
+          phone: telefone,
+          city: cidade,
+          clientIp: req.ip,
+          userAgent: String(req.headers["user-agent"] || ""),
+          ...cookiesOpenAi(req, atribuicao, body.external_id),
+          value: valor,
+          sourceUrl: typeof body.source_url === "string" ? body.source_url : `${SITE_URL}/consultor`,
+        });
+      }
+
       res.status(response.ok ? 200 : response.status).json({ ok: response.ok, protocolo: `MANOS-${Date.now().toString().slice(-6)}` });
     } catch (error) {
       console.error("Consultor lead proxy error:", error);
@@ -387,12 +466,15 @@ async function startServer() {
         void enviarEventoOpenAiAds({
           eventName: "lead_created",
           eventId: String(body.event_id),
+          name,
           phone,
+          email: typeof body.email === "string" ? body.email : undefined,
           city: String(details.cidade ?? ""),
           clientIp: req.ip,
           userAgent: String(req.headers["user-agent"] || ""),
-          oppref: atribuicao.oppref ?? null,
+          ...cookiesOpenAi(req, atribuicao, body.external_id),
           value: Math.round((Number(details.valor_veiculo) || 0) * (qualificacao.score / 100)),
+          sourceUrl: typeof body.source_url === "string" ? body.source_url : `${SITE_URL}/`,
         });
       }
 
@@ -575,33 +657,45 @@ async function startServer() {
         }),
       });
 
-      if (body.event_id && !ambienteDeTeste(req)) {
+      const eventIdVenda = String(body.event_id || body.lead_id || `venda_${Date.now()}`);
+      if (eventIdVenda && !ambienteDeTeste(req)) {
+        const origemUrl =
+          typeof body.source_url === "string"
+            ? body.source_url
+            : body.tipo === "consignacao"
+              ? `${SITE_URL}/consignacao`
+              : `${SITE_URL}/vender-meu-carro`;
+        const valorVenda = Math.round(
+          (Number(body.valor_desejado || body.valor_pretendido) || 0) * (qualificacao.score / 100),
+        );
         const eventoMeta = {
           eventName: "Lead" as const,
-          eventId: String(body.event_id),
+          eventId: eventIdVenda,
           phone: String(body.telefone ?? ""),
           firstName: String(body.nome ?? ""),
           city: String(body.cidade ?? ""),
           clientIp: req.ip,
           userAgent: String(req.headers["user-agent"] || ""),
           ...cookiesMeta(req, atribuicao),
-          value: Math.round((Number(body.valor_desejado) || 0) * (qualificacao.score / 100)),
+          value: valorVenda,
           contentName: [body.marca, body.modelo].filter(Boolean).join(" ") || undefined,
-          sourceUrl: "https://manosveiculoscompra.com/vendasrapidas",
+          sourceUrl: origemUrl,
         };
         void enviarEventoCapi(eventoMeta);
         enviarLeadQualificado(qualificacao, eventoMeta);
 
         void enviarEventoOpenAiAds({
           eventName: "lead_created",
-          eventId: String(body.event_id),
+          eventId: eventIdVenda,
+          name: String(body.nome ?? ""),
           phone: String(body.telefone ?? ""),
+          email: typeof body.email === "string" ? body.email : undefined,
           city: String(body.cidade ?? ""),
           clientIp: req.ip,
           userAgent: String(req.headers["user-agent"] || ""),
-          oppref: atribuicao.oppref ?? null,
-          value: Math.round((Number(body.valor_desejado) || 0) * (qualificacao.score / 100)),
-          sourceUrl: "https://manosveiculoscompra.com/vendasrapidas",
+          ...cookiesOpenAi(req, atribuicao, body.external_id),
+          value: valorVenda,
+          sourceUrl: origemUrl,
         });
       }
 
@@ -725,7 +819,17 @@ async function startServer() {
       meta_catalogo_mapping: mapeamentoConfigurado()
         ? "configurado"
         : "sem META_CATALOG_ACCESS_TOKEN/SUPABASE_SERVICE_ROLE_KEY — eventos saem com o id da Altimus",
-      openai_ads_capi: openAiAdsConfigurado() ? "configurado" : "sem OPENAI_ADS_API_KEY",
+      openai_ads_capi: openAiAdsConfigurado() ? "configurado" : "sem OPENAI_ADS_API_KEY / OPENAI_ADS_PIXEL_ID",
+      openai_ads_pixel_catalogo: process.env.OPENAI_ADS_PIXEL_ID || "sem OPENAI_ADS_PIXEL_ID",
+      openai_ads_pixel_funil: (() => {
+        const funil = pixelOpenAiDoFunil();
+        const srv = process.env.OPENAI_ADS_PIXEL_ID || "";
+        if (funil === null) return "dist/index.html não encontrado — rodando sem build?";
+        if (!funil && !srv) return "não configurado em nenhum dos dois";
+        if (funil === srv) return "igual ao servidor";
+        return `DIVERGENTE — funil "${funil || "vazio"}", servidor "${srv || "vazio"}". Defina VITE_OPENAI_ADS_PIXEL_ID igual a OPENAI_ADS_PIXEL_ID e republique`;
+      })(),
+      openai_ads_catalogo_feed: `${SITE_URL}/feeds/openai/products.parquet`,
       // Tabela quebrada e tabela vazia pedem ações opostas — conserto de RLS
       // versus falta de tráfego. Antes as duas apareciam na mesma frase e o
       // diagnóstico mandava procurar defeito onde não havia.
@@ -760,13 +864,16 @@ async function startServer() {
   // que já dispara o `fbq('track','AddToCart', ...)` no navegador; aqui é só
   // o reforço contra bloqueador, com o MESMO event_id para não dobrar.
   // -------------------------------------------------------------------------
-  const EVENTOS_OPENAI = new Set(["whatsapp", "telefone"]);
+  const EVENTOS_OPENAI = new Set(["whatsapp", "telefone", "lead_created"]);
   // Nome do evento no beacon -> nome padrão da Meta. O clique de WhatsApp no
   // catálogo manda os dois: AddToCart (sinal de catálogo) e Contact (é por ele
   // que campanha de conversa otimiza).
-  const EVENTOS_META: Record<string, "AddToCart" | "Contact"> = {
+  const EVENTOS_META: Record<string, "AddToCart" | "Contact" | "Lead"> = {
     catalogo_addtocart: "AddToCart",
     catalogo_contato: "Contact",
+    whatsapp: "Contact",
+    telefone: "Contact",
+    lead_created: "Lead",
   };
 
   app.post("/api/ads/conversao", (req, res) => {
@@ -786,15 +893,36 @@ async function startServer() {
       if (ambienteDeTeste(req)) return res.status(204).end();
 
       const atribuicao = (body.atribuicao ?? {}) as Record<string, string | undefined>;
+      const nomeCliente = typeof body.name === "string" ? body.name : undefined;
+      const telefoneCliente = typeof body.phone === "string" ? body.phone : undefined;
+      const cidadeCliente = typeof body.city === "string" ? body.city : undefined;
 
       if (paraOpenAi) {
+        const valorItem = Number(body.value) || undefined;
+        const ehLead = evento === "lead_created";
         void enviarEventoOpenAiAds({
-          eventName: "custom",
-          customEventName: evento,
+          eventName: ehLead ? "lead_created" : "custom",
+          customEventName: ehLead ? undefined : evento,
           eventId,
+          name: nomeCliente,
+          phone: telefoneCliente,
+          city: cidadeCliente,
           clientIp: req.ip,
           userAgent: String(req.headers["user-agent"] || ""),
-          oppref: atribuicao.oppref ?? null,
+          ...cookiesOpenAi(req, atribuicao, body.external_id),
+          value: valorItem,
+          contents:
+            !ehLead && body.vehicle_id
+              ? [
+                  {
+                    id: String(body.vehicle_id),
+                    name: typeof body.vehicle_name === "string" ? body.vehicle_name : undefined,
+                    content_type: "product",
+                    quantity: 1,
+                    amount: valorItem,
+                  },
+                ]
+              : undefined,
           sourceUrl: typeof body.source_url === "string" ? body.source_url : undefined,
         });
       }
@@ -803,6 +931,9 @@ async function startServer() {
         void enviarEventoCapi({
           eventName: nomeMeta,
           eventId,
+          phone: telefoneCliente,
+          firstName: nomeCliente,
+          city: cidadeCliente,
           clientIp: req.ip,
           userAgent: String(req.headers["user-agent"] || ""),
           ...cookiesMeta(req, atribuicao),
@@ -874,6 +1005,10 @@ async function startServer() {
           : undefined;
       if (aviso) console.warn(`venda-confirmada: ${aviso} (event_id ${eventId})`);
 
+      const valorVenda = Number(body.value) || 0;
+      const nomeVeiculo = typeof body.vehicle_name === "string" ? body.vehicle_name : undefined;
+      const openAiContentId = vehicleId || contentId;
+
       void enviarEventoCapi({
         eventName: "Purchase",
         eventId,
@@ -886,10 +1021,38 @@ async function startServer() {
         // O CRM guardou este id no momento da captura do lead; é o que liga a
         // venda de hoje à visita de semanas atrás.
         externalId: typeof body.external_id === "string" ? body.external_id : undefined,
-        value: Number(body.value) || 0,
+        value: valorVenda,
         currency: "BRL",
         contentIds: contentId ? [contentId] : undefined,
-        contentName: typeof body.vehicle_name === "string" ? body.vehicle_name : undefined,
+        contentName: nomeVeiculo,
+      });
+
+      // Também envia `order_created` para a Conversions API do OpenAI Ads,
+      // creditando a campanha do ChatGPT quando o lead vira venda real no CRM.
+      void enviarEventoOpenAiAds({
+        eventName: "order_created",
+        eventId,
+        actionSource: "offline",
+        name: typeof body.name === "string" ? body.name : undefined,
+        phone: typeof body.phone === "string" ? body.phone : undefined,
+        email: typeof body.email === "string" ? body.email : undefined,
+        city: typeof body.city === "string" ? body.city : undefined,
+        externalId: typeof body.external_id === "string" ? body.external_id : undefined,
+        obref: typeof body.obref === "string" ? body.obref : null,
+        oppref: typeof body.oppref === "string" ? body.oppref : null,
+        value: valorVenda,
+        currency: "BRL",
+        contents: openAiContentId
+          ? [
+              {
+                id: openAiContentId,
+                name: nomeVeiculo,
+                content_type: "product",
+                quantity: 1,
+                amount: valorVenda,
+              },
+            ]
+          : undefined,
       });
 
       res.status(200).json({ ok: true, content_id: contentId ?? null, aviso });
@@ -1155,6 +1318,9 @@ async function startServer() {
 
   // Módulo Independente de Ofertas Individuais (/ofertas, /ofertas/:slug, /api/ofertas/*)
   mountOfertasRoutes(app);
+
+  // Módulo de Inteligência de Tráfego, Comportamento e ROI de Mídia Paga (/api/trafego/*)
+  mountTrafegoRoutes(app);
 
   // Vite middleware for development.
   // Imported dynamically so production (npm ci --omit=dev, no vite) doesn't

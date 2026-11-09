@@ -23,6 +23,9 @@ import {
   calcParcela 
 } from '../../lib/manos';
 import { track } from '../../lib/track';
+import { identificarVisitante, trackLead } from '../../lib/tracking';
+import { getAttribution } from '../../lib/attribution';
+import { idDoVisitante } from '../../lib/visitante';
 import { fetchStock, type Vehicle } from '../../services/stockService';
 import { getStoredLead, saveStoredLead } from '../../lib/leadStore';
 
@@ -162,14 +165,35 @@ export default function FinanciamentoPage() {
     };
 
     try {
+      saveStoredLead({
+        nome: nome.trim(),
+        telefone: rawPhone,
+        cpf: cpf.replace(/\D/g, ''),
+        dataNascimento,
+      });
+      identificarVisitante({ nome: nome.trim(), telefone: rawPhone });
+
       const response = await fetch('https://n8n.drivvoo.com/webhook/49702c93-f827-4fbe-9e7f-ac2200cae3bc', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          ...payload,
+          atribuicao: getAttribution(),
+          external_id: idDoVisitante(),
+        }),
       });
 
       if (response.ok) {
         setStatus('success');
+        trackLead({
+          tipo: 'Financiamento',
+          valor: vehicleValue,
+          vehicleId: vehicle?.id || null,
+          vehicleName: vehicle?.description || null,
+          espelharCapi: true,
+          nome: nome.trim(),
+          telefone: rawPhone,
+        });
         track('sim_submit', { valorVeiculo: vehicleValue, entrada, meses });
       } else {
         throw new Error('Servidor indisponível no momento.');

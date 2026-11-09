@@ -413,8 +413,15 @@ function medicaoScript(veiculo?: { id: string; nome: string; preco: number }): s
 
   // JSON dentro de <script> precisa ter o `<` escapado, senão um `</` no nome
   // do veículo fecharia a tag no meio.
+  // `preco` em Reais (para o servidor converter) e `precoCentavos` para o pixel `oaiq`,
+  // que exige valores inteiros na menor unidade da moeda ISO 4217 (centavos).
   const dadosVeiculo = veiculo
-    ? JSON.stringify({ id: veiculo.id, nome: veiculo.nome, preco: Math.round(veiculo.preco) }).replace(/</g, '\\u003c')
+    ? JSON.stringify({
+        id: String(veiculo.id),
+        nome: veiculo.nome,
+        preco: Math.round(veiculo.preco),
+        precoCentavos: Math.round((veiculo.preco || 0) * 100),
+      }).replace(/</g, '\\u003c')
     : 'null';
 
   return `<script>
@@ -426,17 +433,58 @@ if (!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname))
   if(!w.oaiq){var q=function(){q.q.push(arguments)};q.q=[];w.oaiq=q;
     var j=d.createElement(s);j.async=1;j.src=u;
     var f=d.getElementsByTagName(s)[0];f.parentNode.insertBefore(j,f);}
-  w.oaiq("init",{pixelId:id,debug:false});
+  w.oaiq("init",{pixelId:id,debug:false,user:{country:"BR",region:"SC"}});
 
   function novoId(){
     try{ if(w.crypto&&w.crypto.randomUUID) return w.crypto.randomUUID(); }catch(e){}
     return "evt_"+Date.now()+"_"+Math.random().toString(36).slice(2,11);
   }
 
+  function lerCookie(nome){
+    try{
+      var m = d.cookie.match(new RegExp("(?:^|;\\s*)"+nome+"=([^;]*)"));
+      return m ? decodeURIComponent(m[1]) : null;
+    }catch(e){ return null; }
+  }
+
   var v = ${dadosVeiculo};
-  if(v){
-    w.oaiq("measure","contents_viewed",{type:"contents",amount:v.preco,currency:"BRL",
-      contents:[{id:v.id,name:v.nome,content_type:"vehicle",quantity:1,amount:v.preco}]});
+  var paramsUrl = new URLSearchParams(w.location.search);
+  var vid = null;
+  try {
+    vid = localStorage.getItem("manos_visitor_id");
+    if (!vid) { vid = "vis_" + novoId(); localStorage.setItem("manos_visitor_id", vid); }
+  } catch(e) { vid = "vis_" + novoId(); }
+
+  function enviarTrafego(acao, label){
+    try {
+      var tp = {
+        visitor_id: vid,
+        acao: acao,
+        action_label: label,
+        pathname: w.location.pathname,
+        vehicle_id: v ? v.id : null,
+        vehicle_name: v ? v.nome : null,
+        valor: v ? v.preco : null,
+        utm_source: paramsUrl.get("utm_source"),
+        utm_medium: paramsUrl.get("utm_medium"),
+        utm_campaign: paramsUrl.get("utm_campaign"),
+        gclid: paramsUrl.get("gclid"),
+        fbclid: paramsUrl.get("fbclid"),
+        oppref: paramsUrl.get("oppref") || lerCookie("__oppref"),
+        obref: lerCookie("__obref"),
+        referrer: d.referrer || null
+      };
+      var blob = new Blob([JSON.stringify(tp)], {type:"application/json"});
+      if (navigator.sendBeacon) navigator.sendBeacon("/api/trafego/evento", blob);
+    } catch(e){}
+  }
+
+  enviarTrafego(v ? "view_vehicle" : "page_view", v ? ("Visualizou veículo: " + v.nome) : "Abriu Catálogo SSR (/estoque)");
+
+  if(v && v.precoCentavos > 0){
+    w.oaiq("measure","contents_viewed",{type:"contents",amount:v.precoCentavos,currency:"BRL",
+      contents:[{id:v.id,name:v.nome,content_type:"product",quantity:1,amount:v.precoCentavos,currency:"BRL"}]},
+      {event_id:novoId()});
   }
 
   // Delegação: os CTAs são links renderizados no servidor, então um listener
@@ -449,15 +497,41 @@ if (!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname))
     if(!canal) return;
 
     var eid = novoId();
-    w.oaiq("measure","custom",{type:"custom"},{event_id:eid,custom_event_name:canal});
+    var dadosCustom = {type:"custom"};
+    if(v && v.precoCentavos > 0){
+      dadosCustom.amount = v.precoCentavos;
+      dadosCustom.currency = "BRL";
+      dadosCustom.contents = [{id:v.id,name:v.nome,content_type:"product",quantity:1,amount:v.precoCentavos,currency:"BRL"}];
+    }
+    w.oaiq("measure","custom",dadosCustom,{event_id:eid,custom_event_name:canal});
 
     // sendBeacon sobrevive à navegação para fora; o servidor reenvia pela CAPI.
     try{
-      var corpo = JSON.stringify({evento:canal,event_id:eid,contexto:"catalogo",
-        source_url:w.location.origin+w.location.pathname});
+      var params = new URLSearchParams(w.location.search);
+      var oppref = params.get("oppref") || lerCookie("__oppref") || undefined;
+      var obref = lerCookie("__obref") || undefined;
+      var payload = {
+        evento:canal,
+        event_id:eid,
+        contexto:"catalogo",
+        source_url:w.location.origin+w.location.pathname,
+        atribuicao:{oppref:oppref,obref:obref}
+      };
+      if(v){
+        payload.vehicle_id = v.id;
+        payload.vehicle_name = v.nome;
+        payload.value = v.preco;
+      }
+      var corpo = JSON.stringify(payload);
       if(navigator.sendBeacon){
         navigator.sendBeacon("/api/ads/conversao", new Blob([corpo],{type:"application/json"}));
       }
+      enviarTrafego(
+        canal === "whatsapp" ? "whatsapp_click" : "phone_click",
+        canal === "whatsapp"
+          ? (v ? "Clicou no WhatsApp: " + v.nome : "Clicou no WhatsApp no Catálogo")
+          : "Clicou para ligar (Telefone)"
+      );
     }catch(e){}
   }, true);
 })(window,document,"script","https://bzrcdn.openai.com/sdk/oaiq.min.js",${JSON.stringify(OPENAI_ADS_PIXEL_ID)});

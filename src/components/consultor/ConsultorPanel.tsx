@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Bot, Send, X, MessageCircle, Sparkles, Check, ChevronRight, Phone, ArrowRight, ShieldCheck, User, CheckCircle2 } from 'lucide-react';
 import { LOJA, waLink, formatPhone } from '../../lib/manos';
 import { track } from '../../lib/track';
+import { identificarVisitante, trackLead, trackLeadParcial } from '../../lib/tracking';
 import { getStoredLead, saveStoredLead } from '../../lib/leadStore';
 import { supabase } from '../../lib/supabase';
 
@@ -157,6 +158,8 @@ export default function ConsultorPanel() {
 
     setGateSubmitting(true);
     const leadData: UserLead = { nome: gateNome.trim(), telefone: cleanPhone };
+    identificarVisitante({ nome: leadData.nome, telefone: leadData.telefone });
+    trackLeadParcial({ tipo: 'Consultor' });
 
     try {
       // 1. Envia para o Webhook #1 (n8n)
@@ -284,6 +287,16 @@ export default function ConsultorPanel() {
 
   // Webhook #2: Disparo do Lead Completo ao Clicar no WhatsApp
   const handleFinalHandoff = async () => {
+    identificarVisitante({ nome: userLead?.nome, telefone: userLead?.telefone });
+    trackLead({
+      tipo: 'Consultor',
+      valor: selectedVehicle?.preco || null,
+      vehicleId: selectedVehicle?.id || null,
+      vehicleName: selectedVehicle?.titulo || null,
+      espelharCapi: true,
+      nome: userLead?.nome || null,
+      telefone: userLead?.telefone || null,
+    });
     track('consultor_final_handoff', {
       nome: userLead?.nome,
       veiculo: selectedVehicle?.titulo,

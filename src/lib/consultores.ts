@@ -215,6 +215,51 @@ export function registrarConversaoConsultor(
     }
   }
 
+  // OpenAI Ads Pixel (`oaiq`) — valores em centavos (ISO 4217 minor unit)
+  if (typeof w.oaiq === 'function') {
+    try {
+      const precoReais = veiculo ? Number(veiculo.price) || 0 : 0;
+      const centavos = precoReais > 0 ? Math.round(precoReais * 100) : undefined;
+      const contentsOpenAi = veiculo
+        ? [
+            {
+              id: String(veiculo.id),
+              name: veiculo.description,
+              content_type: 'product',
+              quantity: 1,
+              ...(centavos !== undefined ? { amount: centavos, currency: 'BRL' } : {}),
+            },
+          ]
+        : undefined;
+
+      if (evento === 'ViewContent' && veiculo) {
+        w.oaiq(
+          'measure',
+          'contents_viewed',
+          {
+            type: 'contents',
+            ...(centavos !== undefined ? { amount: centavos, currency: 'BRL' } : {}),
+            contents: contentsOpenAi,
+          },
+          { event_id: eventId },
+        );
+      } else if (evento === 'Contact') {
+        w.oaiq(
+          'measure',
+          'custom',
+          {
+            type: 'custom',
+            ...(centavos !== undefined ? { amount: centavos, currency: 'BRL' } : {}),
+            ...(contentsOpenAi ? { contents: contentsOpenAi } : {}),
+          },
+          { event_id: eventId, custom_event_name: 'whatsapp' },
+        );
+      }
+    } catch {
+      /* noop */
+    }
+  }
+
   // Google Analytics 4 (se carregado na página)
   if (typeof w.gtag === 'function') {
     if (evento === 'WhatsAppClick') {

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Bell, X, CheckCircle2, AlertCircle } from 'lucide-react';
 import { formatPhone } from '../../lib/manos';
 import { track } from '../../lib/track';
+import { identificarVisitante, trackLead } from '../../lib/tracking';
 
 export default function StockAlertModal({
   isOpen,
@@ -57,6 +58,13 @@ export default function StockAlertModal({
 
       if (res.ok) {
         setStatus('success');
+        identificarVisitante({ nome: nome.trim(), telefone: rawPhone });
+        trackLead({
+          tipo: 'Compra',
+          espelharCapi: true,
+          nome: nome.trim(),
+          telefone: rawPhone,
+        });
         track('stock_alert_submit', { categoria, faixaPreco });
       } else {
         throw new Error('Falha no servidor');

@@ -928,6 +928,8 @@ export function obterOrigemAnuncioCompleta(): Record<string, string> {
     utm_term: getVal('utm_term'),
     fbclid: getVal('fbclid'),
     gclid: getVal('gclid'),
+    oppref: getVal('oppref'),
+    obref: getVal('obref'),
     referrer: document.referrer || String(attr.referrer || ''),
     page_url: window.location.href,
   };
@@ -1103,6 +1105,50 @@ export function rastrearEventoOferta(
               utm_content: origem.utm_content || undefined,
             },
             { eventID: eid },
+          );
+        }
+      }
+    } catch {
+      /* noop */
+    }
+
+    // 2b. OpenAI Ads Pixel (`oaiq`) — valores em centavos (ISO 4217 minor unit)
+    try {
+      if (typeof w.oaiq === 'function') {
+        const centavos = valor > 0 ? Math.round(valor * 100) : undefined;
+        const contentsOpenAi = veiculoId
+          ? [
+              {
+                id: veiculoId,
+                ...(veiculoNome ? { name: veiculoNome } : {}),
+                content_type: 'product',
+                quantity: 1,
+                ...(centavos !== undefined ? { amount: centavos, currency: 'BRL' } : {}),
+              },
+            ]
+          : undefined;
+
+        if (evento === 'ViewContent' && veiculoId) {
+          w.oaiq(
+            'measure',
+            'contents_viewed',
+            {
+              type: 'contents',
+              ...(centavos !== undefined ? { amount: centavos, currency: 'BRL' } : {}),
+              contents: contentsOpenAi,
+            },
+            { event_id: eid },
+          );
+        } else if (evento === 'Contact') {
+          w.oaiq(
+            'measure',
+            'custom',
+            {
+              type: 'custom',
+              ...(centavos !== undefined ? { amount: centavos, currency: 'BRL' } : {}),
+              ...(contentsOpenAi ? { contents: contentsOpenAi } : {}),
+            },
+            { event_id: eid, custom_event_name: 'whatsapp' },
           );
         }
       }

@@ -15,6 +15,9 @@ import {
 import { SiteShell, PrivacyNotice, TrustCards } from '../ManosUI';
 import { CONTATO, waLink, validatePlaca, formatPhone } from '../../lib/manos';
 import { track } from '../../lib/track';
+import { identificarVisitante, trackLead } from '../../lib/tracking';
+import { getAttribution } from '../../lib/attribution';
+import { idDoVisitante } from '../../lib/visitante';
 import { consultarPlaca, type VeiculoPlaca } from '../../services/vendasService';
 import { fetchStock, type Vehicle } from '../../services/stockService';
 import { getStoredLead, saveStoredLead } from '../../lib/leadStore';
@@ -143,16 +146,45 @@ export default function VenderCarroPage() {
     };
 
     try {
-      saveStoredLead({ nome: nome.trim(), telefone: telefone.replace(/\D/g, '') });
+      const cleanPhone = telefone.replace(/\D/g, '');
+      saveStoredLead({ nome: nome.trim(), telefone: cleanPhone });
+      identificarVisitante({
+        nome: nome.trim(),
+        telefone: cleanPhone,
+        cidade: veiculoEncontrado?.municipio || undefined,
+      });
+
+      const valorNumerico =
+        Number(String(valorDesejado || '').replace(/[^\d]/g, '')) ||
+        Number(String(veiculoEncontrado?.fipeValor || '').replace(/[^\d]/g, '')) / 100 ||
+        veiculoInteresse?.price ||
+        0;
 
       const response = await fetch('https://n8n.drivvoo.com/webhook/357cf84c-576c-409d-90a4-d3cbe6225618', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          ...payload,
+          atribuicao: getAttribution(),
+          external_id: idDoVisitante(),
+        }),
       });
 
       if (response.ok) {
         setStatus('success');
+        trackLead({
+          tipo: 'Venda',
+          valor: valorNumerico || null,
+          vehicleId: veiculoInteresse?.id || null,
+          vehicleName:
+            [veiculoEncontrado?.marca || marcaModelo, veiculoEncontrado?.modelo]
+              .filter(Boolean)
+              .join(' ') || null,
+          espelharCapi: true,
+          nome: nome.trim(),
+          telefone: cleanPhone,
+          cidade: veiculoEncontrado?.municipio || null,
+        });
         track('venda_lead_submit', { placa: cleanPlaca, marcaModelo });
       } else {
         throw new Error('Servidor indisponível no momento.');

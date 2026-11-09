@@ -1,129 +1,93 @@
-# Rastreamento de conversões — OpenAI Ads
+# Rastreamento do OpenAI Ads (Pixel `oaiq` + Conversions API)
 
-Medição das campanhas do ChatGPT no `manosveiculoscompra.com`.
+Guia técnico da integração oficial do **OpenAI Ads** (anúncios no ChatGPT) no site da **Manos Veículos** (`manosveiculoscompra.com`), seguindo integralmente a documentação oficial em:
+- https://developers.openai.com/ads/conversions-api
+- https://developers.openai.com/ads/measurement-pixel
+- https://developers.openai.com/ads/supported-events
+- https://developers.openai.com/ads/conversion-tracking
 
-## Estratégia: Pixel + CAPI
+---
 
-Os dois, porque a stack permite e porque um cobre o buraco do outro.
+## 1. Arquitetura Híbrida (Measurement Pixel + Conversions API)
 
-| | Cobre | Perde |
-|---|---|---|
-| **Pixel** (`oaiq`, navegador) | contexto de navegação, clique, cookie de atribuição | bloqueador, iOS/ATT, aba fechada antes do envio |
-| **CAPI** (servidor) | o que o navegador não entregou; conversão confirmada no backend | contexto que só existe no navegador |
+O rastreamento opera em dupla camada com **deduplicação determinística por `event_id`**:
 
-O que faz os dois somarem em vez de dobrarem é o **`event_id`**: um único id por
-conversão, gerado em `src/lib/tracking.ts`, enviado ao pixel e ao servidor. A
-OpenAI reconhece que navegador e servidor descrevem o mesmo acontecimento e
-conta uma vez só.
+1. **Measurement Pixel (`oaiq`) no navegador**:
+   - Carregado em `index.html` (SPA) e em `server/catalog.ts` (páginas SSR de `/estoque` e `/estoque/:slug`).
+   - Grava automaticamente dois cookies primários (`first-party`) no domínio:
+     - `__oppref` (validade de 30 dias): armazena o identificador de clique do anúncio (`?oppref=`) quando o visitante chega pelo ChatGPT.
+     - `__obref` (validade de 365 dias): referência opaca do navegador (`opaque browser reference`) usada pela OpenAI para unir os eventos de navegador com os eventos server-side.
+2. **Conversions API (`https://bzr.openai.com/v1/events`) no servidor (`server/openaiAds.ts`)**:
+   - Recebe o mesmo `event_id` gerado no navegador (`events[].id = event_id`).
+   - Envia os identificadores de atribuição (`events[].oppref` e `events[].user.obref`) e os dados do usuário normalizados e hasheados em SHA-256 (`events[].user`).
 
-## Stack
+---
 
-- **Front**: Vite + React (SPA do funil). Pixel no `index.html`, eventos em `src/lib/tracking.ts`.
-- **Back**: Express (`server.ts`). CAPI em `server/openaiAds.ts`.
-- **Páginas SSR** do catálogo (`/estoque` e páginas de veículo) são renderizadas
-  por `server/catalog.ts`, fora do `index.html` — então carregam o pixel por
-  conta própria. Sem isso ficariam invisíveis, e são justamente a superfície por
-  onde o tráfego orgânico do ChatGPT chega.
+## 2. Regras Críticas da Especificação Oficial Implementadas
 
-## Arquivos
+### 2.1. Formato dos Campos de Usuário (`user`) — Diferença entre Pixel e CAPI
+- **No Conversions API (`server/openaiAds.ts` -> `events[].user`)**:
+  Todos os campos de correspondência pessoal e geográfica são **listas no plural (`list[string]`, máximo de 3 itens únicos por lista)**:
+  - `phone_numbers_sha256`: `string[]` — SHA-256 do telefone apenas com dígitos e DDI `55` (8 a 15 dígitos, sem `+` e sem zeros à esquerda).
+  - `emails_sha256`: `string[]` — SHA-256 do e-mail com `trim()` e em minúsculas.
+  - `external_ids_sha256`: `string[]` — SHA-256 com `trim()` **preservando maiúsculas/minúsculas** (inclui o cookie anônimo `manos_vid` e o telefone E.164).
+  - `first_names_sha256` e `last_names_sha256`: `string[]` — SHA-256 do nome/sobrenome em minúsculas, sem espaços e sem pontuação ASCII, **preservando acentos e caracteres não-ASCII** (ex.: `José` -> `josé`).
+  - `cities`: `string[]` — texto puro (ex.: `["Rio do Sul"]`).
+  - `regions`: `string[]` — texto puro (ex.: `["SC"]`).
+  - `postal_codes`: `string[]` — texto puro quando disponível.
+  - `countries`: `["BR"]` — código ISO 3166-1 alpha-2 em texto puro.
+  - `obref`: `string` — valor cru do cookie `__obref` (sem hash).
+  - `ip_address` e `user_agent`: strings cruas da requisição HTTP.
+- **No Measurement Pixel (`src/lib/tracking.ts` -> `oaiq("init", { pixelId, user })`)**:
+  Os campos são **singulares**:
+  `phone_number_sha256`, `email_sha256`, `external_id_sha256`, `first_name_sha256`, `last_name_sha256`, `country`, `region`, `city`.
 
-| Arquivo | Papel |
-|---|---|
-| `index.html` | carrega o SDK e inicializa o pixel com o id vindo do build |
-| `src/lib/tracking.ts` | camada única de eventos: dataLayer + Meta + OpenAI |
-| `src/lib/attribution.ts` | captura e persiste o `oppref` e demais ids de clique |
-| `server/openaiAds.ts` | envio pela Conversions API |
-| `server.ts` | dispara a CAPI nas rotas de lead e recebe o beacon de WhatsApp |
-| `server/catalog.ts` | pixel e eventos nas páginas SSR do catálogo |
+### 2.2. Valores Monetários em Centavos (Menor Unidade ISO 4217)
+- A especificação exige que `data.amount` e `contents[].amount` sejam inteiros na **menor unidade da moeda ISO 4217**.
+- Para `BRL` (2 casas decimais), `R$ 89.900,00` é enviado como `8990000` (`Math.round(valorReais * 100)`).
+- Quando um evento não possui valor monetário (`undefined` ou `<= 0`, como cliques gerais de WhatsApp/telefone sem veículo atrelado), `amount` e `currency` são omitidos para não reportar `0`.
 
-## Eventos configurados
+### 2.3. Formas de Dados (`data.type`) e Restrição de `contents`
+- `lead_created`, `appointment_scheduled`, `registration_completed` exigem `data.type: "customer_action"`. A especificação **proíbe** o campo `contents` dentro de `customer_action`.
+- `contents_viewed`, `items_added`, `checkout_started`, `order_created`, `page_viewed` exigem `data.type: "contents"` e aceitam `contents: [{ id, name, content_type: "product", quantity: 1, amount, currency }]`.
+- Eventos customizados (`type: "custom"`) usam `data.type: "custom"`:
+  - No Pixel (`oaiq`), `custom_event_name` vai no 4º argumento (`opcoes`).
+  - No CAPI (`server/openaiAds.ts`), `custom_event_name` vai na raiz do evento (`events[].custom_event_name`).
 
-| Ação | Evento OpenAI | `data.type` | Pixel | CAPI |
-|---|---|---|---|---|
-| Lead qualificado (funil e venda rápida) | `lead_created` | `customer_action` | ✅ | ✅ |
-| Contato capturado no início do funil | `custom` → `lead_parcial` | `custom` | ✅ | — |
-| Veículo aberto (funil e página SSR) | `contents_viewed` | `contents` | ✅ | — |
-| Veículo escolhido no funil | `items_added` | `contents` | ✅ | — |
-| Clique em WhatsApp (funil e catálogo) | `custom` → `whatsapp` | `custom` | ✅ | ✅ |
-| Clique em telefone | `custom` → `telefone` | `custom` | ✅ | ✅ |
+### 2.4. Consentimento LGPD (`oaiq("consent", ...)`)
+- Integrado ao `LGPDBanner.tsx` e ao `index.html`: se o visitante desativar cookies de Marketing, `oaiq("consent", false)` é invocado para suspender o envio e limpar `__oppref` e `__obref`.
 
-Duas decisões que valem registro:
+---
 
-- **Lead parcial não é `lead_created`.** Os dois com o mesmo nome fariam a
-  campanha otimizar por quem só deixa telefone.
-- **Clique de WhatsApp vai também pela CAPI.** Para uma revenda é conversão de
-  verdade, e é o evento que o bloqueador derruba primeiro. O navegador manda um
-  `navigator.sendBeacon` para `/api/ads/conversao` — que sobrevive à saída da
-  página — e o servidor reenvia com o mesmo `event_id`.
+## 3. Mapa Completo de Eventos no Site
 
-## Variáveis de ambiente
+| Ação do Visitante | Evento no Pixel (`oaiq`) | Evento na CAPI (`server/openaiAds.ts`) | `data.type` | Onde é Disparado |
+| :--- | :--- | :--- | :--- | :--- |
+| Visualização de página | `page_viewed` (automático no `init`) | — | `contents` | `index.html` e `server/catalog.ts` |
+| Abrir detalhe de veículo (`/estoque/:slug`, `/ofertas/:slug`, `/:consultor/:slug`) | `contents_viewed` | `contents_viewed` (em `/ofertas`) | `contents` | `tracking.ts`, `catalog.ts`, `ofertasService.ts`, `consultores.ts` |
+| Selecionar veículo no funil ou catálogo | `items_added` | — | `contents` | `tracking.ts`, `track.ts` |
+| Deixar nome + WhatsApp no início do funil (lead parcial) | `custom` (`lead_parcial`) | — (apenas lead completo vai ao CAPI) | `custom` | `App.tsx`, `VendasRapidasPage.tsx`, `ConsignacaoPage.tsx`, `ConsultorPanel.tsx` |
+| Concluir envio de lead (Compra, Venda, Financiamento, Consignação, Consultor IA, Alerta de Estoque) | `lead_created` | `lead_created` | `customer_action` | `/api/leads`, `/api/vendas/finalizar`, `/api/consultor/lead`, `/api/ads/conversao` |
+| Clicar em WhatsApp ou Telefone (qualquer página, card, topo, rodapé, calculadora, ofertas, consultores) | `custom` (`whatsapp` / `telefone`) | `custom` (`whatsapp` / `telefone`) | `custom` | `tracking.ts`, `track.ts`, `catalog.ts`, `ofertas.ts`, `/api/ads/conversao` |
+| Venda confirmada no CRM (`POST /api/meta/venda-confirmada`) | — (evento offline) | `order_created` (`action_source: "offline"`) | `contents` | `server.ts` (`/api/meta/venda-confirmada`) |
 
-| Variável | Onde | Sem ela |
-|---|---|---|
-| `VITE_OPENAI_ADS_PIXEL_ID` | build do front | o pixel não inicializa (guarda no `index.html`) |
-| `OPENAI_ADS_PIXEL_ID` | servidor | a CAPI não envia |
-| `OPENAI_ADS_API_KEY` | servidor (**segredo**) | a CAPI não envia |
+---
 
-A chave é o único segredo: ela nunca vai para o navegador e só existe no `.env`
-do VPS. O **pixel id não é segredo** — ele chega ao navegador de qualquer jeito.
-Está em variável para trocar de conta sem editar código, e para o servidor não
-ter um default embutido que mandaria conversão para a conta errada.
+## 4. Variáveis de Ambiente e Diagnóstico
 
-Depois de alterar as variáveis no hPanel, reinicie/republique o app — e, se
-mexeu em alguma `VITE_*`, republique, porque ela é lida no build (ver DEPLOY.md).
+No arquivo `.env` de produção:
 
-## Validação
+```env
+# ID do Pixel da OpenAI Ads (mesmo valor nas duas variáveis)
+VITE_OPENAI_ADS_PIXEL_ID=seu_pixel_id_aqui
+OPENAI_ADS_PIXEL_ID=seu_pixel_id_aqui
 
-**1. O pixel subiu com o id certo**
-```bash
-curl -s https://manosveiculoscompra.com/ | grep -o 'oaiq.min.js", "[^"]*"'
+# Chave secreta da Conversions API (Ads Manager -> Conversões -> Criar chave)
+OPENAI_ADS_API_KEY=sua_chave_secreta_aqui
 ```
-Tem que mostrar o id. Vazio ou começando com `%` = variável faltando no build.
 
-**2. As chaves estão configuradas**
-```bash
-curl -s https://manosveiculoscompra.com/api/health/tracking
-```
-`openai_ads_capi` precisa dizer `configurado`.
-
-**3. Os eventos disparam** — abrir o site com a extensão *OpenAI Ads Pixel
-Helper*, completar um lead e clicar no WhatsApp. Devem aparecer `lead_created` e
-o custom `whatsapp`. Para log no console, trocar `debug: false` por `true` no
-`index.html` temporariamente.
-
-**4. A deduplicação está funcionando** — em Ads Manager → Conversões → Fluxo de
-eventos, a mesma conversão deve aparecer uma vez, com origem nos dois caminhos.
-Se o número dobrar, o `event_id` não está batendo entre pixel e servidor.
-
-**5. O espelho recusa evento inventado**
-```bash
-curl -s -o /dev/null -w "%{http_code}\n" -X POST https://manosveiculoscompra.com/api/ads/conversao \
-  -H "Content-Type: application/json" -d '{"evento":"compra_falsa","event_id":"x"}'
-```
-Tem que devolver `400`.
-
-## Por que `contents_viewed` não vai pela CAPI
-
-Tentação óbvia — e erraria feio. As páginas SSR são lidas quase só por robô: na
-medição de agosto, **86% dos acessos eram crawler**. Disparar a visualização no
-servidor contaria cada passagem do GPTBot como conversão e envenenaria a
-otimização da campanha.
-
-No pixel isso não acontece: ele só roda em navegador de verdade. Por isso a
-visualização de veículo é client-side de propósito, e só lead e clique de
-contato — que exigem ação humana — vão também pelo servidor.
-
-## Melhorias futuras
-
-1. **Correspondência por e-mail.** A API aceita `email_sha256`, que casa melhor
-   que `external_id`. O funil não pede e-mail hoje; incluir um campo opcional
-   aumentaria a taxa de correspondência.
-2. **Fila persistente de reenvio.** Hoje há uma retentativa em memória para
-   falha temporária (5xx, 429, rede). Se o processo reiniciar entre as duas, o
-   evento se perde. Uma fila em disco ou no Supabase resolveria.
-3. **`order_created` quando a venda fecha.** Fecharia o ciclo de lead até receita
-   real e deixaria a campanha otimizar por venda, não por lead. Depende de o CRM
-   avisar o site.
-4. **Consentimento (LGPD).** Hoje o pixel inicializa para todo visitante. Um
-   banner de consentimento com `opt_out` — que a API suporta — deixaria a
-   medição alinhada com a política de privacidade já publicada.
+Após publicar, consulte `GET https://manosveiculoscompra.com/api/health/tracking` para verificar:
+- `openai_ads_capi`: `"configurado"`
+- `openai_ads_pixel_catalogo`: ID configurado no servidor
+- `openai_ads_pixel_funil`: `"igual ao servidor"`
+- `openai_ads_catalogo_feed`: `"https://manosveiculoscompra.com/feeds/openai/products.parquet"`
