@@ -91,6 +91,10 @@ export function track(evento: string, props: Record<string, any> = {}): void {
             ? `Enviou simulação de financiamento (Entrada R$ ${Number(props.entrada || 0).toLocaleString('pt-BR')})`
             : 'Iniciou simulador de financiamento',
       });
+    } else if (evento === 'estoque_filtro') {
+      registrarAcaoJornada('filter_stock', {
+        detalhe: `Filtrou estoque${props.detalhe ? `: ${props.detalhe}` : ''}`,
+      });
     } else if (
       evento === 'consultor_open' ||
       evento === 'consultor_gate_success' ||

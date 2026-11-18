@@ -45,7 +45,15 @@ const CLICK_ID_KEYS = [
   'oppref',
 ] as const;
 
+// IDs de campanha/conjunto/anúncio quando o link do anúncio os manda como
+// parâmetro próprio (ex.: ?campaign_id={{campaign.id}}&adset_id={{adset.id}}&ad_id={{ad.id}}).
+// O painel /admin/trafego usa isso para buscar o nome real na Meta Marketing API.
+const AD_ID_KEYS = ['campaign_id', 'adset_id', 'ad_id'] as const;
+
 export interface Attribution {
+  campaign_id?: string;
+  adset_id?: string;
+  ad_id?: string;
   utm_source?: string;
   utm_medium?: string;
   utm_campaign?: string;
@@ -142,6 +150,10 @@ function readFromUrl(): Attribution {
     const value = params.get(key);
     if (value) attr[key] = value.slice(0, 400);
   }
+  for (const key of AD_ID_KEYS) {
+    const value = params.get(key);
+    if (value && /^\d{1,25}$/.test(value)) attr[key] = value;
+  }
 
   // Se o visitante clicou num anúncio da OpenAI dias atrás (janela de 30 dias),
   // o pixel `oaiq` mantém o `oppref` no cookie `__oppref`.
@@ -161,6 +173,7 @@ function hasCampaignSignal(attr: Attribution): boolean {
   const params = new URLSearchParams(window.location.search);
   return Boolean(
     attr.utm_source ||
+      attr.campaign_id ||
       attr.gclid ||
       attr.gbraid ||
       attr.wbraid ||

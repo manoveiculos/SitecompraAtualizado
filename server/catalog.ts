@@ -449,37 +449,111 @@ if (!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname))
 
   var v = ${dadosVeiculo};
   var paramsUrl = new URLSearchParams(w.location.search);
-  var vid = null;
-  try {
-    vid = localStorage.getItem("manos_visitor_id");
-    if (!vid) { vid = "vis_" + novoId(); localStorage.setItem("manos_visitor_id", vid); }
-  } catch(e) { vid = "vis_" + novoId(); }
+  // Mesmo id do funil/SPA (cookie manos_vid): sem isso a jornada do SSR e a do
+  // resto do site viravam dois visitantes diferentes.
+  var vid = lerCookie("manos_vid");
+  if (!vid) { try { vid = localStorage.getItem("manos_visitor_id"); } catch(e) {} }
+  if (!vid) { vid = "vis_" + novoId(); try { localStorage.setItem("manos_visitor_id", vid); } catch(e) {} }
 
-  function enviarTrafego(acao, label){
+  var sid;
+  try {
+    sid = sessionStorage.getItem("manos_session_id_v1");
+    if (!sid) { sid = "s_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2,9); sessionStorage.setItem("manos_session_id_v1", sid); }
+  } catch(e) { sid = "s_" + Date.now().toString(36); }
+
+  function enviarTrafego(acao, label, extra, eventId){
     try {
+      // Campos no formato que /api/trafego/evento lê (veiculo_*, pagina, detalhe, valor_veiculo).
       var tp = {
+        event_id: eventId || novoId(),
         visitor_id: vid,
+        session_id: sid,
         acao: acao,
-        action_label: label,
-        pathname: w.location.pathname,
-        vehicle_id: v ? v.id : null,
-        vehicle_name: v ? v.nome : null,
-        valor: v ? v.preco : null,
+        detalhe: label,
+        pagina: w.location.pathname,
+        veiculo_id: v ? v.id : null,
+        veiculo_nome: v ? v.nome : null,
+        valor_veiculo: v ? v.preco : null,
         utm_source: paramsUrl.get("utm_source"),
         utm_medium: paramsUrl.get("utm_medium"),
         utm_campaign: paramsUrl.get("utm_campaign"),
+        utm_content: paramsUrl.get("utm_content"),
+        utm_term: paramsUrl.get("utm_term"),
+        utm_id: paramsUrl.get("utm_id"),
+        campaign_id: paramsUrl.get("campaign_id"),
+        adset_id: paramsUrl.get("adset_id"),
+        ad_id: paramsUrl.get("ad_id"),
         gclid: paramsUrl.get("gclid"),
         fbclid: paramsUrl.get("fbclid"),
         oppref: paramsUrl.get("oppref") || lerCookie("__oppref"),
         obref: lerCookie("__obref"),
         referrer: d.referrer || null
       };
+      if (extra) { for (var k in extra) { tp[k] = extra[k]; } }
       var blob = new Blob([JSON.stringify(tp)], {type:"application/json"});
       if (navigator.sendBeacon) navigator.sendBeacon("/api/trafego/evento", blob);
     } catch(e){}
   }
 
-  enviarTrafego(v ? "view_vehicle" : "page_view", v ? ("Visualizou veículo: " + v.nome) : "Abriu Catálogo SSR (/estoque)");
+  // --- Tempo ativo no veículo (mesma regra do lib/jornada.ts do SPA) ---------
+  // Ativo = aba visível E alguma interação nos últimos 90s. Um único evento
+  // (viewId) é atualizado a cada 20s e no pagehide; o servidor guarda o maior tempo.
+  var viewId = "vw_" + sid + "_" + (v ? v.id : "cat") + "_ssr";
+  var ativoMs = 0, ultimoTick = Date.now(), ultimaInter = Date.now(), ultimoEnvioSeg = -1;
+  var fotosVistas = {}, nFotos = 0, abriuGaleria = false, scrollMax = 0, interacoes = {};
+
+  function ativoAgora(){ return d.visibilityState === "visible" && (Date.now() - ultimaInter) < 90000; }
+  function acumular(){
+    var agora = Date.now();
+    if (ativoAgora()) ativoMs += Math.min(agora - ultimoTick, 6000);
+    ultimoTick = agora;
+  }
+  function enviarVisao(){
+    acumular();
+    ultimoEnvioSeg = Math.round(ativoMs / 1000);
+    enviarTrafego(
+      v ? "view_vehicle" : "page_view",
+      v ? ("Viu veículo: " + v.nome) : "Abriu Catálogo SSR (/estoque)",
+      { tempo_segundos: ultimoEnvioSeg, fotos_vistas: nFotos, abriu_galeria: abriuGaleria, scroll_max: scrollMax, interacoes: interacoes },
+      viewId
+    );
+  }
+
+  enviarVisao();
+
+  if (v) {
+    var marcar = function(){ ultimaInter = Date.now(); };
+    ["pointerdown","keydown","touchstart","mousemove"].forEach(function(ev){ w.addEventListener(ev, marcar, {passive:true}); });
+    w.addEventListener("scroll", function(){
+      marcar();
+      var alt = d.documentElement.scrollHeight - w.innerHeight;
+      if (alt > 0) { var pct = Math.min(100, Math.round((w.scrollY / alt) * 100)); if (pct > scrollMax) scrollMax = pct; }
+    }, {passive:true});
+    // Clique em foto = interação de galeria (conta fotos distintas).
+    d.addEventListener("click", function(ev){
+      var t = ev.target;
+      if (t && t.tagName === "IMG") {
+        var chave = t.currentSrc || t.src || "";
+        if (chave && !fotosVistas[chave]) { fotosVistas[chave] = 1; nFotos++; }
+        abriuGaleria = true;
+        interacoes.foto = (interacoes.foto || 0) + 1;
+      }
+    }, true);
+    d.addEventListener("visibilitychange", function(){
+      if (d.visibilityState === "hidden") enviarVisao(); else ultimoTick = Date.now();
+    });
+    w.addEventListener("pagehide", enviarVisao);
+    var inicioSessao = Date.now(), ultimoHb = Date.now();
+    var iv = w.setInterval(function(){
+      acumular();
+      var agora = Date.now();
+      if (agora - inicioSessao > 1800000) { w.clearInterval(iv); return; }
+      if (agora - ultimoHb >= 20000) {
+        ultimoHb = agora;
+        if (Math.round(ativoMs / 1000) !== ultimoEnvioSeg) enviarVisao();
+      }
+    }, 2000);
+  }
 
   if(v && v.precoCentavos > 0){
     w.oaiq("measure","contents_viewed",{type:"contents",amount:v.precoCentavos,currency:"BRL",
@@ -526,6 +600,7 @@ if (!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname))
       if(navigator.sendBeacon){
         navigator.sendBeacon("/api/ads/conversao", new Blob([corpo],{type:"application/json"}));
       }
+      enviarVisao();
       enviarTrafego(
         canal === "whatsapp" ? "whatsapp_click" : "phone_click",
         canal === "whatsapp"

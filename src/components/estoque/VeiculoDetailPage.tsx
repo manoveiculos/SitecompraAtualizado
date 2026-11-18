@@ -33,6 +33,8 @@ import {
 import { fetchStock, type Vehicle } from '../../services/stockService';
 import { isFavorite, toggleFavorite } from '../../lib/favorites';
 import { track } from '../../lib/track';
+import { finalizarVisaoVeiculo, registrarInteracaoVeiculo } from '../../lib/jornada';
+import { registrarAcaoJornada } from '../../lib/tracking';
 import { generateVehicleSchema } from '../../lib/seoSchemas';
 import TradeDiffCalculator from '../tools/TradeDiffCalculator';
 
@@ -96,6 +98,18 @@ export default function VeiculoDetailPage({ slug }: { slug: string }) {
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [slug]);
+
+  // Micro-interações medidas no veículo aberto (fotos, galeria). O tempo ativo e o
+  // envio ficam em lib/jornada; ao sair da página o último tempo é enviado.
+  useEffect(() => {
+    if (vehicle) registrarInteracaoVeiculo('foto', activeImg);
+  }, [vehicle, activeImg]);
+
+  useEffect(() => {
+    if (isLightboxOpen) registrarInteracaoVeiculo('galeria');
+  }, [isLightboxOpen]);
+
+  useEffect(() => () => finalizarVisaoVeiculo(), []);
 
   if (loading) {
     return (
@@ -351,7 +365,10 @@ export default function VeiculoDetailPage({ slug }: { slug: string }) {
                   href={waLink(`Olá! Tenho interesse no ${vehicle.description} (${vehicle.priceFormatted}). Estável no pátio?`)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  onClick={() => track('whatsapp_click', { vehicleId: vehicle.id })}
+                  onClick={() => {
+                    registrarInteracaoVeiculo('whatsapp');
+                    track('whatsapp_click', { vehicleId: vehicle.id, name: vehicle.description, price: vehicle.price, context: 'veiculo_detalhe' });
+                  }}
                   className="w-full py-4 bg-[#7A2E1E] hover:bg-[#622316] text-[#FDF3E7] font-bold text-sm rounded-2xl flex items-center justify-center gap-2 shadow-md transition-all active:scale-95 min-h-[52px]"
                 >
                   <MessageCircle className="w-5 h-5 text-emerald-400" />
@@ -361,6 +378,15 @@ export default function VeiculoDetailPage({ slug }: { slug: string }) {
                 {/* 2. Simular Financiamento */}
                 <a
                   href={`/financiamento?veiculo=${vehicle.id}`}
+                  onClick={() => {
+                    registrarInteracaoVeiculo('simulacao');
+                    registrarAcaoJornada('simulacao', {
+                      veiculo_id: vehicle.id,
+                      veiculo_nome: vehicle.description,
+                      valor_veiculo: vehicle.price,
+                      detalhe: `Foi simular financiamento: ${vehicle.description}`,
+                    });
+                  }}
                   className="w-full py-3.5 bg-[#F4E6D7] hover:bg-[#EEDFCF] text-[#3B2016] font-bold text-xs sm:text-sm rounded-2xl flex items-center justify-center gap-2 border border-[#EEDFCF] transition-all min-h-[48px]"
                 >
                   <Calculator className="w-4 h-4 text-[#7A2E1E]" />
@@ -381,7 +407,10 @@ export default function VeiculoDetailPage({ slug }: { slug: string }) {
                   href={waAppointmentLink(vehicle.description)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  onClick={() => track('whatsapp_click', { vehicleId: vehicle.id, agendamento: true })}
+                  onClick={() => {
+                    registrarInteracaoVeiculo('whatsapp');
+                    track('whatsapp_click', { vehicleId: vehicle.id, name: vehicle.description, price: vehicle.price, agendamento: true, context: 'veiculo_agendamento' });
+                  }}
                   className="w-full p-4 bg-[#3B2016] text-white font-bold text-xs rounded-2xl flex flex-col items-center justify-center gap-1 shadow-sm transition-all hover:bg-[#2E1810]"
                 >
                   <div className="flex items-center gap-2">

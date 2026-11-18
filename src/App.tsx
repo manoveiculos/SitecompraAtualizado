@@ -35,6 +35,7 @@ import {
   trackLeadParcial,
   trackContato,
 } from './lib/tracking';
+import { iniciarVisaoVeiculo, finalizarVisaoVeiculo } from './lib/jornada';
 import { fetchStock, type Vehicle } from './services/stockService';
 import { lojaAberta, promessaDeRetorno, statusConsultores } from './lib/horario';
 import { generateAutoDealerSchema } from './lib/seoSchemas';
@@ -166,6 +167,15 @@ export default function App() {
     // ~9x sem mexer no Lead e ensinava a Meta com um sinal falso de qualidade.
     if (quiz.step > 1) trackFunnelStep(quiz.type, quiz.step);
   }, [quiz.step, quiz.type]);
+
+  // Tempo ativo no carro escolhido dentro do funil da home (mesma medição da página /estoque/:slug).
+  useEffect(() => {
+    const v = quiz.selectedVehicle;
+    if (v) iniciarVisaoVeiculo(v, '/');
+    else finalizarVisaoVeiculo();
+  }, [quiz.selectedVehicle]);
+
+  useEffect(() => () => finalizarVisaoVeiculo(), []);
 
   const handleWhatsAppClick = (context: string) => {
     trackContato('whatsapp', context);

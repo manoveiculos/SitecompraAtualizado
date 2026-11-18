@@ -8,56 +8,43 @@
 //    - Facebook / Instagram Ads (fbclid, utm_source=facebook/instagram/meta pago)
 //    - OpenAI Ads / ChatGPT Ads (oppref, __oppref, utm_source=openai/chatgpt pago)
 //    - Visitas Orgânicas & Diretas (Busca orgânica, acesso direto, IA orgânica, etc.)
-// 2. O que cada visitante está fazendo dentro do site (páginas visitadas,
-//    carros visualizados, simulações, consultas de placa, cliques em WhatsApp
-//    e envios de lead).
-// 3. Se a verba gasta em cada plataforma está trazendo o resultado esperado
-//    (CPC real, Custo por Lead/WhatsApp, taxa de conversão e diagnóstico).
+// 2. O que cada visitante faz dentro do site: carros vistos (com TEMPO ATIVO em
+//    cada um), fotos, simulações, consultas de placa, WhatsApp e leads.
+// 3. De onde é (cidade/UF), em que aparelho está e, quando se identifica, quem é
+//    no Manos CRM.
+// 4. Se a verba gasta em cada plataforma está trazendo o resultado esperado.
+//
+// Armazenamento: cache quente em memória + data/trafego-store.json (debounce) e,
+// quando SUPABASE_SERVICE_ROLE_KEY existe, espelho durável em trafego_eventos
+// (ver supabase/trafego_inteligencia.sql).
 // ===========================================================================
 
 import type { Express, Request, Response } from 'express';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import path from 'path';
 import { lerScores } from './leadStats';
+import { parseUserAgent, resolverGeo } from './trafegoGeo';
+import { contextoMeta, metaAdsConfigurado, type PedidoMeta } from './trafegoMeta';
+import {
+  buscarLeadPorTelefone,
+  crmAtivo,
+  espelharEventos,
+  espelharVisitante,
+  gravarResumoNoLead,
+  montarResumo,
+  normalizarTelefone,
+} from './trafegoCrm';
+import {
+  ACOES_VALIDAS,
+  alvoDemografiaMeta,
+  faixaEtariaDeIdade,
+  type EventoJornadaVisitante,
+  type OrigemTrafegoMacro,
+  type TipoAcaoVisitante,
+  type VisitanteIdentificado,
+} from '../src/lib/trafegoInteligencia';
 
-export type OrigemTrafegoMacro = 'google_ads' | 'facebook_ads' | 'openai_ads' | 'organico';
-
-export type TipoAcaoVisitante =
-  | 'page_view'
-  | 'view_vehicle'
-  | 'select_vehicle'
-  | 'plate_lookup'
-  | 'simulacao'
-  | 'consultor_ia'
-  | 'lead_parcial'
-  | 'lead_completo'
-  | 'whatsapp_click'
-  | 'phone_click';
-
-export interface EventoJornadaVisitante {
-  id: string;
-  timestamp: string;
-  visitor_id: string;
-  session_id: string;
-  origem_macro: OrigemTrafegoMacro;
-  sub_origem: string; // ex: "Google Ads (gclid)", "Meta Ads (Instagram)", "ChatGPT Ads (oppref)", "Google Orgânico", "Direto"
-  utm_source: string | null;
-  utm_medium: string | null;
-  utm_campaign: string | null;
-  utm_content: string | null;
-  utm_term: string | null;
-  gclid: string | null;
-  fbclid: string | null;
-  oppref: string | null;
-  referrer: string | null;
-  acao: TipoAcaoVisitante;
-  pagina: string;
-  veiculo_id: string | null;
-  veiculo_nome: string | null;
-  valor_veiculo: number | null;
-  detalhe: string | null;
-  dispositivo: 'Mobile' | 'Desktop';
-}
+export type { EventoJornadaVisitante, OrigemTrafegoMacro, TipoAcaoVisitante };
 
 export interface VerbaCanaisConfig {
   periodo_referencia: string;
@@ -76,12 +63,14 @@ export interface VerbaCanaisConfig {
 interface TrafegoStoreData {
   eventos: EventoJornadaVisitante[];
   verba: VerbaCanaisConfig;
+  visitantes: Record<string, VisitanteIdentificado>;
 }
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 const TRAFEGO_FILE = path.join(DATA_DIR, 'trafego-store.json');
 const OFERTAS_FILE = path.join(DATA_DIR, 'ofertas-store.json');
-const MAX_EVENTOS = 5000;
+const MAX_EVENTOS = 8000;
+const FLUSH_MS = 5000;
 
 const DEFAULT_VERBA: VerbaCanaisConfig = {
   periodo_referencia: 'Mês Atual',
@@ -97,35 +86,102 @@ const DEFAULT_VERBA: VerbaCanaisConfig = {
   updated_at: new Date().toISOString(),
 };
 
-function readTrafegoStore(): TrafegoStoreData {
+// ---------------------------------------------------------------------------
+// Store em memória (um evento de dwell chega a cada ~20s por visitante ativo;
+// reler e regravar o JSON inteiro a cada um não escala).
+// ---------------------------------------------------------------------------
+
+let memoria: TrafegoStoreData | null = null;
+const indicePorId = new Map<string, EventoJornadaVisitante>();
+const sujosParaEspelho = new Set<string>();
+let timerFlush: NodeJS.Timeout | null = null;
+
+function carregarDoDisco(): TrafegoStoreData {
   try {
     if (existsSync(TRAFEGO_FILE)) {
-      const raw = readFileSync(TRAFEGO_FILE, 'utf8');
-      const parsed = JSON.parse(raw);
+      const parsed = JSON.parse(readFileSync(TRAFEGO_FILE, 'utf8'));
       return {
         eventos: Array.isArray(parsed.eventos) ? parsed.eventos : [],
         verba: { ...DEFAULT_VERBA, ...(parsed.verba || {}) },
+        visitantes: parsed.visitantes && typeof parsed.visitantes === 'object' ? parsed.visitantes : {},
       };
     }
   } catch (err) {
     console.warn('[trafego] falha ao ler store:', err);
   }
-  return {
-    eventos: [],
-    verba: { ...DEFAULT_VERBA },
-  };
+  return { eventos: [], verba: { ...DEFAULT_VERBA }, visitantes: {} };
 }
 
-function writeTrafegoStore(store: TrafegoStoreData): void {
+function store(): TrafegoStoreData {
+  if (!memoria) {
+    memoria = carregarDoDisco();
+    for (const e of memoria.eventos) indicePorId.set(e.id, e);
+  }
+  return memoria;
+}
+
+function gravarNoDisco(): void {
   try {
-    if (!existsSync(DATA_DIR)) {
-      mkdirSync(DATA_DIR, { recursive: true });
-    }
-    writeFileSync(TRAFEGO_FILE, JSON.stringify(store, null, 2), 'utf8');
+    if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
+    writeFileSync(TRAFEGO_FILE, JSON.stringify(store()), 'utf8');
   } catch (err) {
     console.warn('[trafego] falha ao gravar store:', err);
   }
 }
+
+function agendarFlush(): void {
+  if (timerFlush) return;
+  timerFlush = setTimeout(() => {
+    timerFlush = null;
+    gravarNoDisco();
+    if (sujosParaEspelho.size > 0) {
+      const lote = Array.from(sujosParaEspelho)
+        .map((id) => indicePorId.get(id))
+        .filter((e): e is EventoJornadaVisitante => Boolean(e));
+      sujosParaEspelho.clear();
+      void espelharEventos(lote);
+    }
+  }, FLUSH_MS);
+  timerFlush.unref?.();
+}
+
+/** Insere ou ATUALIZA por id: o dwell time reaproveita o mesmo evento a cada ping. */
+export function registrarEventoTrafegoInterno(evento: EventoJornadaVisitante): EventoJornadaVisitante {
+  const s = store();
+  const existente = indicePorId.get(evento.id);
+
+  if (existente) {
+    existente.atualizado_em = new Date().toISOString();
+    existente.tempo_segundos = Math.max(Number(existente.tempo_segundos) || 0, Number(evento.tempo_segundos) || 0);
+    existente.fotos_vistas = Math.max(Number(existente.fotos_vistas) || 0, Number(evento.fotos_vistas) || 0);
+    existente.scroll_max = Math.max(Number(existente.scroll_max) || 0, Number(evento.scroll_max) || 0);
+    existente.abriu_galeria = Boolean(existente.abriu_galeria || evento.abriu_galeria);
+    const merged: Record<string, number> = { ...(existente.interacoes || {}) };
+    for (const [k, v] of Object.entries(evento.interacoes || {})) merged[k] = Math.max(merged[k] || 0, v);
+    existente.interacoes = merged;
+    if (!existente.veiculo_nome && evento.veiculo_nome) existente.veiculo_nome = evento.veiculo_nome;
+    if (!existente.cidade && evento.cidade) {
+      existente.cidade = evento.cidade;
+      existente.uf = evento.uf ?? existente.uf ?? null;
+    }
+    sujosParaEspelho.add(existente.id);
+    agendarFlush();
+    return existente;
+  }
+
+  s.eventos.unshift(evento);
+  indicePorId.set(evento.id, evento);
+  if (s.eventos.length > MAX_EVENTOS) {
+    for (const removido of s.eventos.splice(MAX_EVENTOS)) indicePorId.delete(removido.id);
+  }
+  sujosParaEspelho.add(evento.id);
+  agendarFlush();
+  return evento;
+}
+
+// ---------------------------------------------------------------------------
+// Classificação de origem
+// ---------------------------------------------------------------------------
 
 /**
  * Classifica com precisão cirúrgica em qual dos 4 grandes grupos o acesso se encaixa:
@@ -228,9 +284,9 @@ export function classificarOrigemMacro(dados: {
   return { macro: 'organico', subOrigem: 'Acesso Direto / Orgânico' };
 }
 
-function detectarDispositivo(ua: string): 'Mobile' | 'Desktop' {
-  return /Android|iPhone|iPad|iPod|Mobile/i.test(ua || '') ? 'Mobile' : 'Desktop';
-}
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function getExpectedAdminPasswords(): string[] {
   const candidates = [
@@ -254,6 +310,42 @@ function verificarSenhaAdmin(req: Request): boolean {
   const candidate = headerKey || queryKey || bodyKey;
   if (!candidate) return false;
   return getExpectedAdminPasswords().includes(candidate);
+}
+
+const texto = (v: unknown, max: number): string | null => {
+  if (v === undefined || v === null) return null;
+  const s = String(v).trim();
+  return s ? s.slice(0, max) : null;
+};
+
+const idMeta = (v: unknown): string | null => (/^\d{8,20}$/.test(String(v ?? '')) ? String(v) : null);
+
+function semQuery(pagina: string): string {
+  return pagina.split(/[?#]/)[0] || '/';
+}
+
+/**
+ * Recupera o veículo a partir da URL (/estoque/<slug>-<id>) quando o evento não
+ * trouxe o nome. Antes disso o card caía no fallback `pagina` e mostrava
+ * "Viu Veículo: /".
+ */
+export function veiculoDoPath(pagina: string): { id: string | null; nome: string } | null {
+  const m = semQuery(pagina).match(/^\/(?:estoque|veiculo|ofertas)\/([^/]+)/);
+  if (!m) return null;
+  let slug = m[1];
+  try {
+    slug = decodeURIComponent(slug);
+  } catch {
+    /* mantém o slug cru */
+  }
+  const id = slug.match(/-(\d{5,})$/)?.[1] ?? null;
+  const nome = slug
+    .replace(/-\d{5,}$/, '')
+    .split('-')
+    .filter(Boolean)
+    .map((p) => (p.length <= 3 && /\d/.test(p) ? p.toUpperCase() : p.charAt(0).toUpperCase() + p.slice(1)))
+    .join(' ');
+  return nome ? { id, nome } : null;
 }
 
 /**
@@ -301,6 +393,9 @@ function mesclarEventosExistentes(eventosAtuais: EventoJornadaVisitante[]): Even
           pathname = `/ofertas/${m.veiculo_slug}`;
         }
 
+        const doPath = !m.veiculo_nome ? veiculoDoPath(pathname) : null;
+        const ap = parseUserAgent(String(m.user_agent || ''));
+
         extras.push({
           id: eid,
           timestamp: m.created_at || new Date().toISOString(),
@@ -319,11 +414,13 @@ function mesclarEventosExistentes(eventosAtuais: EventoJornadaVisitante[]): Even
           referrer: m.referrer || null,
           acao,
           pagina: pathname,
-          veiculo_id: m.veiculo_id ? String(m.veiculo_id) : null,
-          veiculo_nome: m.veiculo_nome ? String(m.veiculo_nome) : null,
+          veiculo_id: m.veiculo_id ? String(m.veiculo_id) : doPath?.id ?? null,
+          veiculo_nome: m.veiculo_nome ? String(m.veiculo_nome) : doPath?.nome ?? null,
           valor_veiculo: m.valor_veiculo ? Number(m.valor_veiculo) : null,
           detalhe: m.veiculo_nome ? `Oferta: ${m.veiculo_nome}` : null,
-          dispositivo: detectarDispositivo(m.user_agent || ''),
+          dispositivo: ap.dispositivo,
+          dispositivo_detalhe: ap.dispositivo_detalhe,
+          navegador: ap.navegador,
         });
       }
     }
@@ -336,120 +433,282 @@ function mesclarEventosExistentes(eventosAtuais: EventoJornadaVisitante[]): Even
   );
 }
 
-export function registrarEventoTrafegoInterno(evento: EventoJornadaVisitante): void {
-  const store = readTrafegoStore();
-  // Evita duplicar o mesmo ID
-  if (store.eventos.some((e) => e.id === evento.id)) return;
-  store.eventos.unshift(evento);
-  if (store.eventos.length > MAX_EVENTOS) {
-    store.eventos = store.eventos.slice(0, MAX_EVENTOS);
+// ---------------------------------------------------------------------------
+// Visitantes identificados + sincronização com o CRM
+// ---------------------------------------------------------------------------
+
+const geoPorVisitante = new Map<string, { cidade: string | null; uf: string | null; pais: string | null }>();
+const timersSync = new Map<string, NodeJS.Timeout>();
+const tentativasSync = new Map<string, number>();
+const ultimaChecagemCrm = new Map<string, number>();
+
+const ACOES_QUE_DISPARAM_SYNC: TipoAcaoVisitante[] = [
+  'whatsapp_click',
+  'phone_click',
+  'lead_parcial',
+  'lead_completo',
+  'simulacao',
+];
+
+function eventosDoVisitante(visitorId: string): EventoJornadaVisitante[] {
+  return store().eventos.filter((e) => e.visitor_id === visitorId);
+}
+
+function nomeCampanhaCacheado(passos: EventoJornadaVisitante[]): string | null {
+  const id = passos.map((p) => p.campanha_id).find(Boolean);
+  if (!id) return null;
+  return contextoMeta([{ id, demografia: false }])[id]?.nome ?? null;
+}
+
+async function executarSyncCrm(visitorId: string): Promise<void> {
+  const v = store().visitantes[visitorId];
+  if (!crmAtivo() || !v?.telefone) return;
+
+  const lead = await buscarLeadPorTelefone(v.telefone);
+  if (!lead) {
+    // O n8n cria o lead de forma assíncrona: tenta de novo em 1 min, até 5 vezes.
+    const n = (tentativasSync.get(visitorId) || 0) + 1;
+    tentativasSync.set(visitorId, n);
+    if (n < 5) agendarSyncCrm(visitorId, 60_000);
+    return;
   }
-  writeTrafegoStore(store);
+  tentativasSync.delete(visitorId);
+
+  v.crm_lead_id = lead.id;
+  v.crm_status = lead.status;
+  v.crm_sincronizado_em = new Date().toISOString();
+  if (!v.nome && lead.nome) v.nome = lead.nome;
+
+  const passos = eventosDoVisitante(visitorId);
+  await gravarResumoNoLead(lead, visitorId, montarResumo(passos, nomeCampanhaCacheado(passos)));
+
+  agendarFlush();
+  const geo = geoPorVisitante.get(visitorId);
+  void espelharVisitante(v, geo?.cidade, geo?.uf);
+}
+
+function agendarSyncCrm(visitorId: string, atrasoMs = 15_000): void {
+  if (!crmAtivo()) return;
+  const anterior = timersSync.get(visitorId);
+  if (anterior) clearTimeout(anterior);
+  const t = setTimeout(() => {
+    timersSync.delete(visitorId);
+    void executarSyncCrm(visitorId).catch((err) => console.warn('[trafego] sync CRM:', err?.message || err));
+  }, atrasoMs);
+  t.unref?.();
+  timersSync.set(visitorId, t);
+}
+
+/** Atualiza só o status do funil (leitura) para o painel — sem escrever no CRM. */
+function refrescarStatusCrm(visitorId: string): void {
+  const v = store().visitantes[visitorId];
+  if (!crmAtivo() || !v?.telefone) return;
+  const agora = Date.now();
+  if (agora - (ultimaChecagemCrm.get(visitorId) || 0) < 60_000) return;
+  ultimaChecagemCrm.set(visitorId, agora);
+  void buscarLeadPorTelefone(v.telefone).then((lead) => {
+    if (!lead) return;
+    v.crm_lead_id = lead.id;
+    v.crm_status = lead.status;
+    v.crm_sincronizado_em = new Date().toISOString();
+    if (lead.nome) v.nome = v.nome || lead.nome;
+    agendarFlush();
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Rotas
+// ---------------------------------------------------------------------------
+
+async function processarEvento(req: Request): Promise<void> {
+  const body = req.body ?? {};
+  const ua = String(req.headers['user-agent'] || '');
+
+  const atribuicao = (body.atribuicao ?? {}) as Record<string, any>;
+  const firstTouch = (atribuicao.first_touch ?? {}) as Record<string, any>;
+
+  // Usa os sinais da visita atual ou, se não houver na URL atual, do first_touch
+  const gclid = body.gclid || atribuicao.gclid || firstTouch.gclid || null;
+  const gbraid = body.gbraid || atribuicao.gbraid || null;
+  const wbraid = body.wbraid || atribuicao.wbraid || null;
+  const fbclid = body.fbclid || atribuicao.fbclid || firstTouch.fbclid || null;
+  const oppref = body.oppref || atribuicao.oppref || firstTouch.oppref || null;
+  const utm_source = body.utm_source || atribuicao.utm_source || firstTouch.utm_source || null;
+  const utm_medium = body.utm_medium || atribuicao.utm_medium || null;
+  const utm_campaign = body.utm_campaign || atribuicao.utm_campaign || firstTouch.utm_campaign || null;
+  const utm_content = body.utm_content || atribuicao.utm_content || null;
+  const utm_term = body.utm_term || atribuicao.utm_term || null;
+  const utm_id = body.utm_id || atribuicao.utm_id || null;
+  const canal = body.canal || atribuicao.canal || firstTouch.canal || null;
+  const referrer = body.referrer || atribuicao.referrer || String(req.headers.referer || '') || null;
+
+  const classif = classificarOrigemMacro({
+    canal, utm_source, utm_medium, utm_campaign, gclid, gbraid, wbraid, fbclid, oppref, referrer,
+  });
+
+  // IDs da Meta. O gerenciador costuma mandar {{campaign.id}} no utm_campaign;
+  // adset/ad vêm em params explícitos ou nos demais UTMs (ambíguo, por isso o
+  // resolvedor da Meta aceita qualquer nó).
+  const ehMeta = classif.macro === 'facebook_ads';
+  const campanha_id = ehMeta ? idMeta(body.campaign_id ?? atribuicao.campaign_id) || idMeta(utm_campaign) : null;
+  const conjunto_id = ehMeta ? idMeta(body.adset_id ?? atribuicao.adset_id) || idMeta(utm_term) : null;
+  const anuncio_id = ehMeta ? idMeta(body.ad_id ?? atribuicao.ad_id) || idMeta(utm_content) : null;
+
+  const acao: TipoAcaoVisitante = (ACOES_VALIDAS as string[]).includes(body.acao) ? body.acao : 'page_view';
+
+  // Aliases: o script SSR do catálogo (server/catalog.ts) manda vehicle_*,
+  // pathname, valor e action_label — e a ingestão antiga só lia os nomes em
+  // português, então o nome do carro se perdia.
+  let pagina = semQuery(String(body.pagina ?? body.pathname ?? '/').slice(0, 240));
+  let veiculo_id = texto(body.veiculo_id ?? body.vehicle_id, 80);
+  let veiculo_nome = texto(body.veiculo_nome ?? body.vehicle_name, 160);
+  const valorBruto = Number(body.valor_veiculo ?? body.valor);
+  const valor_veiculo = Number.isFinite(valorBruto) && valorBruto > 0 ? valorBruto : null;
+  const detalhe = texto(body.detalhe ?? body.action_label, 240);
+
+  // A navegação para /estoque/<slug> já vira view_vehicle: o page_view duplicaria o passo.
+  if (acao === 'page_view' && /^\/(estoque|veiculo)\/[^/]+/.test(pagina)) return;
+
+  if ((acao === 'view_vehicle' || acao === 'select_vehicle') && (!veiculo_nome || !veiculo_id)) {
+    const doPath = veiculoDoPath(pagina);
+    if (doPath) {
+      veiculo_nome = veiculo_nome || doPath.nome;
+      veiculo_id = veiculo_id || doPath.id;
+    }
+  }
+
+  const visitorId = String(body.visitor_id || body.external_id || 'anon').slice(0, 80);
+
+  // Geo uma vez por visitante (headers do CDN, depois GeoIP).
+  let geo = geoPorVisitante.get(visitorId);
+  if (!geo || (!geo.cidade && !geo.uf)) {
+    geo = await resolverGeo(req);
+    if (geoPorVisitante.size > 5000) geoPorVisitante.delete(geoPorVisitante.keys().next().value as string);
+    geoPorVisitante.set(visitorId, geo);
+  }
+  const ap = parseUserAgent(ua);
+
+  const interacoes: Record<string, number> = {};
+  if (body.interacoes && typeof body.interacoes === 'object') {
+    for (const [k, v] of Object.entries(body.interacoes as Record<string, unknown>).slice(0, 12)) {
+      const n = Number(v);
+      if (Number.isFinite(n) && n > 0) interacoes[k.slice(0, 24)] = Math.min(9999, Math.round(n));
+    }
+  }
+
+  const agora = new Date().toISOString();
+  const registro: EventoJornadaVisitante = {
+    id: texto(body.event_id, 120) || `trf_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+    timestamp: agora,
+    atualizado_em: agora,
+    visitor_id: visitorId,
+    session_id: String(body.session_id || body.visitor_id || 'sess').slice(0, 80),
+    origem_macro: classif.macro,
+    sub_origem: classif.subOrigem,
+    utm_source: texto(utm_source, 120),
+    utm_medium: texto(utm_medium, 120),
+    utm_campaign: texto(utm_campaign, 160),
+    utm_content: texto(utm_content, 160),
+    utm_term: texto(utm_term, 160),
+    utm_id: texto(utm_id, 160),
+    gclid: texto(gclid, 200),
+    fbclid: texto(fbclid, 200),
+    oppref: texto(oppref, 200),
+    referrer: texto(referrer, 300),
+    campanha_id,
+    conjunto_id,
+    anuncio_id,
+    acao,
+    pagina,
+    veiculo_id,
+    veiculo_nome,
+    valor_veiculo,
+    detalhe,
+    dispositivo: ap.dispositivo,
+    dispositivo_detalhe: ap.dispositivo_detalhe,
+    navegador: ap.navegador,
+    cidade: geo.cidade,
+    uf: geo.uf,
+    pais: geo.pais,
+    tempo_segundos: Math.min(4 * 3600, Math.max(0, Math.round(Number(body.tempo_segundos) || 0))),
+    fotos_vistas: Math.min(500, Math.max(0, Math.round(Number(body.fotos_vistas) || 0))),
+    abriu_galeria: Boolean(body.abriu_galeria),
+    scroll_max: Math.min(100, Math.max(0, Math.round(Number(body.scroll_max) || 0))),
+    interacoes,
+  };
+
+  registrarEventoTrafegoInterno(registro);
+
+  if (ACOES_QUE_DISPARAM_SYNC.includes(acao) && store().visitantes[visitorId]?.telefone) {
+    agendarSyncCrm(visitorId);
+  }
 }
 
 export function mountTrafegoRoutes(app: Express): void {
-  // 1. Endpoint público leve para receber telemetria de jornada do visitante
+  // 1. Endpoint público leve para receber telemetria de jornada do visitante.
+  // Responde 204 na hora e processa depois (o GeoIP pode levar até 2,5s).
   app.post('/api/trafego/evento', (req: Request, res: Response) => {
+    const ua = String(req.headers['user-agent'] || '');
+    res.status(204).end();
+
+    // Ignora robôs/crawlers conhecidos para não inflar contagem de visitantes humanos
+    if (/bot|crawler|spider|gptbot|claudebot|perplexitybot|facebookexternalhit|whatsapp/i.test(ua)) return;
+
+    void processarEvento(req).catch((err) => console.error('[trafego] erro ao registrar evento:', err));
+  });
+
+  // 2. Identificação do visitante (deanonymization). O front chama quando a
+  // pessoa informa nome + telefone. Só a IDADE é guardada, nunca a data de nascimento.
+  app.post('/api/trafego/identificar', (req: Request, res: Response) => {
+    res.status(204).end();
     try {
-      const body = req.body ?? {};
-      const ua = String(req.headers['user-agent'] || '');
+      const b = req.body ?? {};
+      const visitorId = texto(b.visitor_id, 80);
+      if (!visitorId) return;
 
-      // Ignora robôs/crawlers conhecidos para não inflar contagem de visitantes humanos
-      if (/bot|crawler|spider|gptbot|claudebot|perplexitybot|facebookexternalhit|whatsapp/i.test(ua)) {
-        return res.status(204).end();
-      }
+      const telefone = normalizarTelefone(b.telefone);
+      const nome = texto(b.nome, 80);
+      if (!telefone && !nome) return;
 
-      const atribuicao = (body.atribuicao ?? {}) as Record<string, any>;
-      const firstTouch = (atribuicao.first_touch ?? {}) as Record<string, any>;
+      const idadeBruta = Math.round(Number(b.idade));
+      const idade = idadeBruta >= 18 && idadeBruta <= 100 ? idadeBruta : null;
 
-      // Usa os sinais da visita atual ou, se não houver na URL atual, do first_touch
-      const gclid = body.gclid || atribuicao.gclid || firstTouch.gclid || null;
-      const gbraid = body.gbraid || atribuicao.gbraid || null;
-      const wbraid = body.wbraid || atribuicao.wbraid || null;
-      const fbclid = body.fbclid || atribuicao.fbclid || firstTouch.fbclid || null;
-      const oppref = body.oppref || atribuicao.oppref || firstTouch.oppref || null;
-      const utm_source = body.utm_source || atribuicao.utm_source || firstTouch.utm_source || null;
-      const utm_medium = body.utm_medium || atribuicao.utm_medium || null;
-      const utm_campaign = body.utm_campaign || atribuicao.utm_campaign || firstTouch.utm_campaign || null;
-      const utm_content = body.utm_content || atribuicao.utm_content || null;
-      const utm_term = body.utm_term || atribuicao.utm_term || null;
-      const canal = body.canal || atribuicao.canal || firstTouch.canal || null;
-      const referrer = body.referrer || atribuicao.referrer || String(req.headers.referer || '') || null;
-
-      const classif = classificarOrigemMacro({
-        canal,
-        utm_source,
-        utm_medium,
-        utm_campaign,
-        gclid,
-        gbraid,
-        wbraid,
-        fbclid,
-        oppref,
-        referrer,
-      });
-
-      const acaoValida: TipoAcaoVisitante = [
-        'page_view',
-        'view_vehicle',
-        'select_vehicle',
-        'plate_lookup',
-        'simulacao',
-        'consultor_ia',
-        'lead_parcial',
-        'lead_completo',
-        'whatsapp_click',
-        'phone_click',
-      ].includes(body.acao)
-        ? body.acao
-        : 'page_view';
-
-      const idEvento =
-        String(body.event_id || '').trim() ||
-        `trf_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-
-      const registro: EventoJornadaVisitante = {
-        id: idEvento,
-        timestamp: new Date().toISOString(),
-        visitor_id: String(body.visitor_id || body.external_id || 'anon').slice(0, 80),
-        session_id: String(body.session_id || body.visitor_id || 'sess').slice(0, 80),
-        origem_macro: classif.macro,
-        sub_origem: classif.subOrigem,
-        utm_source: utm_source ? String(utm_source).slice(0, 120) : null,
-        utm_medium: utm_medium ? String(utm_medium).slice(0, 120) : null,
-        utm_campaign: utm_campaign ? String(utm_campaign).slice(0, 160) : null,
-        utm_content: utm_content ? String(utm_content).slice(0, 160) : null,
-        utm_term: utm_term ? String(utm_term).slice(0, 160) : null,
-        gclid: gclid ? String(gclid).slice(0, 200) : null,
-        fbclid: fbclid ? String(fbclid).slice(0, 200) : null,
-        oppref: oppref ? String(oppref).slice(0, 200) : null,
-        referrer: referrer ? String(referrer).slice(0, 300) : null,
-        acao: acaoValida,
-        pagina: String(body.pagina || '/').slice(0, 240),
-        veiculo_id: body.veiculo_id ? String(body.veiculo_id).slice(0, 80) : null,
-        veiculo_nome: body.veiculo_nome ? String(body.veiculo_nome).slice(0, 160) : null,
-        valor_veiculo: body.valor_veiculo ? Number(body.valor_veiculo) || null : null,
-        detalhe: body.detalhe ? String(body.detalhe).slice(0, 240) : null,
-        dispositivo: detectarDispositivo(ua),
+      const s = store();
+      const atual = s.visitantes[visitorId];
+      const v: VisitanteIdentificado = {
+        visitor_id: visitorId,
+        nome: nome || atual?.nome || null,
+        telefone: telefone || atual?.telefone || null,
+        idade: idade ?? atual?.idade ?? null,
+        faixa_etaria: faixaEtariaDeIdade(idade ?? atual?.idade ?? null),
+        identificado_em: atual?.identificado_em || new Date().toISOString(),
+        crm_lead_id: atual?.crm_lead_id ?? null,
+        crm_status: atual?.crm_status ?? null,
+        crm_sincronizado_em: atual?.crm_sincronizado_em ?? null,
       };
+      s.visitantes[visitorId] = v;
+      agendarFlush();
 
-      registrarEventoTrafegoInterno(registro);
-      return res.status(204).end();
+      const geo = geoPorVisitante.get(visitorId);
+      void espelharVisitante(v, geo?.cidade, geo?.uf);
+      if (v.telefone) {
+        tentativasSync.delete(visitorId);
+        agendarSyncCrm(visitorId, 8_000);
+      }
     } catch (err) {
-      console.error('[trafego] erro ao registrar evento:', err);
-      return res.status(204).end();
+      console.error('[trafego] erro ao identificar visitante:', err);
     }
   });
 
-  // 2. Endpoint administrativo para consultar o relatório completo de Tráfego, Comportamento e ROI
+  // 3. Endpoint administrativo para consultar o relatório completo de Tráfego, Comportamento e ROI
   app.get('/api/trafego/resumo', async (req: Request, res: Response) => {
     if (!verificarSenhaAdmin(req)) {
       return res.status(401).json({ ok: false, error: 'Não autorizado.' });
     }
 
     try {
-      const store = readTrafegoStore();
-      const todosEventos = mesclarEventosExistentes(store.eventos);
+      const s = store();
+      const todosEventos = mesclarEventosExistentes(s.eventos);
 
       // Também busca os leads qualificados do banco (`lead_scores`) para enriquecer a visão
       const leadScores = await lerScores(500).catch(() => []);
@@ -484,6 +743,7 @@ export function mountTrafegoRoutes(app: Express): void {
             valor_veiculo: null,
             detalhe: `Lead ${ls.lead_type} (${ls.stage}) • Nota ${ls.score} (${ls.faixa})${ls.cidade ? ` • ${ls.cidade}` : ''}`,
             dispositivo: 'Mobile',
+            cidade: ls.cidade || null,
           });
         }
       }
@@ -491,31 +751,54 @@ export function mountTrafegoRoutes(app: Express): void {
       todosEventos.sort(
         (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
       );
+      const eventos = todosEventos.slice(0, 3000);
 
-      return res
-        .set('Cache-Control', 'no-store')
-        .json({
-          ok: true,
-          verba: store.verba,
-          eventos: todosEventos.slice(0, 3000),
-        });
+      // Nome real da campanha + faixa etária do anúncio (cache; resolve em segundo plano).
+      const pedidos: PedidoMeta[] = [];
+      for (const e of eventos) {
+        if (pedidos.length >= 80) break;
+        if (e.origem_macro !== 'facebook_ads') continue;
+        const alvo = alvoDemografiaMeta(e);
+        for (const id of [e.campanha_id, e.conjunto_id, e.anuncio_id]) {
+          if (id) pedidos.push({ id, demografia: id === alvo });
+        }
+      }
+      const campanhas = contextoMeta(pedidos);
+
+      // Visitantes identificados: devolve só os que aparecem nos eventos enviados.
+      const idsNoPainel = new Set(eventos.map((e) => e.visitor_id));
+      const visitantes: Record<string, VisitanteIdentificado> = {};
+      for (const [id, v] of Object.entries(s.visitantes)) {
+        if (!idsNoPainel.has(id)) continue;
+        visitantes[id] = v;
+        refrescarStatusCrm(id);
+      }
+
+      return res.set('Cache-Control', 'no-store').json({
+        ok: true,
+        verba: s.verba,
+        eventos,
+        visitantes,
+        campanhas,
+        integracoes: { crm: crmAtivo(), meta_ads: metaAdsConfigurado() },
+      });
     } catch (err) {
       console.error('[trafego] erro em GET /api/trafego/resumo:', err);
       return res.status(500).json({ ok: false, error: 'Erro ao carregar dados de tráfego.' });
     }
   });
 
-  // 3. Endpoint administrativo para salvar a verba investida e metas de ROI
+  // 4. Endpoint administrativo para salvar a verba investida e metas de ROI
   app.post('/api/trafego/verba', (req: Request, res: Response) => {
     if (!verificarSenhaAdmin(req)) {
       return res.status(401).json({ ok: false, error: 'Não autorizado.' });
     }
 
     try {
-      const store = readTrafegoStore();
+      const s = store();
       const b = req.body ?? {};
-      store.verba = {
-        periodo_referencia: String(b.periodo_referencia || store.verba.periodo_referencia || 'Mês Atual').slice(0, 60),
+      s.verba = {
+        periodo_referencia: String(b.periodo_referencia || s.verba.periodo_referencia || 'Mês Atual').slice(0, 60),
         verba_google_ads: Math.max(0, Number(b.verba_google_ads) || 0),
         verba_facebook_ads: Math.max(0, Number(b.verba_facebook_ads) || 0),
         verba_openai_ads: Math.max(0, Number(b.verba_openai_ads) || 0),
@@ -527,8 +810,8 @@ export function mountTrafegoRoutes(app: Express): void {
         vendas_organico: Math.max(0, Number(b.vendas_organico) || 0),
         updated_at: new Date().toISOString(),
       };
-      writeTrafegoStore(store);
-      return res.json({ ok: true, verba: store.verba });
+      gravarNoDisco();
+      return res.json({ ok: true, verba: s.verba });
     } catch (err) {
       console.error('[trafego] erro em POST /api/trafego/verba:', err);
       return res.status(500).json({ ok: false, error: 'Erro ao salvar verba.' });

@@ -15,6 +15,7 @@
 
 import { getAttribution, getChannel } from './attribution';
 import { idDoVisitante, telefoneParaMeta } from './visitante';
+import { enviarJornada, iniciarVisaoVeiculo, obterSessionId } from './jornada';
 
 type Json = Record<string, unknown>;
 
@@ -155,19 +156,8 @@ function espelharNoServidor(evento: string, id: string, extras: Json = {}): void
   }
 }
 
-const SESSION_ID_KEY = 'manos_session_id_v1';
-
-export function obterSessionId(): string {
-  try {
-    const existente = sessionStorage.getItem(SESSION_ID_KEY);
-    if (existente) return existente;
-    const novo = `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`;
-    sessionStorage.setItem(SESSION_ID_KEY, novo);
-    return novo;
-  } catch {
-    return `s_${Date.now().toString(36)}`;
-  }
-}
+// O id de sessão e o transporte vivem em ./jornada (sem dependência circular).
+export { obterSessionId };
 
 /**
  * Registra cada passo da jornada do visitante no painel administrativo de
@@ -179,6 +169,7 @@ export function registrarAcaoJornada(
     | 'page_view'
     | 'view_vehicle'
     | 'select_vehicle'
+    | 'filter_stock'
     | 'plate_lookup'
     | 'simulacao'
     | 'consultor_ia'
@@ -195,40 +186,16 @@ export function registrarAcaoJornada(
     detalhe?: string | null;
   } = {},
 ): void {
-  try {
-    if (typeof window === 'undefined') return;
-    const path = dados.pagina || window.location.pathname;
-    // Não polui o relatório de clientes com a própria navegação do admin no painel
-    if (path.includes('admin') || path.includes('leads-manos') || path.includes('radar-manos')) {
-      return;
-    }
-
-    const corpo = JSON.stringify({
-      event_id: dados.event_id || gerarEventId(),
-      visitor_id: idDoVisitante(),
-      session_id: obterSessionId(),
-      acao,
-      pagina: path,
-      veiculo_id: dados.veiculo_id ?? null,
-      veiculo_nome: dados.veiculo_nome ?? null,
-      valor_veiculo: dados.valor_veiculo ?? null,
-      detalhe: dados.detalhe ?? null,
-      atribuicao: getAttribution(),
-    });
-
-    if (navigator.sendBeacon) {
-      navigator.sendBeacon('/api/trafego/evento', new Blob([corpo], { type: 'application/json' }));
-      return;
-    }
-    void fetch('/api/trafego/evento', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: corpo,
-      keepalive: true,
-    }).catch(() => {});
-  } catch {
-    /* silencioso */
-  }
+  if (typeof window === 'undefined') return;
+  enviarJornada({
+    event_id: dados.event_id || gerarEventId(),
+    acao,
+    pagina: dados.pagina || window.location.pathname,
+    veiculo_id: dados.veiculo_id ?? null,
+    veiculo_nome: dados.veiculo_nome ?? null,
+    valor_veiculo: dados.valor_veiculo ?? null,
+    detalhe: dados.detalhe ?? null,
+  });
 }
 
 let ultimaPaginaJornada: { path: string; ts: number } | null = null;
@@ -236,6 +203,9 @@ let ultimaPaginaJornada: { path: string; ts: number } | null = null;
 export function registrarPageViewJornada(pathname?: string): void {
   if (typeof window === 'undefined') return;
   const path = pathname || window.location.pathname || '/';
+  // /estoque/<slug> vira o passo "Viu Veículo" (com nome e tempo); um page_view
+  // junto só duplicaria a linha do tempo.
+  if (/^\/(estoque|veiculo)\/[^/]+/.test(path)) return;
   const agora = Date.now();
   if (ultimaPaginaJornada && ultimaPaginaJornada.path === path && agora - ultimaPaginaJornada.ts < 1500) {
     return;
@@ -243,7 +213,7 @@ export function registrarPageViewJornada(pathname?: string): void {
   ultimaPaginaJornada = { path, ts: agora };
   registrarAcaoJornada('page_view', {
     pagina: path,
-    detalhe: `Acessou ${path === '/' ? 'Página Inicial' : path}`,
+    detalhe: path === '/' ? 'Entrou na Home (/)' : `Acessou ${path}`,
   });
 }
 
@@ -262,7 +232,33 @@ export function identificarVisitante(dados: {
   telefone?: string | null;
   email?: string | null;
   cidade?: string | null;
+  /** Só a idade em anos (calculada no navegador). A data de nascimento não sai do aparelho por aqui. */
+  idade?: number | null;
 }): void {
+  // Vincula o visitor_id (cookie) ao contato, para o painel /admin/trafego
+  // trocar "Visitante Anônimo" pelo nome/telefone e para o servidor ligar a
+  // jornada ao lead do Manos CRM.
+  try {
+    if (dados.nome?.trim() || dados.telefone?.trim()) {
+      const corpo = JSON.stringify({
+        visitor_id: idDoVisitante(),
+        nome: dados.nome?.trim() || undefined,
+        telefone: dados.telefone || undefined,
+        idade: dados.idade ?? undefined,
+      });
+      if (!navigator.sendBeacon?.('/api/trafego/identificar', new Blob([corpo], { type: 'application/json' }))) {
+        void fetch('/api/trafego/identificar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: corpo,
+          keepalive: true,
+        }).catch(() => {});
+      }
+    }
+  } catch {
+    /* silencioso */
+  }
+
   try {
     const w = window as unknown as {
       fbq?: (...args: unknown[]) => void;
@@ -415,13 +411,9 @@ export function trackViewVehicle(v: { id: string; description: string; price: nu
     },
     { event_id: id },
   );
-  registrarAcaoJornada('view_vehicle', {
-    event_id: `jv_${id}`,
-    veiculo_id: idStr,
-    veiculo_nome: v.description,
-    valor_veiculo: v.price,
-    detalhe: `Visualizou veículo: ${v.description}`,
-  });
+  // Abre a visão do veículo: envia o passo "Viu Veículo" com o NOME e passa a
+  // medir o tempo ativo (heartbeat + flush no pagehide).
+  iniciarVisaoVeiculo(v);
 }
 
 /** Visitante selecionou um veículo dentro do funil. */

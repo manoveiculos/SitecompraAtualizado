@@ -171,7 +171,7 @@ export default function FinanciamentoPage() {
         cpf: cpf.replace(/\D/g, ''),
         dataNascimento,
       });
-      identificarVisitante({ nome: nome.trim(), telefone: rawPhone });
+      identificarVisitante({ nome: nome.trim(), telefone: rawPhone, idade: calculateAge(dataNascimento) || null });
 
       const response = await fetch('https://n8n.drivvoo.com/webhook/49702c93-f827-4fbe-9e7f-ac2200cae3bc', {
         method: 'POST',

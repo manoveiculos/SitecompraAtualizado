@@ -34,44 +34,18 @@ import {
   formatarMoedaBRL,
 } from '../../services/ofertasService';
 
-export type OrigemTrafegoMacro = 'google_ads' | 'facebook_ads' | 'openai_ads' | 'organico';
+import JornadaVisitantesSecao from './JornadaVisitantesSecao';
+import {
+  formatarDuracao,
+  type ContextoCampanhaMeta,
+  type EventoJornadaVisitante,
+  type OrigemTrafegoMacro,
+  type TipoAcaoVisitante,
+  type VisitanteIdentificado,
+} from '../../lib/trafegoInteligencia';
 
-export type TipoAcaoVisitante =
-  | 'page_view'
-  | 'view_vehicle'
-  | 'select_vehicle'
-  | 'plate_lookup'
-  | 'simulacao'
-  | 'consultor_ia'
-  | 'lead_parcial'
-  | 'lead_completo'
-  | 'whatsapp_click'
-  | 'phone_click';
-
-export interface EventoJornadaVisitante {
-  id: string;
-  timestamp: string;
-  visitor_id: string;
-  session_id: string;
-  origem_macro: OrigemTrafegoMacro;
-  sub_origem: string;
-  utm_source: string | null;
-  utm_medium: string | null;
-  utm_campaign: string | null;
-  utm_content: string | null;
-  utm_term: string | null;
-  gclid: string | null;
-  fbclid: string | null;
-  oppref: string | null;
-  referrer: string | null;
-  acao: TipoAcaoVisitante;
-  pagina: string;
-  veiculo_id: string | null;
-  veiculo_nome: string | null;
-  valor_veiculo: number | null;
-  detalhe: string | null;
-  dispositivo: 'Mobile' | 'Desktop';
-}
+// Tipos vivem em lib/trafegoInteligencia (compartilhados com o servidor).
+export type { EventoJornadaVisitante, OrigemTrafegoMacro, TipoAcaoVisitante };
 
 export interface VerbaCanaisConfig {
   periodo_referencia: string;
@@ -137,75 +111,6 @@ const CANAL_META: Record<
   },
 };
 
-function labelAcao(acao: TipoAcaoVisitante): {
-  titulo: string;
-  cor: string;
-  icone: React.ReactNode;
-} {
-  switch (acao) {
-    case 'page_view':
-      return {
-        titulo: 'Acessou Página',
-        cor: 'bg-zinc-800 text-zinc-300 border-zinc-700',
-        icone: <Eye className="w-3.5 h-3.5 text-zinc-400" />,
-      };
-    case 'view_vehicle':
-      return {
-        titulo: 'Viu Veículo',
-        cor: 'bg-sky-500/15 text-sky-300 border-sky-500/30',
-        icone: <Car className="w-3.5 h-3.5 text-sky-400" />,
-      };
-    case 'select_vehicle':
-      return {
-        titulo: 'Selecionou Carro',
-        cor: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30',
-        icone: <MousePointerClick className="w-3.5 h-3.5 text-indigo-400" />,
-      };
-    case 'plate_lookup':
-      return {
-        titulo: 'Consultou Placa (Troca/Venda)',
-        cor: 'bg-purple-500/15 text-purple-300 border-purple-500/30',
-        icone: <Search className="w-3.5 h-3.5 text-purple-400" />,
-      };
-    case 'simulacao':
-      return {
-        titulo: 'Simulou Financiamento',
-        cor: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
-        icone: <Calculator className="w-3.5 h-3.5 text-amber-400" />,
-      };
-    case 'consultor_ia':
-      return {
-        titulo: 'Usou Consultor IA',
-        cor: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30',
-        icone: <Bot className="w-3.5 h-3.5 text-cyan-400" />,
-      };
-    case 'lead_parcial':
-      return {
-        titulo: 'Deixou Contato Inicial',
-        cor: 'bg-orange-500/20 text-orange-300 border-orange-500/40',
-        icone: <Users className="w-3.5 h-3.5 text-orange-400" />,
-      };
-    case 'lead_completo':
-      return {
-        titulo: 'Lead Qualificado Enviado',
-        cor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
-        icone: <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />,
-      };
-    case 'whatsapp_click':
-      return {
-        titulo: 'Clicou no WhatsApp',
-        cor: 'bg-green-500/20 text-green-300 border-green-500/40',
-        icone: <MessageCircle className="w-3.5 h-3.5 text-green-400" />,
-      };
-    case 'phone_click':
-      return {
-        titulo: 'Clicou para Ligar',
-        cor: 'bg-teal-500/20 text-teal-300 border-teal-500/40',
-        icone: <Phone className="w-3.5 h-3.5 text-teal-400" />,
-      };
-  }
-}
-
 export default function TrafegoRoiPanel({ standalone = false }: { standalone?: boolean }) {
   const [autenticado, setAutenticado] = useState<boolean>(() => Boolean(getSavedAdminKey()));
   const [senhaInput, setSenhaInput] = useState('');
@@ -220,7 +125,10 @@ export default function TrafegoRoiPanel({ standalone = false }: { standalone?: b
   // Filtros de visualização
   const [periodoDias, setPeriodoDias] = useState<number>(30); // 1 = Hoje, 7 = 7d, 30 = 30d, 0 = Tudo
   const [filtroCanal, setFiltroCanal] = useState<'todos' | OrigemTrafegoMacro>('todos');
-  const [buscaJornada, setBuscaJornada] = useState('');
+  const [visitantes, setVisitantes] = useState<Record<string, VisitanteIdentificado>>({});
+  const [campanhas, setCampanhas] = useState<Record<string, ContextoCampanhaMeta>>({});
+  const [integracoes, setIntegracoes] = useState<{ crm: boolean; meta_ads: boolean } | null>(null);
+  const [ultimaAtualizacao, setUltimaAtualizacao] = useState<Date | null>(null);
 
   // Estado editável de Verba & ROI
   const [verba, setVerba] = useState<VerbaCanaisConfig>({
@@ -237,35 +145,44 @@ export default function TrafegoRoiPanel({ standalone = false }: { standalone?: b
     updated_at: new Date().toISOString(),
   });
 
-  const carregarDados = async () => {
+  // `silencioso` = atualização automática: sem spinner e SEM tocar na verba, para
+  // não apagar o que a pessoa está digitando no formulário de verba/metas.
+  const carregarDados = async (silencioso = false) => {
     const adminKey = getSavedAdminKey();
     if (!adminKey) return;
-    setCarregando(true);
+    if (!silencioso) setCarregando(true);
     try {
       const res = await fetch('/api/trafego/resumo', {
         headers: { 'x-ofertas-admin-key': adminKey },
       });
       if (res.status === 401) {
         setAutenticado(false);
-        setCarregando(false);
         return;
       }
       if (res.ok) {
         const json = await res.json();
         if (Array.isArray(json.eventos)) setEventos(json.eventos);
-        if (json.verba) setVerba(json.verba);
+        if (json.visitantes) setVisitantes(json.visitantes);
+        if (json.campanhas) setCampanhas(json.campanhas);
+        if (json.integracoes) setIntegracoes(json.integracoes);
+        if (json.verba && !silencioso) setVerba(json.verba);
+        setUltimaAtualizacao(new Date());
       }
     } catch (err) {
       console.error('Erro ao carregar painel de tráfego:', err);
     } finally {
-      setCarregando(false);
+      if (!silencioso) setCarregando(false);
     }
   };
 
   useEffect(() => {
-    if (autenticado) {
-      carregarDados();
-    }
+    if (!autenticado) return;
+    carregarDados();
+    // Tempo real: o dwell time de quem está no site agora cresce a cada ~20s.
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void carregarDados(true);
+    }, 20_000);
+    return () => window.clearInterval(timer);
   }, [autenticado]);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -477,129 +394,73 @@ export default function TrafegoRoiPanel({ standalone = false }: { standalone?: b
     };
   }, [estatisticasPorCanal]);
 
-  // Agrupa a jornada passo a passo de cada visitante (para responder "o que estão fazendo dentro do site")
-  const jornadasVisitantes = useMemo(() => {
-    const filtrados = eventosPeriodo.filter((e) => {
-      if (filtroCanal !== 'todos' && e.origem_macro !== filtroCanal) return false;
-      if (buscaJornada.trim()) {
-        const q = buscaJornada.toLowerCase();
-        const texto = `${e.sub_origem} ${e.utm_campaign || ''} ${e.pagina} ${e.veiculo_nome || ''} ${e.detalhe || ''}`.toLowerCase();
-        if (!texto.includes(q)) return false;
-      }
-      return true;
-    });
-
-    const grupos = new Map<
-      string,
-      {
-        visitor_id: string;
-        origem_macro: OrigemTrafegoMacro;
-        sub_origem: string;
-        utm_campaign: string | null;
-        utm_content: string | null;
-        dispositivo: 'Mobile' | 'Desktop';
-        primeiroAcesso: string;
-        ultimoAcesso: string;
-        converteu: boolean;
-        passos: EventoJornadaVisitante[];
-      }
-    >();
-
-    for (const ev of filtrados) {
-      const chave = ev.visitor_id || ev.session_id || ev.id;
-      const existente = grupos.get(chave);
-      const ehConversao =
-        ev.acao === 'whatsapp_click' ||
-        ev.acao === 'phone_click' ||
-        ev.acao === 'lead_completo' ||
-        ev.acao === 'lead_parcial';
-
-      if (!existente) {
-        grupos.set(chave, {
-          visitor_id: chave,
-          origem_macro: ev.origem_macro,
-          sub_origem: ev.sub_origem,
-          utm_campaign: ev.utm_campaign,
-          utm_content: ev.utm_content,
-          dispositivo: ev.dispositivo,
-          primeiroAcesso: ev.timestamp,
-          ultimoAcesso: ev.timestamp,
-          converteu: ehConversao,
-          passos: [ev],
-        });
-      } else {
-        existente.passos.push(ev);
-        if (ehConversao) existente.converteu = true;
-        if (new Date(ev.timestamp) < new Date(existente.primeiroAcesso)) {
-          existente.primeiroAcesso = ev.timestamp;
-        }
-        if (new Date(ev.timestamp) > new Date(existente.ultimoAcesso)) {
-          existente.ultimoAcesso = ev.timestamp;
-        }
-        // Prioriza mostrar origem paga caso um dos eventos tenha capturado o clique pago
-        if (existente.origem_macro === 'organico' && ev.origem_macro !== 'organico') {
-          existente.origem_macro = ev.origem_macro;
-          existente.sub_origem = ev.sub_origem;
-        }
-        if (!existente.utm_campaign && ev.utm_campaign) {
-          existente.utm_campaign = ev.utm_campaign;
-        }
-      }
-    }
-
-    return Array.from(grupos.values())
-      .map((g) => ({
-        ...g,
-        // Ordena os passos cronologicamente (do primeiro ao último passo dentro do site)
-        passos: [...g.passos].sort(
-          (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
-        ),
-      }))
-      .sort((a, b) => new Date(b.ultimoAcesso).getTime() - new Date(a.ultimoAcesso).getTime())
-      .slice(0, 100);
-  }, [eventosPeriodo, filtroCanal, buscaJornada]);
-
-  // Top veículos mais vistos/clicados e de qual canal vieram
+  // Top veículos: visualizações, tempo médio ativo, conversão e cidades de origem
   const topVeiculos = useMemo(() => {
-    const mapa = new Map<
-      string,
-      {
-        nome: string;
-        valor: number | null;
-        views: number;
-        whatsapp: number;
-        google_ads: number;
-        facebook_ads: number;
-        openai_ads: number;
-        organico: number;
-      }
-    >();
+    interface Acc {
+      chave: string;
+      nome: string;
+      valor: number | null;
+      viewEvents: number;
+      selectEvents: number;
+      tempoTotalSeg: number;
+      viewsComTempo: number;
+      viewers: Set<string>;
+      conversores: Set<string>;
+      whatsapp: number;
+      cidades: Map<string, Set<string>>;
+      google_ads: number;
+      facebook_ads: number;
+      openai_ads: number;
+      organico: number;
+    }
+    const mapa = new Map<string, Acc>();
 
     for (const ev of eventosPeriodo) {
       if (!ev.veiculo_nome && !ev.veiculo_id) continue;
-      const chave = (ev.veiculo_nome || ev.veiculo_id || '').trim();
+      const nome = (ev.veiculo_nome || '').trim();
+      const chave = ev.veiculo_id || nome.toLowerCase();
       if (!chave) continue;
 
-      const item = mapa.get(chave) || {
-        nome: chave,
+      const item: Acc = mapa.get(chave) || {
+        chave,
+        nome: nome || `Veículo ${ev.veiculo_id}`,
         valor: ev.valor_veiculo,
-        views: 0,
+        viewEvents: 0,
+        selectEvents: 0,
+        tempoTotalSeg: 0,
+        viewsComTempo: 0,
+        viewers: new Set<string>(),
+        conversores: new Set<string>(),
         whatsapp: 0,
+        cidades: new Map<string, Set<string>>(),
         google_ads: 0,
         facebook_ads: 0,
         openai_ads: 0,
         organico: 0,
       };
+      if (nome && item.nome.startsWith('Veículo ')) item.nome = nome;
 
-      if (ev.acao === 'view_vehicle' || ev.acao === 'select_vehicle' || ev.acao === 'page_view') {
-        item.views += 1;
+      if (ev.acao === 'view_vehicle' || ev.acao === 'select_vehicle') {
+        item.viewers.add(ev.visitor_id);
+        if (ev.acao === 'view_vehicle') {
+          item.viewEvents += 1;
+          const t = Number(ev.tempo_segundos) || 0;
+          if (t > 0) {
+            item.tempoTotalSeg += t;
+            item.viewsComTempo += 1;
+          }
+        } else {
+          item.selectEvents += 1;
+        }
+        if (ev.cidade) {
+          const set = item.cidades.get(ev.cidade) || new Set<string>();
+          set.add(ev.visitor_id);
+          item.cidades.set(ev.cidade, set);
+        }
       }
-      if (
-        ev.acao === 'whatsapp_click' ||
-        ev.acao === 'lead_completo' ||
-        ev.acao === 'lead_parcial'
-      ) {
+      if (ev.acao === 'whatsapp_click' || ev.acao === 'lead_completo' || ev.acao === 'lead_parcial') {
         item.whatsapp += 1;
+        item.conversores.add(ev.visitor_id);
       }
       item[ev.origem_macro] += 1;
       if (!item.valor && ev.valor_veiculo) item.valor = ev.valor_veiculo;
@@ -607,9 +468,27 @@ export default function TrafegoRoiPanel({ standalone = false }: { standalone?: b
     }
 
     return Array.from(mapa.values())
+      .map((a) => ({
+        chave: a.chave,
+        nome: a.nome,
+        valor: a.valor,
+        views: a.viewEvents || a.selectEvents,
+        tempoMedioSeg: a.viewsComTempo > 0 ? Math.round(a.tempoTotalSeg / a.viewsComTempo) : 0,
+        taxaConversao: a.viewers.size > 0 ? Math.min(100, (a.conversores.size / a.viewers.size) * 100) : 0,
+        whatsapp: a.whatsapp,
+        cidades: Array.from(a.cidades.entries())
+          .map(([nome, set]) => ({ nome, visitantes: set.size }))
+          .sort((x, y) => y.visitantes - x.visitantes)
+          .slice(0, 3),
+        google_ads: a.google_ads,
+        facebook_ads: a.facebook_ads,
+        openai_ads: a.openai_ads,
+        organico: a.organico,
+      }))
       .sort((a, b) => b.whatsapp - a.whatsapp || b.views - a.views)
       .slice(0, 10);
   }, [eventosPeriodo]);
+
 
   // Tela de login quando acessado diretamente por /admin/trafego
   if (!autenticado) {
@@ -711,8 +590,9 @@ export default function TrafegoRoiPanel({ standalone = false }: { standalone?: b
 
           <button
             type="button"
-            onClick={carregarDados}
+            onClick={() => carregarDados()}
             disabled={carregando}
+            title={ultimaAtualizacao ? `Atualizado às ${ultimaAtualizacao.toLocaleTimeString('pt-BR')} (automático a cada 20s)` : undefined}
             className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-bold text-white inline-flex items-center gap-1.5 cursor-pointer"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${carregando ? 'animate-spin' : ''}`} />
@@ -1068,9 +948,9 @@ export default function TrafegoRoiPanel({ standalone = false }: { standalone?: b
         </div>
       </div>
 
-      {/* 3. VEÍCULOS MAIS PROCURADOS POR ORIGEM DE ANÚNCIO */}
+      {/* 3. VEÍCULOS MAIS PROCURADOS: tempo médio, conversão e cidades */}
       {topVeiculos.length > 0 && (
-        <div className="bg-[#121215] border border-white/10 rounded-2xl p-6 space-y-4">
+        <div className="bg-white/[0.025] backdrop-blur-sm border border-white/10 rounded-2xl p-6 space-y-4">
           <div>
             <span className="text-[11px] font-extrabold uppercase tracking-widest text-[#E50914]">
               Interesse no Estoque
@@ -1086,7 +966,10 @@ export default function TrafegoRoiPanel({ standalone = false }: { standalone?: b
                 <tr className="bg-white/5 text-zinc-400 uppercase text-[10px] tracking-wider border-b border-white/10">
                   <th className="py-3 px-4">Veículo</th>
                   <th className="py-3 px-4">Visualizações</th>
+                  <th className="py-3 px-4">Tempo médio na página</th>
+                  <th className="py-3 px-4">Conversão</th>
                   <th className="py-3 px-4">WhatsApp / Leads</th>
+                  <th className="py-3 px-4">Cidades principais</th>
                   <th className="py-3 px-4 text-sky-400">Google Ads</th>
                   <th className="py-3 px-4 text-indigo-400">Facebook Ads</th>
                   <th className="py-3 px-4 text-emerald-400">OpenAI Ads</th>
@@ -1094,19 +977,34 @@ export default function TrafegoRoiPanel({ standalone = false }: { standalone?: b
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {topVeiculos.map((v, idx) => (
-                  <tr key={idx} className="hover:bg-white/[0.02]">
+                {topVeiculos.map((v) => (
+                  <tr key={v.chave} className="hover:bg-white/[0.02]">
                     <td className="py-3 px-4 font-bold text-white">
                       {v.nome}
                       {v.valor ? (
-                        <span className="ml-2 text-zinc-400 font-normal">
-                          ({formatarMoedaBRL(v.valor)})
-                        </span>
+                        <span className="ml-2 text-zinc-400 font-normal">({formatarMoedaBRL(v.valor)})</span>
                       ) : null}
                     </td>
                     <td className="py-3 px-4 font-bold text-zinc-200 tabular-nums">{v.views}</td>
-                    <td className="py-3 px-4 font-black text-emerald-400 tabular-nums">
-                      {v.whatsapp}
+                    <td className="py-3 px-4 font-bold text-sky-300 tabular-nums">
+                      {v.tempoMedioSeg > 0 ? formatarDuracao(v.tempoMedioSeg) : <span className="text-zinc-600">—</span>}
+                    </td>
+                    <td className="py-3 px-4 font-bold tabular-nums">
+                      <span className={v.taxaConversao >= 10 ? 'text-emerald-400' : v.taxaConversao > 0 ? 'text-amber-300' : 'text-zinc-500'}>
+                        {v.taxaConversao.toFixed(1)}%
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 font-black text-emerald-400 tabular-nums">{v.whatsapp}</td>
+                    <td className="py-3 px-4 text-zinc-300">
+                      {v.cidades.length > 0 ? (
+                        v.cidades.map((c) => (
+                          <span key={c.nome} className="inline-block mr-1.5 whitespace-nowrap">
+                            {c.nome} <span className="text-zinc-500">({c.visitantes})</span>
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-zinc-600">—</span>
+                      )}
                     </td>
                     <td className="py-3 px-4 text-sky-300 tabular-nums">{v.google_ads}</td>
                     <td className="py-3 px-4 text-indigo-300 tabular-nums">{v.facebook_ads}</td>
@@ -1120,139 +1018,15 @@ export default function TrafegoRoiPanel({ standalone = false }: { standalone?: b
         </div>
       )}
 
-      {/* 4. JORNADA INDIVIDUAL AO VIVO: O QUE CADA VISITANTE ESTÁ FAZENDO DENTRO DO SITE */}
-      <div className="bg-[#121215] border border-white/10 rounded-2xl p-6 space-y-5">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/10 pb-4">
-          <div>
-            <span className="text-[11px] font-extrabold uppercase tracking-widest text-[#E50914]">
-              Rastreamento Passo a Passo
-            </span>
-            <h3 className="text-lg font-black text-white">
-              O Que os Visitantes Estão Fazendo Dentro do Site ({jornadasVisitantes.length})
-            </h3>
-            <p className="text-xs text-zinc-400">
-              Veja exatamente por qual anúncio cada visitante entrou, quais páginas abriu, quais veículos olhou e se clicou no WhatsApp ou enviou proposta.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <select
-              value={filtroCanal}
-              onChange={(e) => setFiltroCanal(e.target.value as any)}
-              className="px-3.5 py-2 rounded-xl bg-[#0A0A0B] border border-white/15 text-xs font-bold text-white"
-            >
-              <option value="todos">Todos os Canais</option>
-              <option value="google_ads">Somente Google Ads</option>
-              <option value="facebook_ads">Somente Facebook / Meta Ads</option>
-              <option value="openai_ads">Somente OpenAI Ads (ChatGPT)</option>
-              <option value="organico">Somente Visitas Orgânicas</option>
-            </select>
-
-            <input
-              type="text"
-              value={buscaJornada}
-              onChange={(e) => setBuscaJornada(e.target.value)}
-              placeholder="Buscar carro, campanha, página..."
-              className="px-3.5 py-2 rounded-xl bg-[#0A0A0B] border border-white/15 text-xs text-white focus:outline-none focus:border-[#E50914]"
-            />
-          </div>
-        </div>
-
-        {jornadasVisitantes.length === 0 ? (
-          <div className="py-12 text-center text-zinc-400 space-y-2">
-            <Users className="w-10 h-10 mx-auto text-zinc-600" />
-            <p className="text-sm font-bold text-zinc-300">
-              Nenhum acesso encontrado para este filtro/período.
-            </p>
-            <p className="text-xs text-zinc-500">
-              Assim que visitantes navegarem pelo site, cada passo aparecerá aqui automaticamente.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {jornadasVisitantes.map((j) => {
-              const canalInfo = CANAL_META[j.origem_macro];
-              const dataFormatada = new Date(j.ultimoAcesso).toLocaleString('pt-BR', {
-                day: '2-digit',
-                month: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit',
-              });
-
-              return (
-                <div
-                  key={j.visitor_id}
-                  className={`p-4 rounded-2xl border transition-all ${
-                    j.converteu
-                      ? 'bg-emerald-950/15 border-emerald-500/30'
-                      : 'bg-[#0A0A0B] border-white/10'
-                  }`}
-                >
-                  {/* Topo do Visitante */}
-                  <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span
-                        className={`px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider border ${canalInfo.badgeCls}`}
-                      >
-                        {canalInfo.nome}
-                      </span>
-                      <span className="text-xs font-bold text-zinc-300">{j.sub_origem}</span>
-
-                      {j.utm_campaign && (
-                        <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[11px] text-zinc-300">
-                          Campanha: <strong>{j.utm_campaign}</strong>
-                        </span>
-                      )}
-
-                      {j.converteu && (
-                        <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-[10px] font-black uppercase tracking-wider">
-                          Converteu!
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-3 text-[11px] text-zinc-400">
-                      <span className="inline-flex items-center gap-1">
-                        {j.dispositivo === 'Mobile' ? (
-                          <Smartphone className="w-3.5 h-3.5 text-zinc-400" />
-                        ) : (
-                          <Monitor className="w-3.5 h-3.5 text-zinc-400" />
-                        )}
-                        {j.dispositivo}
-                      </span>
-                      <span className="inline-flex items-center gap-1">
-                        <Clock className="w-3.5 h-3.5 text-zinc-400" />
-                        {dataFormatada}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Trilha / Passo a Passo do que o visitante fez no site */}
-                  <div className="flex flex-wrap items-center gap-2">
-                    {j.passos.map((passo, idx) => {
-                      const metaAcao = labelAcao(passo.acao);
-                      return (
-                        <React.Fragment key={passo.id}>
-                          {idx > 0 && <ArrowRight className="w-3.5 h-3.5 text-zinc-600" />}
-                          <div
-                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs ${metaAcao.cor}`}
-                          >
-                            {metaAcao.icone}
-                            <span className="font-bold">{metaAcao.titulo}:</span>
-                            <span className="opacity-90">
-                              {passo.veiculo_nome || passo.detalhe || passo.pagina}
-                            </span>
-                          </div>
-                        </React.Fragment>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      {/* 4. JORNADA INDIVIDUAL AO VIVO: o que cada visitante está fazendo dentro do site */}
+      <JornadaVisitantesSecao
+        eventos={eventosPeriodo}
+        visitantes={visitantes}
+        campanhas={campanhas}
+        integracoes={integracoes}
+        filtroCanal={filtroCanal}
+        onFiltroCanal={setFiltroCanal}
+      />
     </div>
   );
 

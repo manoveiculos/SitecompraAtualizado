@@ -43,6 +43,19 @@ export default function EstoquePage() {
     });
   }, []);
 
+  // Telemetria "Filtrou Estoque" — com debounce, para a digitação na busca virar um passo só.
+  useEffect(() => {
+    const partes = [
+      busca.trim() ? `busca "${busca.trim()}"` : '',
+      faixa !== 'todos' ? FAIXAS.find((f) => f.id === faixa)?.label || faixa : '',
+      marca !== 'todas' ? `marca ${marca}` : '',
+      ordem !== 'recentes' ? ORDENS.find((o) => o.id === ordem)?.label || ordem : '',
+    ].filter(Boolean);
+    if (partes.length === 0) return;
+    const t = window.setTimeout(() => track('estoque_filtro', { detalhe: partes.join(' • ') }), 1500);
+    return () => window.clearTimeout(t);
+  }, [busca, faixa, marca, ordem]);
+
   // Update URL whenever filters change
   const updateUrlParams = (newParams: Record<string, string>) => {
     const current = new URLSearchParams(window.location.search);
