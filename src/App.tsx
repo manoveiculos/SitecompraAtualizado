@@ -22,17 +22,17 @@ import {
   Building2,
   LayoutGrid,
   Phone,
-  Sparkles
+  Sparkles,
+  MessageCircle
 } from 'lucide-react';
 import { cn } from './lib/utils';
-import { createLead, registrarLeadParcial, novoLeadId } from './lib/leads';
+import { novoLeadId } from './lib/leads';
+import { waLink } from './lib/manos';
 import {
   trackFunnelStart,
   trackFunnelStep,
   trackViewVehicle,
   trackSelectVehicle,
-  trackLead,
-  trackLeadParcial,
   trackContato,
 } from './lib/tracking';
 import { iniciarVisaoVeiculo, finalizarVisaoVeiculo } from './lib/jornada';
@@ -134,7 +134,7 @@ export default function App() {
     if (!salva) return;
     // Um deep link novo (?id=) manda mais que a sessão antiga.
     if (new URLSearchParams(window.location.search).get('id')) return;
-    if (salva.quiz.step > 1 || salva.quiz.fase === 'contato') setQuiz(salva.quiz);
+    if (salva.quiz.step > 1) setQuiz({ ...salva.quiz, fase: 'quiz' });
   }, []);
 
   useEffect(() => {
@@ -209,7 +209,7 @@ export default function App() {
             type: 'Compra',
             data: comContato(prev, { has_interest: 'Sim', vehicle_id: vehicle.id, origem: 'catalogo' }),
             selectedVehicle: vehicle,
-            fase: 'contato',
+            fase: 'quiz',
           }));
         }
       }
@@ -227,7 +227,7 @@ export default function App() {
       // Em Compra o contato é pedido AQUI: a pessoa já viu o estoque e escolheu
       // um carro (recebeu valor e mostrou intenção), mas ainda faltam 4 telas
       // de qualificação — que antes eram respondidas por um visitante anônimo.
-      fase: contatoSalvo ? 'quiz' : 'contato',
+      fase: 'quiz',
     }));
   };
 
@@ -256,7 +256,7 @@ export default function App() {
       type: 'Compra',
       data: comContato(prev, { has_interest: 'Sim', vehicle_id: vehicle.id, origem: 'home' }),
       selectedVehicle: vehicle,
-      fase: contatoSalvo ? 'quiz' : 'contato',
+      fase: 'quiz',
     }));
   };
 
@@ -282,7 +282,7 @@ export default function App() {
       // Venda e Financiamento entregam justamente o retorno do consultor, então
       // o contato vem primeiro (mesmo padrão do /vendasrapidas). Compra precisa
       // mostrar carro antes de pedir telefone.
-      fase: type === 'Compra' || contatoSalvo ? 'quiz' : 'contato',
+      fase: 'quiz',
     }));
   };
 
@@ -297,44 +297,21 @@ export default function App() {
     setQuiz(prev => ({ ...prev, step: prev.step + 1 }));
   };
 
-  /**
-   * Grava o contato assim que ele é digitado, no meio do funil. É a correção de
-   * maior impacto do site: antes, o lead só passava a existir no último passo
-   * (9 em Compra, 10 em Venda), então todo abandono era invisível.
-   * Nunca bloqueia — se a entrega falhar, o cliente segue e o envio final
-   * tenta de novo.
-   */
-  const handleContatoSubmit = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!isFormValid || salvandoContato || !quiz.type) return;
-
-    setSalvandoContato(true);
-    setError(null);
-
-    const phone = quiz.data.phone.replace(/\D/g, '');
-    const eventId = trackLeadParcial({
-      tipo: quiz.type,
-      valor: quiz.selectedVehicle?.price ?? null,
-    });
-
-    await registrarLeadParcial({
-      lead_id: leadId,
-      name: quiz.data.name,
-      phone,
-      lead_type: quiz.type,
-      event_id: eventId,
-      details: {
-        id_veiculo: quiz.selectedVehicle?.id,
-        nome_veiculo: quiz.selectedVehicle?.description,
-        valor_veiculo: quiz.selectedVehicle?.price,
-        link_veiculo: quiz.selectedVehicle?.link,
-        origem: quiz.data.origem,
-      },
-    });
-
-    setContatoSalvo(true);
-    setSalvandoContato(false);
-    setQuiz(prev => ({ ...prev, fase: 'quiz' }));
+  /** Mensagem pronta do WhatsApp, montada com o que a pessoa já escolheu no funil. */
+  const mensagemWhatsApp = () => {
+    const d = quiz.data;
+    const veiculo = quiz.selectedVehicle
+      ? `${quiz.selectedVehicle.description} (${quiz.selectedVehicle.priceFormatted})`
+      : '';
+    const detalhes = [
+      d.tem_troca === 'Sim' ? 'tenho carro na troca' : '',
+      d.down_payment ? `entrada: ${d.down_payment}` : '',
+      d.desired_payment ? `parcela desejada: ${d.desired_payment}` : '',
+    ].filter(Boolean).join(', ');
+    if (quiz.type === 'Financiamento') {
+      return `Olá! Quero simular um financiamento${veiculo ? ` do ${veiculo}` : ''}${detalhes ? ` (${detalhes})` : ''}.`;
+    }
+    return `Olá! Vim pelo site e tenho interesse ${veiculo ? `no ${veiculo}` : 'em um veículo'}${detalhes ? ` (${detalhes})` : ''}.`;
   };
 
   const navigateBack = () => {
@@ -360,61 +337,6 @@ export default function App() {
       voltarAoInicio();
     } else if (quiz.step > 1) {
       setQuiz(prev => ({ ...prev, step: prev.step - 1 }));
-    }
-  };
-
-  const handleSubmit = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    
-    const phone = quiz.data.phone?.replace(/\D/g, '') || '';
-    if (!quiz.data.name || phone.length < 10) {
-      setError("Por favor, preencha seu nome e um WhatsApp válido.");
-      return;
-    }
-
-    setIsSubmitting(true);
-    setError(null);
-
-    try {
-      const { name, phone: rawPhone, ...otherData } = quiz.data;
-
-      const eventId = trackLead({
-        tipo: quiz.type!,
-        valor: quiz.selectedVehicle?.price ?? null,
-        vehicleId: quiz.selectedVehicle?.id ?? null,
-        vehicleName: quiz.selectedVehicle?.description ?? null,
-      });
-
-      await createLead({
-        lead_id: leadId,
-        name,
-        phone,
-        lead_type: quiz.type!,
-        stage: 'completo',
-        event_id: eventId,
-        details: {
-          ...otherData,
-          id_veiculo: quiz.selectedVehicle?.id,
-          nome_veiculo: quiz.selectedVehicle?.description,
-          valor_veiculo: quiz.selectedVehicle?.price,
-          link_veiculo: quiz.selectedVehicle?.link,
-          resumo: `Lead de ${quiz.type} | Interessado em: ${quiz.selectedVehicle ? quiz.selectedVehicle.description : (quiz.data.marca_modelo || quiz.data.carro_venda || 'não especificado')} | Detalhes: ${quiz.data.has_car || ''} ${quiz.data.down_payment || ''} ${quiz.data.desired_payment || ''}`
-        },
-      });
-
-      setIsSuccess(true);
-    } catch (err) {
-      console.error("Submission error:", err);
-      // O contato já foi gravado no início do funil: mesmo com erro aqui, o
-      // consultor tem como retomar. A mensagem reflete isso em vez de assustar.
-      setError(
-        contatoSalvo
-          ? "Não conseguimos enviar os últimos detalhes, mas seu contato já está com a gente."
-          : "Ocorreu um erro ao salvar seus dados.",
-      );
-      setShowPlanB(true);
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -621,185 +543,7 @@ export default function App() {
       {/* Main Content - Scrollable Region */}
       <main className="scroll-container custom-scrollbar">
         <AnimatePresence mode="wait">
-          {isSuccess ? (
-            <motion.div
-              key="success"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="text-center pt-6 space-y-8"
-            >
-              <div className="relative inline-block">
-                <motion.div 
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  transition={{ type: 'spring', delay: 0.2 }}
-                  className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center mx-auto shadow-[0_0_50px_rgba(34,197,94,0.2)]"
-                >
-                  <CheckCircle2 className="w-10 h-10 text-white" />
-                </motion.div>
-              </div>
-
-              <div className="space-y-4 px-4">
-                <h2 className="text-3xl font-extrabold tracking-tight leading-none font-serif text-[#3B2016]">Solicitação Recebida!</h2>
-                <div className="space-y-4">
-                  <p className="text-[#56524A] text-base leading-relaxed">
-                    Obrigado pela confiança, <span className="text-manos-red font-bold">{quiz.data.name}</span>! Seus dados foram encaminhados com sucesso para nossa consultoria especializada.
-                  </p>
-                  <p className="text-[#7D6250] text-sm leading-relaxed border-l-2 border-manos-red/30 pl-4 py-1 italic">
-                    Fique atento ao seu WhatsApp. Em instantes, um de nossos consultores entrará em contato para dar continuidade ao seu atendimento de forma personalizada.
-                  </p>
-                </div>
-              </div>
-
-              <div className="px-4 space-y-4">
-                <p className="text-[10px] font-extrabold uppercase tracking-[0.3em] text-[#A88A70] text-center">Enquanto isso, explore:</p>
-                <a
-                  href="/estoque"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full bg-white border border-manos-sand p-6 rounded-2xl flex items-center gap-4 group hover:bg-manos-warm/50 transition-all text-left shadow-lg"
-                >
-                  <div className="w-12 h-12 bg-manos-red rounded-full flex items-center justify-center group-hover:scale-110 transition-transform shadow-lg shadow-manos-red/15 flex-shrink-0">
-                    <ExternalLink className="w-6 h-6 text-manos-accent" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-extrabold uppercase tracking-tight text-[#3B2016]">Navegar pelo Estoque</p>
-                    <p className="text-[10px] text-[#A88A70] uppercase font-bold tracking-widest">manosveiculos.com.br</p>
-                  </div>
-                </a>
-              </div>
-
-              <div className="pt-4">
-                <button
-                  onClick={() => window.location.reload()}
-                  className="text-[10px] font-extrabold uppercase tracking-widest text-[#A88A70]/40 hover:text-[#A88A70] transition-colors"
-                >
-                  Finalizar Sessão
-                </button>
-              </div>
-            </motion.div>
-          ) : quiz.fase === 'contato' ? (
-            /* -----------------------------------------------------------------
-             * Captura de contato antecipada (LEAD-01).
-             * Entra logo no início em Venda/Financiamento e logo após a escolha
-             * do carro em Compra. A partir daqui o lead existe no CRM mesmo se a
-             * pessoa abandonar o resto do funil.
-             * ----------------------------------------------------------------- */
-            <motion.div
-              key="contato"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.3, ease: 'easeOut' }}
-              className="space-y-6 pb-12"
-            >
-              {quiz.selectedVehicle && (
-                <div className="card-glass p-4 flex items-center gap-4">
-                  <div className="w-20 h-16 rounded-xl overflow-hidden bg-manos-warm flex-shrink-0">
-                    <img
-                      src={quiz.selectedVehicle.image}
-                      alt={quiz.selectedVehicle.description}
-                      className="w-full h-full object-cover"
-                      referrerPolicy="no-referrer"
-                    />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[9px] font-extrabold uppercase tracking-widest text-green-600">Carro selecionado</p>
-                    <h4 className="font-extrabold text-sm tracking-tight leading-tight font-serif text-[#3B2016] line-clamp-2">
-                      {quiz.selectedVehicle.description}
-                    </h4>
-                    <p className="text-manos-red font-extrabold text-base tracking-tight">
-                      {quiz.selectedVehicle.priceFormatted}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              <div className="text-center space-y-3">
-                <div className="inline-flex items-center gap-2 px-3 py-1 bg-green-500/10 border border-green-500/20 rounded-full">
-                  <Zap className="w-3 h-3 text-green-600 fill-current" />
-                  <span className="text-[10px] font-extrabold text-green-600 uppercase tracking-widest">
-                    {promessaDeRetorno()}
-                  </span>
-                </div>
-                <h2 className="text-3xl font-extrabold tracking-tight font-serif leading-[0.95] text-[#3B2016]">
-                  {quiz.type === 'Financiamento' ? (
-                    <>Para onde enviamos <br /><span className="text-manos-red">sua simulação?</span></>
-                  ) : (
-                    <>Para onde enviamos <br /><span className="text-manos-red">sua proposta?</span></>
-                  )}
-                </h2>
-                <p className="text-xs text-[#A88A70] uppercase font-bold tracking-widest">
-                  Um consultor fala com você pelo WhatsApp
-                </p>
-              </div>
-
-              <form onSubmit={handleContatoSubmit} className="space-y-5">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-extrabold uppercase tracking-widest text-[#A88A70] ml-4">Como devemos te chamar?</label>
-                  <input
-                    type="text"
-                    required
-                    autoComplete="name"
-                    autoFocus
-                    className="w-full py-5 px-6"
-                    placeholder="Nome completo"
-                    value={quiz.data.name || ''}
-                    onChange={(e) => handleDataChange('name', e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-extrabold uppercase tracking-widest text-[#A88A70] ml-4">Seu WhatsApp de contato</label>
-                  <div className="relative">
-                    <input
-                      type="tel"
-                      required
-                      inputMode="numeric"
-                      autoComplete="tel"
-                      className={cn(
-                        "w-full py-5 px-6 pr-12 transition-all",
-                        quiz.data.phone && (isPhoneValid ? "border-green-500/50" : "border-red-400/50")
-                      )}
-                      placeholder="(47) 99999-9999"
-                      value={quiz.data.phone || ''}
-                      onChange={(e) => handleDataChange('phone', formatPhone(e.target.value))}
-                    />
-                    {quiz.data.phone && (
-                      <div className="absolute right-4 top-1/2 -translate-y-1/2">
-                        {isPhoneValid ? (
-                          <CheckCircle2 className="w-6 h-6 text-green-500" />
-                        ) : (
-                          <AlertCircle className="w-6 h-6 text-red-400" />
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <PrivacyNotice />
-
-                <button
-                  type="submit"
-                  disabled={!isFormValid || salvandoContato}
-                  className="w-full py-6 bg-manos-red text-manos-accent font-extrabold text-lg uppercase rounded-2xl shadow-[0_12px_36px_rgba(122,46,30,0.25)] active:scale-95 transition-all disabled:opacity-30 disabled:scale-100"
-                >
-                  {salvandoContato ? 'Enviando...' : 'Continuar'}
-                </button>
-
-                <div className="flex items-center justify-center gap-4 text-center">
-                  <button
-                    type="button"
-                    onClick={() => handleWhatsAppClick('Atendimento direto')}
-                    className="text-[10px] font-extrabold text-[#A88A70] uppercase tracking-widest hover:text-[#7D6250] transition-colors"
-                  >
-                    Falar no WhatsApp
-                  </button>
-                  <span className="w-px h-4 bg-manos-sand" />
-                  <PhoneLink label="Ligar agora" />
-                </div>
-              </form>
-            </motion.div>
-          ) : (
+          {(
             <motion.div
               key={quiz.step}
               initial={{ opacity: 0, x: 20 }}
@@ -1094,7 +838,7 @@ export default function App() {
                                 onAvisar={() => {
                                   handleDataChange('modelo_procurado', searchQuery);
                                   handleDataChange('has_interest', 'Busca sem resultado');
-                                  setQuiz(prev => ({ ...prev, step: 5, fase: contatoSalvo ? 'quiz' : 'contato' }));
+                                  setQuiz(prev => ({ ...prev, step: 5, fase: 'quiz' }));
                                 }}
                                 onFalar={() => handleWhatsAppClick(`Procuro um ${searchQuery || 'carro'}`)}
                               />
@@ -1146,7 +890,7 @@ export default function App() {
                             descricao="O estoque gira toda semana. Deixe seu contato que avisamos assim que entrar um no seu orçamento — ou veja o que temos nas outras faixas."
                             onAvisar={() => {
                               handleDataChange('faixa_procurada', priceFilter);
-                              setQuiz(prev => ({ ...prev, step: 5, fase: contatoSalvo ? 'quiz' : 'contato' }));
+                              setQuiz(prev => ({ ...prev, step: 5, fase: 'quiz' }));
                             }}
                             onFalar={() => handleWhatsAppClick('Quero ver outras faixas de preço')}
                             rotuloSecundario="Ver todas as faixas"
@@ -1293,103 +1037,27 @@ export default function App() {
                       <span className="text-manos-red">Receba sua oferta</span>
                     </h2>
                     <p className="text-xs text-[#A88A70] uppercase font-bold tracking-widest">
-                      {contatoSalvo ? 'Confirme e enviamos para o consultor' : 'Onde enviamos as informações?'}
+                      Um consultor continua o atendimento pelo WhatsApp
                     </p>
                   </div>
-                  <form onSubmit={handleSubmit} className="space-y-6">
-                    {contatoSalvo ? (
-                      /* O contato já foi gravado no início do funil — repetir os
-                         campos aqui só criaria atrito na última tela. */
-                      <div className="card-glass p-5 space-y-3">
-                        {quiz.selectedVehicle && (
-                          <div className="flex items-center justify-between gap-3 pb-3 border-b border-manos-sand">
-                            <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#A88A70]">Veículo</span>
-                            <span className="text-xs font-bold text-[#3B2016] text-right line-clamp-1">{quiz.selectedVehicle.description}</span>
-                          </div>
-                        )}
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#A88A70]">Nome</span>
-                          <span className="text-xs font-bold text-[#3B2016]">{quiz.data.name}</span>
-                        </div>
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#A88A70]">WhatsApp</span>
-                          <span className="text-xs font-bold text-[#3B2016]">{quiz.data.phone}</span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setQuiz(prev => ({ ...prev, fase: 'contato' }))}
-                          className="text-[10px] font-extrabold uppercase tracking-widest text-manos-red hover:brightness-125 transition-all"
-                        >
-                          Corrigir meus dados
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-extrabold uppercase tracking-widest text-[#A88A70] ml-4">Como devemos te chamar?</label>
-                          <input type="text" required autoComplete="name" className="w-full py-5 px-6" placeholder="Nome completo" value={quiz.data.name || ''} onChange={(e) => handleDataChange('name', e.target.value)} />
-                        </div>
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-extrabold uppercase tracking-widest text-[#A88A70] ml-4">Seu WhatsApp de contato</label>
-                          <div className="relative">
-                            <input type="tel" required inputMode="numeric" autoComplete="tel"
-                              className={cn(
-                                "w-full py-5 px-6 pr-12 transition-all",
-                                quiz.data.phone && (isPhoneValid ? "border-green-500/50" : "border-red-400/50")
-                              )}
-                              placeholder="(47) 99999-9999"
-                              value={quiz.data.phone || ''}
-                              onChange={(e) => {
-                                const formatted = formatPhone(e.target.value);
-                                handleDataChange('phone', formatted);
-                              }}
-                            />
-                            {quiz.data.phone && (
-                              <div className="absolute right-4 top-1/2 -translate-y-1/2">
-                                {isPhoneValid ? (
-                                  <CheckCircle2 className="w-6 h-6 text-green-500 animate-in zoom-in" />
-                                ) : (
-                                  <AlertCircle className="w-6 h-6 text-red-400 animate-in fade-in" />
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </>
-                    )}
-
-                    <PrivacyNotice />
-
-                    {error && (
-                      <div className="space-y-4">
-                        <p className="text-manos-red font-black text-center text-xs uppercase tracking-widest">{error}</p>
-                        {showPlanB && (
-                          <button 
-                            type="button"
-                            onClick={() => handleWhatsAppClick(`Erro no formulário: ${quiz.data.name} - ${quiz.data.phone}`)}
-                            className="w-full py-5 bg-green-500 text-white font-black text-lg uppercase rounded-2xl flex items-center justify-center gap-3 animate-bounce shadow-2xl shadow-green-500/20"
-                          >
-                            <svg viewBox="0 0 24 24" className="w-6 h-6 fill-current">
-                              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L0 24l6.335-1.662c1.72.937 3.659 1.432 5.626 1.433h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
-                            </svg>
-                            Finalizar pelo WhatsApp
-                          </button>
-                        )}
+                  <div className="space-y-4">
+                    {quiz.selectedVehicle && (
+                      <div className="card-glass p-5 flex items-center justify-between gap-3">
+                        <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#A88A70]">Veículo</span>
+                        <span className="text-xs font-bold text-[#3B2016] text-right line-clamp-1">{quiz.selectedVehicle.description}</span>
                       </div>
                     )}
-                    
-                    <button 
-                      type="submit"
-                      disabled={isSubmitting || !isFormValid}
-                      className="w-full py-6 bg-manos-red text-manos-accent font-extrabold text-xl uppercase rounded-2xl shadow-[0_12px_36px_rgba(122,46,30,0.25)] hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-30 disabled:scale-100"
+                    <a
+                      href={waLink(mensagemWhatsApp())}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => trackContato('whatsapp', 'funil_final')}
+                      className="w-full py-6 bg-[#25D366] hover:bg-[#20ba5a] text-white font-extrabold text-xl uppercase rounded-2xl shadow-lg hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3"
                     >
-                      {isSubmitting ? 'Gerando sua oferta...' : 'Receber Proposta Agora'}
-                    </button>
-                    
-                    <p className="text-center text-[9px] text-[#A88A70] uppercase tracking-[0.3em] font-extrabold">
-                      Seguro &bull; Rápido &bull; Confidencial
-                    </p>
-                  </form>
+                      <MessageCircle className="w-7 h-7 fill-current" />
+                      Receber proposta no WhatsApp
+                    </a>
+                  </div>
                 </div>
               )}
             </motion.div>
@@ -1409,13 +1077,15 @@ export default function App() {
                 <ChevronLeft className="w-8 h-8" />
               </button>
               {isContactStep ? (
-                <button
-                  onClick={() => handleSubmit()}
-                  disabled={isSubmitting || !isFormValid}
-                  className="flex-grow bg-manos-red text-manos-accent font-extrabold text-lg uppercase rounded-2xl shadow-lg shadow-manos-red/15 active:scale-95 transition-all disabled:opacity-30"
+                <a
+                  href={waLink(mensagemWhatsApp())}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => trackContato('whatsapp', 'funil_rodape')}
+                  className="flex-grow bg-[#25D366] text-white font-extrabold text-lg uppercase rounded-2xl shadow-lg active:scale-95 transition-all flex items-center justify-center"
                 >
-                  {isSubmitting ? 'Finalizando...' : 'Finalizar'}
-                </button>
+                  WhatsApp
+                </a>
               ) : (
                 <div className="flex-grow flex items-center justify-center">
                   <span className="text-manos-sand font-extrabold uppercase text-lg tracking-tight">Manos Veículos</span>

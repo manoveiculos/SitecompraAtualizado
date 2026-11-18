@@ -18,7 +18,7 @@ import {
   type Repassador,
   type PropostaRepasse
 } from '../../services/repasseService';
-import { SiteShell } from '../ManosUI';
+import { SiteShell, WhatsAppCta } from '../ManosUI';
 import { novoLeadId } from '../../lib/leads';
 import { trackFunnelStart, trackLead } from '../../lib/tracking';
 
@@ -436,170 +436,19 @@ export default function RepassePage() {
               /* UNAUTHENTICATED / PENDING GATEWAY CARD */
               <div className="bg-[#2E1810] border border-[#E0B68F]/30 rounded-3xl p-6 space-y-6">
                 
-                {/* Tabs Login vs Cadastro */}
-                <div className="flex items-center gap-2 border-b border-[#E0B68F]/20 pb-4">
-                  <button
-                    onClick={() => { setLojistaTab('login'); setPendingNotice(false); }}
-                    className={`px-5 py-2.5 rounded-xl font-extrabold text-xs uppercase tracking-wider transition-all flex items-center gap-2 ${
-                      lojistaTab === 'login'
-                        ? 'bg-[#7A2E1E] text-white shadow-md'
-                        : 'text-[#F6DCC8]/60 hover:text-white'
-                    }`}
-                  >
-                    <Lock className="w-4 h-4" />
-                    Já sou Lojista (Entrar)
-                  </button>
-
-                  <button
-                    onClick={() => { setLojistaTab('cadastro'); setPendingNotice(false); }}
-                    className={`px-5 py-2.5 rounded-xl font-extrabold text-xs uppercase tracking-wider transition-all flex items-center gap-2 ${
-                      lojistaTab === 'cadastro'
-                        ? 'bg-[#7A2E1E] text-white shadow-md'
-                        : 'text-[#F6DCC8]/60 hover:text-white'
-                    }`}
-                  >
-                    <UserPlus className="w-4 h-4" />
-                    Solicitar Credenciamento
-                  </button>
-                </div>
-
-                {/* Form TAB LOGIN */}
-                {lojistaTab === 'login' && (
-                  <form onSubmit={handleLojistaLoginSubmit} className="space-y-4 max-w-md">
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-[#F6DCC8] uppercase">WhatsApp Cadastrado</label>
-                      <input
-                        type="tel"
-                        required
-                        placeholder="(47) 99999-9999"
-                        className="w-full p-3.5 bg-black/40 border border-[#E0B68F]/40 rounded-xl text-white outline-none focus:border-[#E0B68F] text-sm"
-                        value={loginTelefone}
-                        onChange={e => setLoginTelefone(formatPhone(e.target.value))}
-                      />
-                    </div>
-
-                    {loginError && (
-                      <div className={`p-3.5 rounded-xl text-xs font-bold flex items-start gap-2 ${
-                        pendingNotice
-                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                          : 'bg-red-500/20 text-red-300 border border-red-500/40'
-                      }`}>
-                        <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                        <span>{loginError}</span>
-                      </div>
-                    )}
-
-                    <button
-                      type="submit"
-                      disabled={loginLoading}
-                      className="w-full py-3.5 bg-[#7A2E1E] hover:bg-[#622316] text-white font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                    >
-                      {loginLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Unlock className="w-4 h-4" />}
-                      <span>Acessar Estoque de Atacado</span>
-                    </button>
-                  </form>
-                )}
-
-                {/* Form TAB CADASTRO */}
-                {lojistaTab === 'cadastro' && (
-                  <div className="space-y-4 max-w-xl">
-                    {cadSuccess ? (
-                      <div className="p-6 bg-emerald-950/80 border border-emerald-500/40 rounded-2xl text-center space-y-3">
-                        <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto" />
-                        <h4 className="font-serif font-extrabold text-base text-white">Solicitação de Cadastro Recebida!</h4>
-                        <p className="text-xs text-[#F6DCC8]/90 leading-relaxed max-w-md mx-auto">
-                          Obrigado pelo seu interesse! Seus dados foram encaminhados para a equipe Manos Veículos. <strong className="text-white">Seu cadastro está em análise e você receberá uma notificação no WhatsApp assim que aprovado.</strong>
-                        </p>
-                        <div className="pt-2">
-                          <button
-                            onClick={() => { setLojistaTab('login'); setCadSuccess(false); }}
-                            className="px-5 py-2.5 bg-amber-500 text-black font-extrabold text-xs uppercase rounded-xl"
-                          >
-                            Ir para Login de Lojistas
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <form onSubmit={handleLojistaCadastroSubmit} className="space-y-3 text-xs">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div>
-                            <label className="font-bold text-[#F6DCC8] block mb-1">Seu Nome Completo</label>
-                            <input
-                              type="text"
-                              required
-                              placeholder="Ex: Carlos Eduardo"
-                              className="w-full p-3 bg-black/40 border border-[#E0B68F]/30 rounded-xl text-white outline-none focus:border-[#E0B68F]"
-                              value={cadNome}
-                              onChange={e => setCadNome(e.target.value)}
-                            />
-                          </div>
-                          <div>
-                            <label className="font-bold text-[#F6DCC8] block mb-1">CPF ou CNPJ</label>
-                            <input
-                              type="text"
-                              required
-                              placeholder="CPF ou CNPJ da Loja"
-                              className="w-full p-3 bg-black/40 border border-[#E0B68F]/30 rounded-xl text-white outline-none focus:border-[#E0B68F]"
-                              value={cadCpfCnpj}
-                              onChange={e => setCadCpfCnpj(formatCpfCnpj(e.target.value))}
-                            />
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div>
-                            <label className="font-bold text-[#F6DCC8] block mb-1">Nome da Loja / Empresa</label>
-                            <input
-                              type="text"
-                              required
-                              placeholder="Ex: Auto Veículos ou Repasse SC"
-                              className="w-full p-3 bg-black/40 border border-[#E0B68F]/30 rounded-xl text-white outline-none focus:border-[#E0B68F]"
-                              value={cadLoja}
-                              onChange={e => setCadLoja(e.target.value)}
-                            />
-                          </div>
-                          <div>
-                            <label className="font-bold text-[#F6DCC8] block mb-1">Sua Cidade / UF</label>
-                            <input
-                              type="text"
-                              required
-                              placeholder="Ex: Blumenau / SC"
-                              className="w-full p-3 bg-black/40 border border-[#E0B68F]/30 rounded-xl text-white outline-none focus:border-[#E0B68F]"
-                              value={cadCidade}
-                              onChange={e => setCadCidade(e.target.value)}
-                            />
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="font-bold text-[#F6DCC8] block mb-1">WhatsApp para Liberação (com DDD)</label>
-                          <input
-                            type="tel"
-                            required
-                            placeholder="(47) 99999-9999"
-                            className="w-full p-3 bg-black/40 border border-[#E0B68F]/30 rounded-xl text-white outline-none focus:border-[#E0B68F]"
-                            value={cadTelefone}
-                            onChange={e => setCadTelefone(formatPhone(e.target.value))}
-                          />
-                        </div>
-
-                        {cadError && (
-                          <p className="text-red-400 font-bold text-center">{cadError}</p>
-                        )}
-
-                        <button
-                          type="submit"
-                          disabled={cadLoading}
-                          className="w-full py-3.5 bg-[#7A2E1E] hover:bg-[#622316] text-white font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                        >
-                          {cadLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
-                          <span>Enviar Cadastro para Aprovação Manual</span>
-                        </button>
-                      </form>
-                    )}
+                <div className="space-y-4 max-w-xl">
+                  <div className="space-y-1">
+                    <h3 className="font-serif font-extrabold text-lg text-white">Estoque de Atacado para Lojistas</h3>
+                    <p className="text-xs text-[#F6DCC8]/80 leading-relaxed">
+                      O acesso ao estoque de repasse é liberado pela nossa equipe. Chame no WhatsApp para solicitar seu credenciamento e receber as ofertas.
+                    </p>
                   </div>
-                )}
-
+                  <WhatsAppCta
+                    contexto="repasse_credenciamento"
+                    label="Solicitar Acesso no WhatsApp"
+                    mensagem="Olá! Sou lojista e quero acesso ao estoque de repasse da Manos Veículos."
+                  />
+                </div>
               </div>
             )}
 
@@ -908,57 +757,11 @@ export default function RepassePage() {
                 <p className="text-[#7D6250]">Valor no Atacado: <strong className="text-emerald-700">{formatBRL(selectedVeiculoProposta.preco_lojista || selectedVeiculoProposta.preco_repasse)}</strong></p>
               </div>
 
-              {propostaSuccess ? (
-                <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-center space-y-2 text-xs">
-                  <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto" />
-                  <h5 className="font-bold text-emerald-900">Proposta Registrada com Sucesso!</h5>
-                  <p className="text-emerald-800">Sua oferta foi recebida pela nossa equipe. Acompanhe a resposta pelo painel de propostas ou WhatsApp.</p>
-                  <button
-                    onClick={() => setShowPropostaModal(false)}
-                    className="mt-2 px-4 py-2 bg-emerald-600 text-white font-bold text-xs uppercase rounded-xl"
-                  >
-                    Fechar
-                  </button>
-                </div>
-              ) : (
-                <form onSubmit={handleEnviarPropostaSubmit} className="space-y-4 text-xs">
-                  <div className="space-y-1">
-                    <label className="font-bold text-[#7D6250] block">Seu Valor de Proposta (R$)</label>
-                    <input
-                      type="number"
-                      required
-                      step="500"
-                      className="w-full p-3 bg-[#FDF8F1] border border-[#EEDFCF] rounded-xl text-base font-extrabold text-[#3B2016] outline-none focus:border-[#7A2E1E]"
-                      value={valorPropostaInput}
-                      onChange={e => setValorPropostaInput(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="font-bold text-[#7D6250] block">Mensagem ou Condição (Opcional)</label>
-                    <textarea
-                      rows={3}
-                      placeholder="Ex: Fechamos no Pix para retirar hoje à tarde."
-                      className="w-full p-3 bg-[#FDF8F1] border border-[#EEDFCF] rounded-xl text-xs text-[#3B2016] outline-none focus:border-[#7A2E1E]"
-                      value={mensagemPropostaInput}
-                      onChange={e => setMensagemPropostaInput(e.target.value)}
-                    />
-                  </div>
-
-                  {propostaError && (
-                    <p className="text-red-600 font-bold text-center">{propostaError}</p>
-                  )}
-
-                  <button
-                    type="submit"
-                    disabled={propostaLoading}
-                    className="w-full py-3.5 bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                  >
-                    {propostaLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Handshake className="w-4 h-4" />}
-                    <span>Confirmar Envio da Proposta</span>
-                  </button>
-                </form>
-              )}
+              <WhatsAppCta
+                contexto="repasse_proposta"
+                label="Enviar Proposta no WhatsApp"
+                mensagem={`Olá! Sou lojista e quero fazer uma proposta no ${selectedVeiculoProposta.titulo} (atacado ${formatBRL(selectedVeiculoProposta.preco_lojista || selectedVeiculoProposta.preco_repasse)}).`}
+              />
 
             </motion.div>
           </div>

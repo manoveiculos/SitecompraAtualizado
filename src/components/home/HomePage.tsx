@@ -745,7 +745,7 @@ export default function HomePage() {
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {[
-              { num: '1', titulo: 'Digite a placa', desc: 'Preencha a placa do seu veículo no site' },
+              { num: '1', titulo: 'Digite a placa', desc: 'Envie a placa do seu veículo pelo WhatsApp' },
               { num: '2', titulo: 'Avaliação online', desc: 'Receba a estimativa de compra no mesmo dia' },
               { num: '3', titulo: 'Pix na conta', desc: 'Receba antes de entregar o carro na loja' },
             ].map((st) => (

@@ -71,12 +71,6 @@ export default function ConsultorPanel() {
     }
     return null;
   });
-  const [gateNome, setGateNome] = useState(() => getStoredLead().nome || '');
-  const [gateTelefone, setGateTelefone] = useState(() => {
-    const stored = getStoredLead().telefone;
-    return stored ? formatPhone(stored) : '';
-  });
-  const [gateSubmitting, setGateSubmitting] = useState(false);
 
   // Auto-sync lead if entered elsewhere on the site
   useEffect(() => {
@@ -85,13 +79,11 @@ export default function ConsultorPanel() {
       if (stored.nome && stored.telefone && !userLead) {
         setUserLead({ nome: stored.nome, telefone: stored.telefone });
       }
-      if (stored.nome && !gateNome) setGateNome(stored.nome);
-      if (stored.telefone && !gateTelefone) setGateTelefone(formatPhone(stored.telefone));
     };
     sync();
     window.addEventListener('manos-lead-updated', sync);
     return () => window.removeEventListener('manos-lead-updated', sync);
-  }, [userLead, gateNome, gateTelefone]);
+  }, [userLead]);
 
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     try {
@@ -149,53 +141,6 @@ export default function ConsultorPanel() {
       return () => clearTimeout(timer);
     }
   }, [messages, isOpen]);
-
-  // Webhook #1: Disparo do Lead Inicial (Nome + Telefone antes do chat abrir)
-  const handleGateSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanPhone = gateTelefone.replace(/\D/g, '');
-    if (!gateNome.trim() || cleanPhone.length < 10) return;
-
-    setGateSubmitting(true);
-    const leadData: UserLead = { nome: gateNome.trim(), telefone: cleanPhone };
-    identificarVisitante({ nome: leadData.nome, telefone: leadData.telefone });
-    trackLeadParcial({ tipo: 'Consultor' });
-
-    try {
-      // 1. Envia para o Webhook #1 (n8n)
-      await fetch('https://n8n.drivvoo.com/webhook/9ea7abff-e9b9-4031-83bb-604bf789133d', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tipo: 'lead_inicial_consultor',
-          nome: leadData.nome,
-          telefone: leadData.telefone,
-          enviadoEm: new Date().toISOString(),
-          contexto: { pagina: window.location.pathname },
-        }),
-      });
-
-      // 2. Salva no Supabase (tabela chatsitenovo26)
-      await supabase.from('chatsitenovo26').insert([
-        {
-          session_id: sessionId,
-          nome: leadData.nome,
-          telefone: leadData.telefone,
-          mensagem_usuario: 'Atendimento Iniciado',
-          resposta_ia: 'Olá! Sou o Consultor Manos. Diz do que você precisa que eu acho no pátio da loja!',
-          status: 'em_andamento',
-        },
-      ]);
-    } catch (err) {
-      console.warn('Erro ao registrar lead inicial:', err);
-    } finally {
-      // Persiste localmente e libera o chat
-      saveStoredLead({ nome: leadData.nome, telefone: leadData.telefone });
-      setUserLead(leadData);
-      setGateSubmitting(false);
-      track('consultor_gate_success', { nome: leadData.nome });
-    }
-  };
 
   // Envio de mensagem no chat
   const enviarMensagem = async (textoEnviar?: string) => {
@@ -400,65 +345,10 @@ export default function ConsultorPanel() {
               </button>
             </div>
 
-            {/* PASSO 1: MODAL GATE (Solicita Nome e Telefone ANTES de abrir o Chat) */}
-            {!userLead ? (
-              <div className="flex-1 p-6 flex flex-col justify-center items-center text-center space-y-5 bg-[#FDF8F1]">
-                <div className="w-16 h-16 rounded-full bg-[#3B2016] border-2 border-[#E0B68F] flex items-center justify-center shadow-lg">
-                  <Bot className="w-9 h-9 text-[#E0B68F]" />
-                </div>
-
-                <div className="space-y-1.5">
-                  <h3 className="font-serif font-extrabold text-xl text-[#3B2016]">
-                    Atendimento Consultor Manos
-                  </h3>
-                  <p className="text-xs text-[#7D6250] leading-relaxed max-w-xs">
-                    Informe seu nome e WhatsApp para consultar o estoque em tempo real e receber atendimento exclusivo.
-                  </p>
-                </div>
-
-                <form onSubmit={handleGateSubmit} className="w-full space-y-3 pt-2">
-                  <div className="space-y-1 text-left">
-                    <label className="text-[10px] font-extrabold text-[#7D6250] uppercase tracking-wider ml-1">Seu Nome</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Ex: Carlos Silva"
-                      value={gateNome}
-                      onChange={(e) => setGateNome(e.target.value)}
-                      className="w-full px-4 py-3 text-xs bg-white border border-[#EEDFCF] rounded-xl focus:outline-hidden focus:border-[#7A2E1E] text-[#3B2016]"
-                    />
-                  </div>
-
-                  <div className="space-y-1 text-left">
-                    <label className="text-[10px] font-extrabold text-[#7D6250] uppercase tracking-wider ml-1">Seu WhatsApp</label>
-                    <input
-                      type="tel"
-                      required
-                      placeholder="(47) 99999-9999"
-                      value={gateTelefone}
-                      onChange={(e) => setGateTelefone(formatPhone(e.target.value))}
-                      className="w-full px-4 py-3 text-xs bg-white border border-[#EEDFCF] rounded-xl focus:outline-hidden focus:border-[#7A2E1E] text-[#3B2016]"
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={gateSubmitting || !gateNome.trim() || gateTelefone.replace(/\D/g, '').length < 10}
-                    className="w-full py-3.5 bg-[#7A2E1E] hover:bg-[#622316] text-[#FDF3E7] text-xs font-bold uppercase rounded-xl transition-all flex items-center justify-center gap-2 shadow-md disabled:opacity-40 min-h-[46px]"
-                  >
-                    <span>{gateSubmitting ? 'Iniciando...' : 'Iniciar Atendimento'}</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
-                </form>
-
-                <p className="text-[10px] text-[#7D6250]/70 flex items-center gap-1">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Seus dados estão seguros · Atendimento humano disponível
-                </p>
-              </div>
-            ) : (
-              /* PASSO 2: CORPO DO CHAT ATIVO */
+            {/* Chat aberto direto: o contato com a loja é feito pelo WhatsApp. */}
               <>
                 {/* User Bar Info */}
+                {userLead && (
                 <div className="bg-[#F4E6D7] px-4 py-2 border-b border-[#EEDFCF] flex items-center justify-between text-xs text-[#3B2016]">
                   <div className="flex items-center gap-2 font-medium">
                     <User className="w-3.5 h-3.5 text-[#7A2E1E]" />
@@ -469,6 +359,7 @@ export default function ConsultorPanel() {
                     Conectado
                   </span>
                 </div>
+                )}
 
                 {/* Histórico de Mensagens */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#FDF8F1]">
@@ -685,7 +576,6 @@ export default function ConsultorPanel() {
                   </div>
                 </div>
               </>
-            )}
 
           </div>
         </div>

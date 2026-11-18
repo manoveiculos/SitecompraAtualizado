@@ -6,14 +6,9 @@ import {
   Phone, MessageCircle, ChevronDown, HelpCircle, MapPin, Sparkles, Check,
   Zap, Building2, ThumbsUp, ChevronRight
 } from 'lucide-react';
-import { registrarLeadVenda, consultarPlaca, enviarVenda, type VeiculoPlaca } from '../../services/vendasService';
 import { novoLeadId } from '../../lib/leads';
 import {
   trackFunnelStart,
-  trackFunnelStep,
-  trackLeadParcial,
-  trackLead,
-  trackPlacaConsultada,
 } from '../../lib/tracking';
 
 const LOGO = 'https://manosveiculos.com.br/wp-content/uploads/2024/02/LogoManos.png';
@@ -103,49 +98,12 @@ const FAQS = [
 ];
 
 export default function VendasRapidasPage() {
-  const [step, setStep] = useState(1);
-  const [leadId] = useState(novoLeadId);
-
   // FAQ Accordion State
   const [openFaq, setOpenFaq] = useState<number | null>(0);
 
-  // Analytics tracking
   useEffect(() => {
     trackFunnelStart('Venda');
   }, []);
-
-  useEffect(() => {
-    if (step > 1) trackFunnelStep('Venda', step);
-  }, [step]);
-
-  // Step 1: Contato Inicial
-  const [nome, setNome] = useState('');
-  const [telefone, setTelefone] = useState('');
-  const [cidade, setCidade] = useState('');
-  const [leadLoading, setLeadLoading] = useState(false);
-
-  // Step 2: Placa / Modelo
-  const [placa, setPlaca] = useState('');
-  const [placaLoading, setPlacaLoading] = useState(false);
-  const [placaError, setPlacaError] = useState('');
-  const [modoBusca, setModoBusca] = useState<'placa' | 'manual'>('placa');
-
-  // Step 3: Detalhes do Carro
-  const [veiculo, setVeiculo] = useState<VeiculoPlaca | null>(null);
-  const [marcaManual, setMarcaManual] = useState('');
-  const [modeloManual, setModeloManual] = useState('');
-  const [km, setKm] = useState('');
-  const [cor, setCor] = useState('');
-  const [valor, setValor] = useState('');
-  const [sending, setSending] = useState(false);
-
-  const rawPhone = telefone.replace(/\D/g, '');
-  const contatoValido = nome.trim().length >= 3 && rawPhone.length >= 10 && cidade.trim().length >= 2;
-  
-  const precisaMarcaModelo = !veiculo || (!veiculo.marca && !veiculo.modelo);
-  const veiculoValido =
-    km.trim() !== '' && cor.trim() !== '' && valor.trim() !== '' &&
-    (!precisaMarcaModelo || (marcaManual.trim() !== '' && modeloManual.trim() !== ''));
 
   // Handler do WhatsApp direto (para leigos)
   const openDirectWhatsApp = (msgExtra = '') => {
@@ -153,78 +111,6 @@ export default function VendasRapidasPage() {
       msgExtra || `Olá! Vim pelo site e gostaria de receber uma proposta de compra à vista no PIX para o meu carro.`
     );
     window.open(`https://wa.me/${WHATSAPP_NUM}?text=${texto}`, '_blank');
-  };
-
-  // Step 1 Submit
-  const handleContato = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!contatoValido || leadLoading) return;
-    setLeadLoading(true);
-    trackLeadParcial({ tipo: 'Venda' });
-    await registrarLeadVenda({ lead_id: leadId, nome: nome.trim(), telefone: rawPhone, cidade: cidade.trim() });
-    setLeadLoading(false);
-    setStep(2);
-
-    // Smooth scroll to form top
-    const formEl = document.getElementById('hero-evaluation-card');
-    if (formEl) formEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  };
-
-  // Step 2 Plate Search
-  const handleBuscarPlaca = async () => {
-    if (placa.length < 7 || placaLoading) return;
-    setPlacaLoading(true);
-    setPlacaError('');
-    const res = await consultarPlaca(placa);
-    setPlacaLoading(false);
-    trackPlacaConsultada(Boolean(res.ok && res.veiculo));
-    if (res.ok && res.veiculo) {
-      setVeiculo(res.veiculo);
-      if (res.veiculo.cor) setCor(res.veiculo.cor);
-      setStep(3);
-    } else {
-      setPlacaError(res.error || 'Não encontramos os dados da placa. Você pode preencher manualmente abaixo.');
-      setModoBusca('manual');
-    }
-  };
-
-  const handleSemPlaca = () => {
-    setVeiculo(null);
-    setModoBusca('manual');
-    setStep(3);
-  };
-
-  // Step 3 Submit Final
-  const handleEnviar = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!veiculoValido || sending) return;
-    setSending(true);
-    const eventId = trackLead({
-      tipo: 'Venda',
-      valor: onlyNumber(valor) / 100,
-      vehicleName: [veiculo?.marca || marcaManual, veiculo?.modelo || modeloManual].filter(Boolean).join(' ') || null,
-    });
-
-    await enviarVenda({
-      lead_id: leadId,
-      event_id: eventId,
-      nome: nome.trim(),
-      telefone: rawPhone,
-      cidade: cidade.trim(),
-      placa: placa || null,
-      marca: veiculo?.marca || marcaManual.trim() || null,
-      modelo: veiculo?.modelo || modeloManual.trim() || null,
-      versao: veiculo?.versao || null,
-      ano: veiculo?.ano || null,
-      combustivel: veiculo?.combustivel || null,
-      fipe: veiculo?.fipeValor || null,
-      km: onlyNumber(km),
-      cor: cor.trim(),
-      valor_desejado: onlyNumber(valor) / 100,
-      valor_desejado_formatado: valor,
-    });
-    setSending(false);
-    setStep(4);
   };
 
   return (
@@ -329,7 +215,7 @@ export default function VendasRapidasPage() {
                 <span className="text-xs font-bold uppercase tracking-wider text-green-400">Prefere conversar no WhatsApp?</span>
               </div>
               <p className="text-xs sm:text-sm text-white/70">
-                Se não quiser preencher formulário agora, você pode chamar nosso avaliador de plantão diretamente no WhatsApp:
+                Chame nosso avaliador de plantão diretamente no WhatsApp:
               </p>
               <button
                 onClick={() => openDirectWhatsApp()}
@@ -343,348 +229,26 @@ export default function VendasRapidasPage() {
 
           </div>
 
-          {/* COLUNA DA DIREITA — CARD DE AVALIAÇÃO INTERATIVO (FORMULÁRIO DE ALTA CONVERSÃO) */}
+          {/* COLUNA DA DIREITA — CONTATO DIRETO PELO WHATSAPP */}
           <div id="hero-evaluation-card" className="lg:col-span-5 w-full">
             <div className="vendas-card-active p-6 sm:p-8 space-y-6 relative overflow-hidden">
-              
-              {/* Barra de Progresso do Formulário */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider">
-                  <span className="text-manos-red font-black">
-                    {step === 1 && 'Etapa 1 de 3 • Seus Dados'}
-                    {step === 2 && 'Etapa 2 de 3 • Dados do Carro'}
-                    {step === 3 && 'Etapa 3 de 3 • Finalizando Proposta'}
-                    {step === 4 && 'Concluído com Sucesso'}
-                  </span>
-                  <span className="text-white/40">
-                    {step === 1 && 'Leva 30 seg'}
-                    {step === 2 && 'Fipe Automática'}
-                    {step === 3 && 'Avaliação Grátis'}
-                  </span>
-                </div>
-                <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
-                  <motion.div
-                    className="h-full bg-manos-red"
-                    initial={{ width: '25%' }}
-                    animate={{ width: `${step * 25}%` }}
-                    transition={{ duration: 0.3 }}
-                  />
-                </div>
+              <div className="space-y-2 text-left">
+                <span className="text-manos-red font-black text-xs uppercase tracking-wider">Avaliação Grátis</span>
+                <h2 className="text-xl sm:text-2xl font-black uppercase italic tracking-tight text-white">
+                  Receba sua <span className="text-manos-red">proposta no WhatsApp</span>
+                </h2>
+                <p className="text-xs sm:text-sm text-white/60">
+                  Chame nosso avaliador, envie a placa e os dados do carro e receba a proposta de compra à vista no PIX.
+                </p>
               </div>
-
-              <AnimatePresence mode="wait">
-                {/* ---------------- STEP 1 — CONTATO INICIAL ---------------- */}
-                {step === 1 && (
-                  <motion.div
-                    key="step-1"
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    className="space-y-5"
-                  >
-                    <div className="space-y-1 text-left">
-                      <h2 className="text-xl sm:text-2xl font-black uppercase italic tracking-tight text-white">
-                        Solicite sua <span className="text-manos-red">Avaliação Grátis</span>
-                      </h2>
-                      <p className="text-xs sm:text-sm text-white/60">
-                        Informe seus dados para nosso avaliador enviar a proposta no seu WhatsApp.
-                      </p>
-                    </div>
-
-                    <form onSubmit={handleContato} className="space-y-4">
-                      <div className="space-y-1.5 text-left">
-                        <label className="text-xs font-bold text-white/80 uppercase tracking-wider flex items-center gap-1">
-                          Seu Nome Completo *
-                        </label>
-                        <input
-                          type="text"
-                          required
-                          autoComplete="name"
-                          className="w-full py-4 px-5 bg-white/5 border border-white/15 rounded-2xl text-white placeholder-white/30 text-sm focus:border-manos-red outline-none transition-all"
-                          placeholder="Ex.: João Silva"
-                          value={nome}
-                          onChange={(e) => setNome(e.target.value)}
-                        />
-                      </div>
-
-                      <div className="space-y-1.5 text-left">
-                        <label className="text-xs font-bold text-white/80 uppercase tracking-wider flex items-center gap-1">
-                          WhatsApp de Contato (com DDD) *
-                        </label>
-                        <div className="relative">
-                          <input
-                            type="tel"
-                            required
-                            inputMode="numeric"
-                            autoComplete="tel"
-                            className="w-full py-4 px-5 bg-white/5 border border-white/15 rounded-2xl text-white placeholder-white/30 text-sm focus:border-manos-red outline-none transition-all"
-                            placeholder="(47) 99999-9999"
-                            value={telefone}
-                            onChange={(e) => setTelefone(formatPhone(e.target.value))}
-                          />
-                          {rawPhone.length >= 10 && (
-                            <CheckCircle2 className="w-5 h-5 text-green-400 absolute right-4 top-1/2 -translate-y-1/2" />
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="space-y-1.5 text-left">
-                        <label className="text-xs font-bold text-white/80 uppercase tracking-wider flex items-center gap-1">
-                          Sua Cidade *
-                        </label>
-                        <input
-                          type="text"
-                          required
-                          autoComplete="address-level2"
-                          className="w-full py-4 px-5 bg-white/5 border border-white/15 rounded-2xl text-white placeholder-white/30 text-sm focus:border-manos-red outline-none transition-all"
-                          placeholder="Ex.: Rio do Sul"
-                          value={cidade}
-                          onChange={(e) => setCidade(e.target.value)}
-                        />
-                      </div>
-
-                      <button
-                        type="submit"
-                        disabled={!contatoValido || leadLoading}
-                        className="w-full py-5 bg-manos-red hover:bg-red-600 disabled:opacity-40 text-white font-black text-base uppercase rounded-2xl shadow-xl shadow-manos-red/30 flex items-center justify-center gap-3 active:scale-95 transition-all cursor-pointer"
-                      >
-                        {leadLoading ? (
-                          <><Loader2 className="w-5 h-5 animate-spin" /> Processando...</>
-                        ) : (
-                          <>Quero Minha Proposta no PIX <ArrowRight className="w-5 h-5" /></>
-                        )}
-                      </button>
-
-                      <div className="flex items-center justify-center gap-2 pt-1 text-[11px] text-white/40 font-semibold">
-                        <ShieldCheck className="w-4 h-4 text-green-400" />
-                        <span>Seus dados estão 100% protegidos (LGPD). Sem spam.</span>
-                      </div>
-                    </form>
-                  </motion.div>
-                )}
-
-                {/* ---------------- STEP 2 — PLACA / OPÇÃO MANUAL ---------------- */}
-                {step === 2 && (
-                  <motion.div
-                    key="step-2"
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    className="space-y-5"
-                  >
-                    <div className="space-y-1 text-left">
-                      <h2 className="text-xl sm:text-2xl font-black uppercase italic tracking-tight text-white">
-                        Qual a <span className="text-manos-red">Placa</span> do seu Carro?
-                      </h2>
-                      <p className="text-xs sm:text-sm text-white/60">
-                        Com a placa identificamos a tabela FIPE, marca e ano automaticamente para uma oferta mais justa.
-                      </p>
-                    </div>
-
-                    <div className="space-y-4">
-                      {/* Input no Estilo Placa de Carro Mercosul */}
-                      <div className="bg-white rounded-2xl p-3 border-4 border-slate-800 shadow-2xl text-center space-y-1">
-                        <div className="flex items-center justify-between text-[10px] font-black tracking-widest text-slate-400 px-2 uppercase">
-                          <span>Brasil</span>
-                          <span>Mercosul</span>
-                        </div>
-                        <input
-                          type="text"
-                          autoFocus
-                          autoCapitalize="characters"
-                          className="w-full py-2 text-center text-3xl font-black tracking-[0.25em] text-slate-900 bg-transparent outline-none uppercase placeholder:text-slate-300"
-                          placeholder="ABC1D23"
-                          value={placa}
-                          onChange={(e) => { setPlaca(formatPlaca(e.target.value)); setPlacaError(''); }}
-                          onKeyDown={(e) => { if (e.key === 'Enter') handleBuscarPlaca(); }}
-                        />
-                      </div>
-
-                      {placaError && (
-                        <div className="flex items-start gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-xs font-semibold text-left">
-                          <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                          <span>{placaError}</span>
-                        </div>
-                      )}
-
-                      <button
-                        onClick={handleBuscarPlaca}
-                        disabled={placa.length < 7 || placaLoading}
-                        className="w-full py-5 bg-manos-red hover:bg-red-600 disabled:opacity-40 text-white font-black text-base uppercase rounded-2xl shadow-xl shadow-manos-red/30 flex items-center justify-center gap-3 active:scale-95 transition-all"
-                      >
-                        {placaLoading ? (
-                          <><Loader2 className="w-5 h-5 animate-spin" /> Buscando Dados FIPE...</>
-                        ) : (
-                          <><Search className="w-5 h-5" /> Buscar Dados da Placa</>
-                        )}
-                      </button>
-
-                      {/* Opção sem placa clara para leigos */}
-                      <div className="pt-2 text-center space-y-2 border-t border-white/10">
-                        <p className="text-xs text-white/50">Não lembra a placa ou prefere digitar o modelo?</p>
-                        <button
-                          onClick={handleSemPlaca}
-                          className="w-full py-3 bg-white/10 hover:bg-white/15 text-white font-bold text-xs uppercase rounded-xl transition-all"
-                        >
-                          Continuar sem a Placa
-                        </button>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-
-                {/* ---------------- STEP 3 — DETALHES DO VEÍCULO ---------------- */}
-                {step === 3 && (
-                  <motion.div
-                    key="step-3"
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    className="space-y-5"
-                  >
-                    <div className="space-y-1 text-left">
-                      <h2 className="text-xl sm:text-2xl font-black uppercase italic tracking-tight text-white">
-                        Últimos <span className="text-manos-red">Detalhes</span>
-                      </h2>
-                      <p className="text-xs sm:text-sm text-white/60">
-                        Falta muito pouco para calcularmos a oferta máxima no seu PIX.
-                      </p>
-                    </div>
-
-                    {/* Card do Veículo Identificado */}
-                    {veiculo && (veiculo.marca || veiculo.modelo) && (
-                      <div className="p-3.5 bg-green-500/10 border border-green-500/30 rounded-2xl text-left space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-black text-green-400 uppercase tracking-wider flex items-center gap-1">
-                            <CheckCircle2 className="w-3.5 h-3.5" /> Carro Identificado
-                          </span>
-                          {veiculo.fipeValor && (
-                            <span className="text-xs font-black text-green-400">FIPE: {veiculo.fipeValor}</span>
-                          )}
-                        </div>
-                        <p className="text-sm font-black text-white italic uppercase">
-                          {veiculo.marca} {veiculo.modelo} {[veiculo.versao, veiculo.ano].filter(Boolean).join(' • ')}
-                        </p>
-                      </div>
-                    )}
-
-                    <form onSubmit={handleEnviar} className="space-y-3.5 text-left">
-                      {precisaMarcaModelo && (
-                        <>
-                          <div className="space-y-1">
-                            <label className="text-xs font-bold text-white/70 uppercase">Marca (Ex.: Volkswagen)</label>
-                            <input
-                              type="text"
-                              required
-                              className="w-full py-3.5 px-4 bg-white/5 border border-white/15 rounded-xl text-white text-sm focus:border-manos-red outline-none"
-                              placeholder="Marca do carro"
-                              value={marcaManual}
-                              onChange={(e) => setMarcaManual(e.target.value)}
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-xs font-bold text-white/70 uppercase">Modelo (Ex.: Gol 1.6)</label>
-                            <input
-                              type="text"
-                              required
-                              className="w-full py-3.5 px-4 bg-white/5 border border-white/15 rounded-xl text-white text-sm focus:border-manos-red outline-none"
-                              placeholder="Modelo e versão"
-                              value={modeloManual}
-                              onChange={(e) => setModeloManual(e.target.value)}
-                            />
-                          </div>
-                        </>
-                      )}
-
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                          <label className="text-xs font-bold text-white/70 uppercase">Quilometragem (km)</label>
-                          <input
-                            type="text"
-                            required
-                            inputMode="numeric"
-                            className="w-full py-3.5 px-4 bg-white/5 border border-white/15 rounded-xl text-white text-sm focus:border-manos-red outline-none"
-                            placeholder="Ex.: 75.000"
-                            value={km}
-                            onChange={(e) => setKm(formatThousands(e.target.value))}
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-xs font-bold text-white/70 uppercase">Cor do Carro</label>
-                          <input
-                            type="text"
-                            required
-                            className="w-full py-3.5 px-4 bg-white/5 border border-white/15 rounded-xl text-white text-sm focus:border-manos-red outline-none"
-                            placeholder="Ex.: Prata"
-                            value={cor}
-                            onChange={(e) => setCor(e.target.value)}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="space-y-1">
-                        <label className="text-xs font-bold text-white/70 uppercase">Quanto você espera receber pelo carro?</label>
-                        <input
-                          type="text"
-                          required
-                          inputMode="numeric"
-                          className="w-full py-4 px-4 bg-white/5 border border-green-500/40 rounded-xl text-green-400 font-bold text-base focus:border-green-400 outline-none"
-                          placeholder="R$ 0,00"
-                          value={valor}
-                          onChange={(e) => setValor(formatBRL(e.target.value))}
-                        />
-                      </div>
-
-                      <button
-                        type="submit"
-                        disabled={!veiculoValido || sending}
-                        className="w-full py-5 bg-green-600 hover:bg-green-500 disabled:opacity-40 text-white font-black text-base uppercase rounded-2xl shadow-xl shadow-green-600/30 flex items-center justify-center gap-3 active:scale-95 transition-all cursor-pointer mt-2"
-                      >
-                        {sending ? (
-                          <><Loader2 className="w-5 h-5 animate-spin" /> Calculando Proposta...</>
-                        ) : (
-                          <>Receber Minha Proposta no PIX <ArrowRight className="w-5 h-5" /></>
-                        )}
-                      </button>
-                    </form>
-                  </motion.div>
-                )}
-
-                {/* ---------------- STEP 4 — SUCESSO ---------------- */}
-                {step === 4 && (
-                  <motion.div
-                    key="step-4"
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="text-center space-y-6 py-4"
-                  >
-                    <div className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center mx-auto shadow-2xl shadow-green-500/40">
-                      <CheckCircle2 className="w-10 h-10 text-white" />
-                    </div>
-
-                    <div className="space-y-2">
-                      <h2 className="text-2xl font-black uppercase italic tracking-tight text-white">
-                        Solicitação Recebida!
-                      </h2>
-                      <p className="text-sm text-white/80 leading-relaxed">
-                        Obrigado, <strong className="text-green-400">{nome}</strong>! Nossa equipe de avaliadores de Rio do Sul já está analisando os dados do seu carro.
-                      </p>
-                      <p className="text-xs text-white/50 border-l-2 border-green-500/40 pl-3 py-1 text-left italic">
-                        Fique atento ao seu WhatsApp <strong className="text-white">{telefone}</strong>. Em instantes um de nossos consultores chamará você com a proposta final.
-                      </p>
-                    </div>
-
-                    <button
-                      onClick={() => openDirectWhatsApp(`Olá! Acabei de enviar meu carro (${veiculo?.marca || marcaManual} ${veiculo?.modelo || modeloManual}) no site. Gostaria de priorizar meu atendimento!`)}
-                      className="w-full py-4 bg-green-600 hover:bg-green-500 text-white font-black text-sm uppercase rounded-2xl shadow-xl flex items-center justify-center gap-2"
-                    >
-                      <MessageCircle className="w-5 h-5 fill-current" />
-                      Priorizar Atendimento no WhatsApp
-                    </button>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
+              <button
+                onClick={() => openDirectWhatsApp()}
+                className="w-full py-5 bg-green-600 hover:bg-green-500 text-white font-black text-sm uppercase rounded-2xl flex items-center justify-center gap-3 shadow-xl shadow-green-600/30 active:scale-95 transition-all"
+              >
+                <MessageCircle className="w-5 h-5 fill-current" />
+                Avaliar meu carro no WhatsApp
+                <ArrowRight className="w-5 h-5" />
+              </button>
             </div>
           </div>
 

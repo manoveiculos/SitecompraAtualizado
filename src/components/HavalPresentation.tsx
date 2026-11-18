@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { SiteShell } from './ManosUI';
+import { SiteShell, WhatsAppCta } from './ManosUI';
 import { fetchStock, type Vehicle } from '../services/stockService';
 import { waLink } from '../lib/manos';
 import { track } from '../lib/track';
@@ -23,9 +23,6 @@ export default function HavalPresentation() {
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState<string>('');
   const [isLeadModalOpen, setIsLeadModalOpen] = useState(false);
-  const [formSubmitted, setFormSubmitted] = useState(false);
-  const [nome, setNome] = useState('');
-  const [whatsApp, setWhatsApp] = useState('');
 
   // Imagem oficial do Haval H6 GT em estoque na Manos
   const havalImage = 'https://dealersites-content.s3.us-east-1.amazonaws.com/dealersites/vehicles/versions/gwm/foto_version_890_69a192343cf8e.webp';
@@ -70,12 +67,6 @@ export default function HavalPresentation() {
     }
     loadData();
   }, []);
-
-  const handleFormSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    track('lead_submit', { veiculo: vehicle?.description, nome, whatsApp });
-    setFormSubmitted(true);
-  };
 
   return (
     <SiteShell title="Haval H6 GT em Estoque">
@@ -247,7 +238,7 @@ export default function HavalPresentation() {
               <X className="w-6 h-6" />
             </button>
 
-            {!formSubmitted ? (
+            {(
               <div className="space-y-6">
                 <div>
                   <span className="text-[10px] font-extrabold uppercase tracking-widest text-manos-red">Manos Veículos</span>
@@ -259,52 +250,11 @@ export default function HavalPresentation() {
                   </p>
                 </div>
 
-                <form onSubmit={handleFormSubmit} className="space-y-4">
-                  <div>
-                    <label className="text-[10px] font-extrabold uppercase tracking-widest text-[#7D6250] ml-2">Seu Nome</label>
-                    <input 
-                      type="text" 
-                      required 
-                      value={nome}
-                      onChange={(e) => setNome(e.target.value)}
-                      placeholder="Nome completo"
-                      className="w-full py-3.5 px-4 bg-white border border-manos-sand rounded-xl text-sm focus:outline-none focus:border-manos-red"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] font-extrabold uppercase tracking-widest text-[#7D6250] ml-2">WhatsApp</label>
-                    <input 
-                      type="tel" 
-                      required 
-                      value={whatsApp}
-                      onChange={(e) => setWhatsApp(e.target.value)}
-                      placeholder="(47) 99999-9999"
-                      className="w-full py-3.5 px-4 bg-white border border-manos-sand rounded-xl text-sm focus:outline-none focus:border-manos-red"
-                    />
-                  </div>
-
-                  <button 
-                    type="submit"
-                    className="w-full py-4 bg-manos-red hover:bg-[#8F3725] text-manos-accent font-extrabold text-sm uppercase rounded-xl shadow-lg transition-all"
-                  >
-                    Falar com Consultor
-                  </button>
-                </form>
-              </div>
-            ) : (
-              <div className="text-center py-6 space-y-4">
-                <CheckCircle2 className="w-16 h-16 text-emerald-600 mx-auto" />
-                <h3 className="text-2xl font-serif font-extrabold text-[#3B2016]">Solicitação Enviada!</h3>
-                <p className="text-sm text-[#7D6250]">
-                  Obrigado, {nome}! Um consultor da Manos Veículos entrará em contato com você pelo WhatsApp em instantes.
-                </p>
-                <button 
-                  onClick={() => { setFormSubmitted(false); setIsLeadModalOpen(false); }}
-                  className="px-6 py-3 bg-[#3B2016] text-[#FDF3E7] text-xs font-extrabold uppercase rounded-xl"
-                >
-                  Fechar
-                </button>
+                <WhatsAppCta
+                  contexto="haval_modal"
+                  label="Falar com Consultor no WhatsApp"
+                  mensagem={`Olá! Gostaria de falar sobre o ${vehicle ? vehicle.description : 'Haval H6 GT'} que está no estoque.`}
+                />
               </div>
             )}
           </div>

@@ -12,7 +12,7 @@ import {
   enviarLeadRepasse,
   type VeiculoRepasse
 } from '../../services/repasseService';
-import { SiteShell, Logo } from '../ManosUI';
+import { SiteShell, Logo, WhatsAppCta } from '../ManosUI';
 import { novoLeadId } from '../../lib/leads';
 import { trackFunnelStart, trackLead } from '../../lib/tracking';
 
@@ -562,98 +562,11 @@ export default function RepassePublicoPage() {
                     Tenho interesse neste veículo
                   </h4>
 
-                  {success ? (
-                    <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-center space-y-2">
-                      <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto" />
-                      <h5 className="font-bold text-emerald-900 text-sm">Interesse Enviado com Sucesso!</h5>
-                      <p className="text-xs text-emerald-800">
-                        Um de nossos consultores entrará em contato com você pelo WhatsApp em breve.
-                      </p>
-                      <button
-                        onClick={() => openWhatsAppDirect(selectedVeiculo)}
-                        className="mt-2 px-4 py-2 bg-emerald-600 text-white font-bold text-xs uppercase rounded-xl inline-flex items-center gap-2"
-                      >
-                        <MessageCircle className="w-4 h-4" />
-                        Chamar no WhatsApp Agora
-                      </button>
-                    </div>
-                  ) : (
-                    <form onSubmit={handleFormSubmit} className="space-y-3 text-xs">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div>
-                          <label className="font-bold text-[#7D6250] block mb-1">Seu Nome Completo</label>
-                          <input
-                            type="text"
-                            required
-                            placeholder="Ex: João da Silva"
-                            className="w-full p-3 bg-white border border-[#EEDFCF] rounded-xl outline-none focus:border-[#7A2E1E]"
-                            value={nome}
-                            onChange={e => setNome(e.target.value)}
-                          />
-                        </div>
-                        <div>
-                          <label className="font-bold text-[#7D6250] block mb-1">Seu WhatsApp (com DDD)</label>
-                          <input
-                            type="tel"
-                            required
-                            placeholder="(47) 99999-9999"
-                            className="w-full p-3 bg-white border border-[#EEDFCF] rounded-xl outline-none focus:border-[#7A2E1E]"
-                            value={telefone}
-                            onChange={e => setTelefone(formatPhone(e.target.value))}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div>
-                          <label className="font-bold text-[#7D6250] block mb-1">Sua Cidade / UF</label>
-                          <input
-                            type="text"
-                            required
-                            placeholder="Ex: Rio do Sul / SC"
-                            className="w-full p-3 bg-white border border-[#EEDFCF] rounded-xl outline-none focus:border-[#7A2E1E]"
-                            value={cidade}
-                            onChange={e => setCidade(e.target.value)}
-                          />
-                        </div>
-                        <div>
-                          <label className="font-bold text-[#7D6250] block mb-1">Mensagem ou Proposta (Opcional)</label>
-                          <input
-                            type="text"
-                            placeholder="Ex: Tenho interesse no pagamento à vista"
-                            className="w-full p-3 bg-white border border-[#EEDFCF] rounded-xl outline-none focus:border-[#7A2E1E]"
-                            value={proposta}
-                            onChange={e => setProposta(e.target.value)}
-                          />
-                        </div>
-                      </div>
-
-                      <label className="flex items-center gap-2 cursor-pointer pt-1">
-                        <input
-                          type="checkbox"
-                          checked={aceitouTermos}
-                          onChange={e => setAceitouTermos(e.target.checked)}
-                          className="rounded text-[#7A2E1E] focus:ring-[#7A2E1E]"
-                        />
-                        <span className="text-[#7D6250]">
-                          Declaro ciência de que se trata de um <strong className="text-[#3B2016]">veículo de repasse no estado</strong> sem garantia contratual de varejo.
-                        </span>
-                      </label>
-
-                      {errorMsg && (
-                        <p className="text-red-600 font-bold text-center">{errorMsg}</p>
-                      )}
-
-                      <button
-                        type="submit"
-                        disabled={submitting}
-                        className="w-full py-3.5 bg-[#7A2E1E] hover:bg-[#622316] text-white font-extrabold text-sm uppercase rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                      >
-                        {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-4 h-4" />}
-                        <span>Enviar Interesse para a Consultoria</span>
-                      </button>
-                    </form>
-                  )}
+                  <WhatsAppCta
+                    contexto="repasse_publico"
+                    label="Tenho Interesse — Chamar no WhatsApp"
+                    mensagem={`Olá! Tenho interesse no repasse ${selectedVeiculo.titulo} (${selectedVeiculo.preco_repasse.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}). Ainda está disponível?`}
+                  />
                 </div>
 
               </div>

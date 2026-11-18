@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { LOJA, CONTATO, SOCIAL, waLink } from '../lib/manos';
 import { track } from '../lib/track';
+import { trackContato } from '../lib/tracking';
 
 import LGPDBanner from './tools/LGPDBanner';
 import ConsultorPanel from './consultor/ConsultorPanel';
@@ -403,6 +404,38 @@ export function StickyBar({
         </a>
       </div>
     </div>
+  );
+}
+
+/**
+ * Único ponto de contato do site: botão que abre o WhatsApp da loja com uma
+ * mensagem pronta. Substitui todos os formulários de captação.
+ */
+export function WhatsAppCta({
+  mensagem,
+  label = 'Chamar no WhatsApp',
+  contexto,
+  className = '',
+}: {
+  mensagem?: string;
+  label?: string;
+  contexto: string;
+  className?: string;
+}) {
+  return (
+    <a
+      href={waLink(mensagem)}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={() => {
+        track('whatsapp_click', { pagina: window.location.pathname, tipo: contexto });
+        trackContato('whatsapp', contexto);
+      }}
+      className={`w-full py-4 bg-[#25D366] hover:bg-[#20ba5a] text-white font-extrabold text-sm uppercase rounded-2xl flex items-center justify-center gap-2 shadow-lg min-h-[48px] transition-colors ${className}`}
+    >
+      <MessageCircle className="w-5 h-5 fill-current" />
+      {label}
+    </a>
   );
 }
 
